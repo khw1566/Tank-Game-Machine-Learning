@@ -122,15 +122,15 @@ static func tiger1() -> TankSpec:
 		"mantlet": {"t": 120.0}, "gun_barrel": {"t": 0.0}, "track": {"t": 0.0},
 	}
 	# 기동: 무겁다(57t, 11.4 hp/t). Maybach OLVAR 반자동 유압 프리셀렉터 변속기 전진 8단·후진 4단
-	# → 변속이 빠르고(0.6s) 후진도 4단까지 있어 9.2km/h, 전후진 전환 빠름. L600C 조향 → 제자리 선회 가능.
+	# → 게임용 변속은 0.18s 로 빠르게, 후진도 4단까지 있어 9.2km/h. L600C 조향 → 제자리 선회 가능.
 	# 기어별 속도: 엔진 3000rpm 기준(Tiger I Information Center). 야지에서는 6단(20.9km/h)이 한계.
 	s.forward_gears_kmh = [2.8, 4.3, 6.2, 9.2, 14.1, 20.9, 30.5, 45.4]
 	s.reverse_gears_kmh = [2.8, 4.3, 6.2, 9.2]
 	s.max_forward_kmh = 45.4
 	s.max_reverse_kmh = 9.2
 	s.start_gear = 2
-	s.shift_time_s = 0.6
-	s.engine_response_s = 1.2
+	s.shift_time_s = 0.18
+	s.engine_response_s = 0.25
 	s.ground_pressure_kgcm2 = 1.05 # 전투용 725mm 궤도
 	s.obstacle_step_m = 0.79
 	s.brake_mps2 = 5.0
@@ -182,7 +182,7 @@ static func tiger1() -> TankSpec:
 		"88mm: 포구초속 773m/s(평탄한 탄도), 분산 0.30mrad, 조준 1.8s → 1000m 이상 원거리 정지 사격이 강점",
 		"포탑 선회 6°/s(360°에 60초): 측면으로 돌아오는 적에 대응이 늦음 → 차체를 돌려 대응해야 함",
 		"8+4단 프리셀렉터: 도로 45km/h 지만 야지는 6단 20.9km/h 가 한계, 오르막에서 크게 느려짐(11.4hp/t)",
-		"변속 0.6s·후진 4단 9.2km/h·전후진 전환 0.8s·제자리 선회 → 후진·자세 전환은 셋 중 가장 좋음",
+		"게임용 빠른 변속 0.18s·후진 4단 9.2km/h·전후진 전환 0.8s·제자리 선회 → 후진·자세 전환은 셋 중 가장 좋음",
 		"0.79m 장애물까지 넘음. 무겁고 감쇠 좋은 토션바 현가 → 출렁임이 빨리 가라앉음",
 	]
 	s.notes = "넓고 각진 상자형 실루엣(피탄면적 큼). 측면 하부 60mm 가 약점이지만 대형 보기륜·궤도가 15mm 만큼 막아 준다."
@@ -278,8 +278,8 @@ static func sherman75() -> TankSpec:
 	s.max_forward_kmh = 38.6
 	s.max_reverse_kmh = 5.0
 	s.start_gear = 2
-	s.shift_time_s = 1.0
-	s.engine_response_s = 0.8
+	s.shift_time_s = 0.25
+	s.engine_response_s = 0.22
 	s.ground_pressure_kgcm2 = 0.96 # 16.5인치(420mm) 좁은 궤도
 	s.obstacle_step_m = 0.61
 	s.brake_mps2 = 6.0
@@ -420,7 +420,7 @@ static func t34_76() -> TankSpec:
 	}
 	# 기동: 28.5t, V-2 디젤 500hp(17.5 hp/t) → 오르막·가속은 최고. 미끄럼물림(비동기) 4단 + 후진 1단.
 	# 기어별 속도: 교범의 1700rpm 계산값(7.4/15.45/25.6/48.3, R 6.9)을 최대출력 1800rpm 으로 환산.
-	# 2→3단 변속은 "초인적인 힘"이 필요했다 → 3.0s 동안 동력 단절, 그래서 조종수들은 2단으로 버티곤 했다.
+	# 비동기 변속기의 느린 특성은 남기되, 게임용 2→3단 동력 단절은 0.55s 로 축약한다.
 	# 4단은 도로 전용(야지 저항을 못 이김). 후진은 1단 7.3km/h 이지만 전후진 전환이 3.0s 로 가장 느리다.
 	# 넓은 550mm 궤도 → 접지압이 낮아 야지 구름저항 최소. 클러치-브레이크 조향이라 선회 효율이 낮다.
 	s.forward_gears_kmh = [7.8, 16.4, 27.1, 51.1]
@@ -428,9 +428,9 @@ static func t34_76() -> TankSpec:
 	s.max_forward_kmh = 51.1
 	s.max_reverse_kmh = 7.3
 	s.start_gear = 2
-	s.shift_time_s = 2.0
-	s.shift_time_overrides = {"2>3": 3.0, "3>2": 2.5}
-	s.engine_response_s = 0.9
+	s.shift_time_s = 0.4
+	s.shift_time_overrides = {"2>3": 0.55, "3>2": 0.45}
+	s.engine_response_s = 0.2
 	s.ground_pressure_kgcm2 = 0.62
 	s.obstacle_step_m = 0.73
 	s.brake_mps2 = 6.0
@@ -479,7 +479,7 @@ static func t34_76() -> TankSpec:
 	s.traits = [
 		"낮은 차체(지붕 1.65m, 전고 2.37m) + 경사장갑 → 피탄면적 최소, 비스듬히 맞으면 도탄 가능성 큼",
 		"출력중량비 17.5hp/t·넓은 궤도 → 출발(0→10km/h)·오르막·야지 최고속도(3단 27km/h) 모두 최고 → 빠르게 우회해 측면으로",
-		"4단 비동기 변속기: 2→3단 3s 동안 동력 단절(속도 손실 최대), 4단(51km/h)은 도로 전용",
+		"4단 비동기 변속기: 게임용 2→3단 변속 0.55s(셋 중 속도 손실 최대), 4단(51km/h)은 도로 전용",
 		"후진 1단 7.3km/h 지만 전후진 전환 3.0s 로 가장 느림 → 한 번 들어가면 빠지기 어려움(후퇴는 차체를 돌려서)",
 		"크리스티 현가: 급정거·장애물 후 차체가 크게, 오래 출렁임 → 기동 직후 사격이 부정확",
 		"포 내림 −5° → 능선 위 헐다운에서 아래쪽 적을 못 겨눔. 정지 사격도 조준이 느림(3.0s)",

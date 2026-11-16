@@ -9,7 +9,7 @@ extends SceneTree
 ##  E. 포탑 90° 선회 시간                     (티거 가장 느림)
 ##  F. 오르막 속도                           (T-34 출력중량비 최고)
 ##  G. 원거리 탄도                            (88mm 낙차 최소)
-##  H. 변속기: 가속 과정·단수, 변속 중 동력 단절  (T-34 2→3단 3s, 4단은 야지에서 못 씀)
+##  H. 변속기: 빠른 가속·단수, 변속 중 동력 단절  (T-34 2→3단 0.55s, 4단은 야지에서 못 씀)
 ##  I. 낮은 장애물 넘기 → 차체 피치/롤          (0.7m 돌: 티거·T-34 넘음, 셔먼 막힘)
 ##  J. 기운 차체에서 포 조준                    (포 각도 재조정 필요, 오르막 쪽 포탑 선회 느림)
 ##  K. 현가: 급정거 시 차체 숙임·출렁임         (T-34 크리스티 가장 오래 출렁임)
@@ -301,9 +301,9 @@ func _test_gearbox() -> void:
 		print("%s | 0→10km/h %.1fs | 최대 변속손실 %.1f km/h | %s" % [IDS[i], t10, shift_drop, line])
 	check(r.t34_76.t10 < r.sherman75.t10 and r.t34_76.t10 < r.tiger1.t10, "0→10km/h 는 T-34 가 가장 빠름 (%.1fs)" % r.t34_76.t10)
 	for id in IDS:
-		check(r[id].t10 > 2.5, "%s: 즉시 최고속도가 나지 않음 (0→10km/h %.1fs)" % [id, r[id].t10])
+		check(r[id].t10 >= 0.5 and r[id].t10 <= 2.5, "%s: 출발 가속은 빠르지만 순간 가속은 아님 (0→10km/h %.1fs)" % [id, r[id].t10])
 	check(r.t34_76.max_gear == 3, "T-34 는 야지 평지에서 4단(도로용)으로 올리지 않음")
-	check(r.t34_76.drop > r.sherman75.drop and r.t34_76.drop > r.tiger1.drop, "T-34 변속 중 속도 손실이 가장 큼 (%.1f km/h, 2→3단 3s)" % r.t34_76.drop)
+	check(r.t34_76.drop > r.sherman75.drop and r.t34_76.drop > r.tiger1.drop, "T-34 변속 중 속도 손실이 가장 큼 (%.1f km/h, 2→3단 0.55s)" % r.t34_76.drop)
 	print("이론 지속속도(km/h): 경사 0° / 5° / 10°")
 	var s5 := {}
 	for id in IDS:

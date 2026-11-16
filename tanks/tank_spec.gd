@@ -109,6 +109,8 @@ var shift_time_s: float = 1.0
 var shift_time_overrides: Dictionary = {}
 ## 엔진 반응 시간(초): 스로틀을 열고 나서 최대 견인력까지
 var engine_response_s: float = 1.0
+## 게임용 가속 배율. 양의 순가속에만 적용하므로 기어 최고속도·등판 가능 기어는 그대로다.
+var acceleration_scale: float = 4.0
 ## 접지압(kg/cm²). 클수록 야지 구름저항이 커진다(넓은 궤도 = 유리).
 var ground_pressure_kgcm2: float = 0.9
 ## 넘을 수 있는 수직 장애물 높이(m). 이보다 낮은 돌·통나무는 타고 넘으며 차체가 기운다.
@@ -302,6 +304,7 @@ func to_dict() -> Dictionary:
 			"forward_gears_kmh": forward_gears_kmh, "reverse_gears_kmh": reverse_gears_kmh,
 			"start_gear": start_gear, "shift_time_s": shift_time_s, "shift_time_overrides": shift_time_overrides,
 			"engine_response_s": engine_response_s, "ground_pressure_kgcm2": ground_pressure_kgcm2,
+			"acceleration_scale": acceleration_scale,
 			"rolling_resistance": snappedf(rolling_resistance(), 0.0001),
 			"obstacle_step_m": obstacle_step_m,
 			"offroad_top_kmh": snappedf(sustained_speed_kmh(0.0), 0.1),

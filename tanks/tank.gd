@@ -8,7 +8,7 @@ extends CharacterBody3D
 ##     → 포 고저각·포탑 선회는 차체 기준이라, 차체가 기울면 같은 표적에도 포 각도를 다시 맞춰야 한다.
 ##       내림각(−5° / −8° / −10°)이 헐다운 가능 여부를 정하고, 기운 차체에서 포탑을 오르막 쪽으로 돌리면 느려진다
 ##   - 변속기: 실제 기어별 속도표 + 엔진 출력 → 견인력. 구름저항(접지압)·경사를 이겨야 다음 단으로 올라가고,
-##     변속 중에는 동력이 끊긴다(T-34 2→3단 3s). 전후진 전환은 멈춘 뒤 direction_change_s 가 걸린다
+##     변속 중에는 동력이 끊기지만 엔진 회전은 유지한다. 전후진 전환은 멈춘 뒤 direction_change_s 가 걸린다
 ##   - 넘을 수 있는 수직 장애물 높이, 조향 효율, 제자리 선회 가능 여부
 ##   - 조준 오차(mrad)가 이동·선회·포탑 선회·차체 흔들림으로 커지고, 멈추면 aim_time_s 시상수로 줄어든다
 ##   - 수직 안정장치(셔먼): 차체가 출렁여도 포의 월드 고저각 유지 + 이동 흔들림 감소
@@ -72,7 +72,7 @@ var _pending_gear := 1
 var gear_index := 1
 ## 단 변경 중이면 목표 단(0 = 변속 안 함)
 var _shift_to := 0
-## 엔진 출력 비율(0~1): 스로틀 응답·변속 중 동력 단절
+## 엔진 출력 준비 비율(0~1). 변속 중에도 유지하며 궤도로의 전달은 클러치가 차단한다.
 var engine_output := 0.0
 ## 엔진 회전 비율(0~1, 현재 단 최고속도 대비 속도) — HUD·관측용
 var engine_rpm_frac := 0.0
@@ -324,14 +324,16 @@ func _drive(c: TankControlInput, delta: float) -> void:
 			tr *= v_top / peak
 		tl *= damage.track_efficiency("left") * (1.0 - brake)
 		tr *= damage.track_efficiency("right") * (1.0 - brake)
-	var need_power := not shifting and (_below(track_speed_left, tl) or _below(track_speed_right, tr))
-	# 엔진 출력: 스로틀 응답 시간으로 올라가고, 클러치를 끊으면(변속) 빠르게 떨어진다
-	if need_power:
+	# 클러치가 끊겨도 가속 명령이 유지되면 엔진 회전은 떨어뜨리지 않는다.
+	# 매 변속 뒤 처음부터 스로틀 응답을 반복하던 가속 공백을 없앤다.
+	if not reversing and want_speed > 0.01:
 		engine_output = move_toward(engine_output, 1.0, delta / maxf(spec.engine_response_s, 0.05))
 	else:
 		engine_output = move_toward(engine_output, 0.0, delta / (0.15 if shifting else 0.5))
-	var force := engine_output * spec.gear_force_n(gear_index, rev)
+	var force := 0.0 if shifting else engine_output * spec.gear_force_n(gear_index, rev)
 	var a_drive := (force - resist) / m_eff                    # 동력이 걸린 궤도의 가속(음수면 못 버팀)
+	if a_drive > 0.0:
+		a_drive *= spec.acceleration_scale
 	# 동력 없이 굴러갈 때 감속: 저항 + (클러치가 붙어 있으면) 엔진 브레이크
 	var a_coast := maxf(resist, 0.0) / m_eff + (0.0 if shifting else COAST_DECEL)
 	var a_brake := a_coast + spec.brake_mps2 * (1.0 if reversing else brake)
