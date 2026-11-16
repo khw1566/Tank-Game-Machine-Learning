@@ -7,6 +7,10 @@ const TEAM_COLORS := [Color("#e8590c"), Color("#1c7ed6")]
 const KIND_COLORS := {"penetration": Color("#e03131"), "non_penetration": Color("#fab005"),
 	"ricochet": Color.WHITE, "blocked": Color("#adb5bd"), "miss": Color(0.7, 0.7, 0.7, 0.5)}
 
+const OBSTACLE_COLORS := {"tree": Color(0.17, 0.45, 0.2, 0.75), "woods": Color(0.15, 0.4, 0.17, 0.55),
+	"treeline": Color(0.15, 0.4, 0.17, 0.55), "hedge": Color(0.2, 0.38, 0.12, 0.9), "wall": Color(0.75, 0.73, 0.68, 0.95),
+	"building": Color(0.62, 0.35, 0.25, 0.95), "rock": Color(0.45, 0.45, 0.45, 0.85)}
+
 var half := 600.0
 var terrain_tex: Texture2D
 var obstacles: Array = []
@@ -49,8 +53,14 @@ func _draw() -> void:
 		draw_rect(r, Color(0.2, 0.25, 0.18, 0.8))
 	var k := size.x / (2.0 * half)
 	for o in obstacles:
-		var c := Color(0.17, 0.45, 0.2, 0.7) if o.type == "tree" else Color(0.45, 0.45, 0.45, 0.8)
-		draw_circle(to_px(Vector3(o.pos[0], 0, o.pos[2])), maxf(float(o.radius) * k, 1.0), c)
+		var c: Color = OBSTACLE_COLORS.get(o.type, Color(0.45, 0.45, 0.45, 0.8))
+		if o.has("a") and o.has("b"):   # 생울타리·돌담: 선
+			draw_line(to_px(Vector3(o.a[0], 0, o.a[2])), to_px(Vector3(o.b[0], 0, o.b[2])), c, 2.0)
+		elif o.has("blobs"):            # 숲: 덩어리 원 여러 개
+			for b in o.blobs:
+				draw_circle(to_px(Vector3(b[0][0], 0, b[0][2])), maxf(float(b[1]) * k, 1.0), c)
+		elif o.type != "village":
+			draw_circle(to_px(Vector3(o.pos[0], 0, o.pos[2])), maxf(float(o.radius) * k, 1.0), c)
 	if show_paths:
 		for n in paths:
 			var pts: PackedVector2Array = PackedVector2Array()

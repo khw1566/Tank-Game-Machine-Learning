@@ -255,10 +255,17 @@ static func _px(d: ReplayData, x: float) -> float:
 static func _map_base(d: ReplayData, img_px := 256) -> PackedStringArray:
 	var s := PackedStringArray()
 	s.append("<image href='data:image/png;base64,%s' x='0' y='0' width='%d' height='%d' preserveAspectRatio='none'/>" % [terrain_png_base64(d, img_px), MAP_W, MAP_W])
+	var k := MAP_W / (2.0 * d.map_half())
 	for o in d.header.get("map", {}).get("obstacles", []):
-		var c := "#2b8a3e" if o.type == "tree" else "#868e96"
-		var r := maxf(float(o.radius) / (2.0 * d.map_half()) * MAP_W, 1.2)
-		s.append("<circle cx='%.1f' cy='%.1f' r='%.1f' fill='%s' fill-opacity='0.55'/>" % [_px(d, o.pos[0]), _px(d, o.pos[2]), r, c])
+		var c: Color = MinimapView.OBSTACLE_COLORS.get(o.type, Color(0.53, 0.56, 0.59, 0.8))
+		var col := "#" + c.to_html(false)
+		if o.has("a") and o.has("b"):
+			s.append("<line x1='%.1f' y1='%.1f' x2='%.1f' y2='%.1f' stroke='%s' stroke-width='2.5'><title>%s</title></line>" % [_px(d, o.a[0]), _px(d, o.a[2]), _px(d, o.b[0]), _px(d, o.b[2]), col, o.type])
+		elif o.has("blobs"):
+			for b in o.blobs:
+				s.append("<circle cx='%.1f' cy='%.1f' r='%.1f' fill='%s' fill-opacity='%.2f'/>" % [_px(d, b[0][0]), _px(d, b[0][2]), float(b[1]) * k, col, c.a])
+		elif o.type != "village":
+			s.append("<circle cx='%.1f' cy='%.1f' r='%.1f' fill='%s' fill-opacity='%.2f'/>" % [_px(d, o.pos[0]), _px(d, o.pos[2]), maxf(float(o.radius) * k, 1.2), col, c.a])
 	return s
 
 
