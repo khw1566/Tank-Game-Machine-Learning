@@ -10,7 +10,8 @@ const MAX_S := 300.0
 var failures := 0
 var map: HillMap
 var tanks: Array = []
-var ais: Array = []
+var ais: Array = []          # TankAgent
+var sounds := SoundField.new()
 var rec: MatchRecorder
 var live_shots := 0
 var live_poses := {}   # tick -> [Transform3D...] 일부 표본
@@ -80,13 +81,18 @@ func _setup() -> void:
 		t.rotation.y = 0.0 if team == 0 else PI
 		root.add_child(t)
 		tanks.append(t)
-		ais.append(ScriptedAI.for_tank(t, idx[team]))
+		ais.append(TankAgent.new(map, t, sounds, ScriptedAI.for_tank(t, idx[team], map.spawn_points[1 - team])))
+		t.shot_fired.connect(sounds.on_shot)
 		idx[team] += 1
 		t.shot_fired.connect(func(_s, _r): live_shots += 1)
 	rec = MatchRecorder.new()
 	rec.log_root = LOG_ROOT
 	rec.time_limit_s = MAX_S
 	root.add_child(rec)
+	var views := {}
+	for ag in ais:
+		views[ag.tank.name] = ag.view
+	rec.views = views
 	rec.start(map, tanks, {"test": true})
 	rec.episode_ended.connect(_on_end)
 
@@ -103,13 +109,15 @@ func _physics_process(_delta: float) -> bool:
 		return false
 	if rec.ended:
 		return false
+	sounds.advance(1.0 / 30.0)
 	for i in tanks.size():
 		var t: Tank = tanks[i]
 		if t.damage.is_combat_effective():
-			var a: Array = ais[i].act(t, tanks)
-			t.control = TankControlInput.from_array(a)
+			var a: Array = ais[i].step_ai(tanks, 1.0 / 30.0)
 			if rec.tick % 30 == 0:
-				rec.log_decision(t, t.damage.observation(), a, ais[i].last_info)
+				var info: Dictionary = ais[i].ai.last_info.duplicate()
+				info["perception"] = ais[i].perception.summary()
+				rec.log_decision(t, ais[i].perception.vector, a, info)
 		else:
 			t.control = TankControlInput.new()
 	# 실제 자세 표본: 이 시점의 자세 = 직전 틱(rec.tick) 이동 후 = 그 틱에 기록된 프레임
@@ -142,6 +150,12 @@ func _on_end(s: Dictionary) -> void:
 			max_err = maxf(max_err, (p.xform.origin - live_poses[tk][i].origin).length())
 			n += 1
 	check(n > 0 and max_err < 0.01, "재구성 자세 오차 최대 %.4fm (%d표본)" % [max_err, n])
+	var modes := {}
+	for fr in d.frames:
+		modes[int(d.field(fr.s[0], "view_mode", -1))] = true
+	check(modes.has(TankView.GUNNER) and modes.has(TankView.COMMANDER), "프레임에 시점 기록(티거가 쓴 시점 %s)" % [modes.keys()])
+	var with_pc := d.decisions.filter(func(e): return e.info.has("perception") and e.obs.size() == TankPerception.size())
+	check(with_pc.size() == d.decisions.size() and d.header.observation_labels.size() == TankPerception.size(), "판단 기록마다 관측 벡터 %d개 + 요약" % TankPerception.size())
 	var hz := 0
 	for td in d.tanks():
 		hz += 1 if td.has("hull_size") else 0

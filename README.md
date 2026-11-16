@@ -11,7 +11,7 @@
 | 폴더 | 내용 |
 |---|---|
 | `tanks/` | 전차별 고유 모델(형상·경사장갑, 기동, 사격 특성), 공통 모듈(궤도·포탑·포방패·주퇴기/주포·장갑), 피해 모델, 전차 노드 → [tanks/README.md](tanks/README.md) |
-| `controls/` | 공용 조작 입력(`TankControlInput`, 액션 벡터 6개), 키보드 조작, 통합 스모크 테스트 |
+| `controls/` | 공용 조작 입력(`TankControlInput`, 액션 6개), 키보드, 시점(`TankView`)·관측(`TankPerception`)·소리(`SoundField`)·탑승자 묶음(`TankAgent`) → [controls/OBSERVATION.md](controls/OBSERVATION.md) |
 | `map/` | 전술 지형 생성기(`HillMap`, 시드로 재현), 시야·탐지 판정(`LineOfSight`), 거리 격자(`RangeGrid`) → 아래 "맵과 시야" |
 | `tanks/lab/` | 장갑 시험장(시각화 + 관통 시험) |
 | `recording/` | 경기 기록·점수(보상)·보고서·리플레이 뷰어·관찰 오버레이·규칙 AI → [recording/README.md](recording/README.md) |
@@ -43,11 +43,15 @@
 | F4 | 경기 종료 + 보고서 생성 | - |
 | F5 | 새 경기 | - |
 | F6 | 기록 폴더 열기 | - |
-| F7 | AI 전환: 꺼짐 → 다른 전차 AI → 전원 AI(관전) | - |
+| F7 | AI 전환: 꺼짐 → 다른 전차 AI → 전원 AI(관전, 카메라 = 그 전차 AI 가 고른 시점) | - |
+| K | 공정 시야 켜기/끄기(기본 켬): 사람에게도 AI 와 같은 정보만(미탐지 적 숨김, 거리 숨김) | - |
 
-AI 는 `tank.control = TankControlInput.from_array([...])` 로 같은 입력을 넣는다.
+AI 는 `TankAgent.apply_action([...11개])` 로 조작 6개 + 시점 5개를 넣는다(사람의 키보드·Shift/B/C/휠과 같은 효과).
 
-시점(`controls/view_camera.gd`, `controls/view_reticle.gd`)은 화면 전용이라 헤드리스 학습에는 영향이 없다.
+**AI 관측 = 사람이 그 시점에서 보고 듣는 것.** 시점 상태(`controls/tank_view.gd`)는 그래픽 없이도 동작해서
+헤드리스 학습에서 AI 가 3인칭/포수/전차장 시점을 골라 쓰고, 관측(`controls/perception.gd`)은 그 시점 화면 안에서
+탐지된 전차만, 정확한 거리 대신 화면 크기(px)로 준다. 소리(포성·탄착·피탄·엔진)도 방향·크기로 들어간다.
+규칙 AI 도 이 관측만 쓴다. 자세한 규격: [controls/OBSERVATION.md](controls/OBSERVATION.md)
 C·B 로 시선이 포와 분리된 동안은 방향키가 카메라를 돌리고 포탑·포 입력이 0 으로 기록된다(포가 움직이지 않음).
 자유 시선·전차장 시점에서는 왼쪽 아래 방위판(차체 사각형, 노란 선 = 포, 하늘색 = 시야)과 ◇포 표시로 포가 어디를 겨누는지 보여 준다.
 
@@ -79,6 +83,7 @@ godot --headless --path . -s res://tanks/tests/run_tank_tests.gd   # 장갑·피
 godot --headless --path . -s res://tanks/tests/run_trait_tests.gd  # 전차별 특성(기동·헐다운·안정장치·조준·탄도)
 godot --headless --path . -s res://controls/tests/run_sim_smoke.gd # 주행·선회·사격 통합 테스트
 godot --headless --path . -s res://controls/tests/run_view_tests.gd # 포수·전차장·자유 시선 시점, 포 고정
+godot --headless --path . -s res://controls/tests/run_perception_tests.gd # 시점 기반 관측·소리·규칙 AI(보이는 것만)
 godot --headless --path . -s res://map/tests/run_map_tests.gd      # 맵 재현성·차단물별 시야 판정·시선 통계
 godot --headless --fixed-fps 30 --path . -s res://recording/tests/run_record_tests.gd  # 기록·리플레이·보고서 검증
 godot --headless --fixed-fps 30 --path . -- --episodes=10           # AI 끼리 10판 연속(빠르게) 기록
@@ -126,6 +131,5 @@ map.cover_at(pos)                                              # 그 지점을 �
 
 ## 다음 단계(예정)
 
-- AI 관측 벡터에 `LineOfSight.spotted_enemies` 결과 연결
 - 자기대전 학습 환경(에피소드 리셋, 보상, 고속 스텝)
 - 학습 AI 연결: `MatchRecorder.log_decision()` 로 관측·행동·판단 기록, `RewardModel` 로 보상 계산(이미 준비됨)

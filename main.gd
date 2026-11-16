@@ -5,7 +5,10 @@ extends Node3D
 ## 끝나면(전멸·시간초과·F4) 보고서 report.html 을 만든다. F3 = 리플레이 뷰어.
 ##
 ## 헤드리스 일괄 실행(전원 AI, 끝나면 다음 에피소드):
-##   godot --headless --path . -- --episodes=10 [--seed=1] [--time-limit=600]
+##   godot --headless --path . -- --episodes=10 [--seed=1] [--time-limit=600] [--log-obs=60]
+##
+## 사람과 AI 는 같은 정보만 받는다(TankAgent = 시점 + 관측). 공정 시야(K, 기본 켬)에서는
+## 사람 화면에도 탐지된 적만 그려지고, HUD 에 정확한 거리가 나오지 않는다. 전원 AI 관전 중에는 꺼진다.
 
 const AI_OFF := 0
 const AI_OTHERS := 1   # 내가 조종하는 전차 외 전원 AI
@@ -17,6 +20,8 @@ static var episodes_left := -1
 static var cli_parsed := false
 static var cli_seed := -1
 static var cli_time_limit := -1.0
+## 관측 벡터 전체를 몇 틱마다 기록할지(0 = 요약만). 요약(보인 적·들린 소리)은 판단 기록마다 남는다.
+static var cli_log_obs_every := 60
 
 @export var map_seed := 1
 @export var allied_lineup: Array[String] = ["sherman75", "sherman75", "sherman75", "t34_76", "t34_76"]
@@ -24,7 +29,11 @@ static var cli_time_limit := -1.0
 
 var map: HillMap
 var tanks: Array = []
-var ais: Array = []
+## 전차별 TankAgent(시점·관측·규칙 AI). 사람이 조종하는 전차도 같은 시점·관측을 쓴다.
+var agents: Array = []
+var sounds := SoundField.new()
+## 공정 시야: 사람에게도 AI 와 같은 정보만(미탐지 적 숨김, 거리 숨김)
+var fair_view := true
 var player_index := 0
 var camera: TankViewCamera
 var hud: Label
@@ -40,7 +49,7 @@ var last_event := ""
 var banner := ""
 var _restart_timer := -1.0
 var grid: RangeGrid
-## 조종 전차가 본 적 목록(LineOfSight.spotted_enemies), 0.2초마다 갱신
+## 분석용(공정 시야 끔): 조종 전차 기준 모든 적의 시야 판정(LineOfSight.spotted_enemies), 0.2초마다 갱신
 var vision: Array = []
 var _vision_timer := 0.0
 var _show_sight_lines := true
@@ -63,14 +72,20 @@ func _ready() -> void:
 		var offset := Vector3((i - (n - 1) * 0.5) * 25.0, 0, 0)
 		_spawn(allied_lineup[i], 1, map.spawn_points[1] + offset, i + 1)
 	var team_idx := [0, 0]
+	var views := {}
 	for t in tanks:
-		ais.append(ScriptedAI.for_tank(t, team_idx[t.team]))
+		var ag := TankAgent.new(map, t, sounds, ScriptedAI.for_tank(t, team_idx[t.team], map.spawn_points[1 - t.team]))
+		agents.append(ag)
+		views[t.name] = ag.view
+		t.shot_fired.connect(sounds.on_shot)
 		team_idx[t.team] += 1
 	recorder = MatchRecorder.new()
 	recorder.time_limit_s = time_limit_s
+	recorder.views = views
 	add_child(recorder)
 	recorder.start(map, tanks, {"scene": "main", "map_seed": map_seed, "lineup": ["tiger1"] + Array(allied_lineup),
-		"ai_mode": AI_LABELS[ai_mode], "controller": "keyboard+scripted_ai"})
+		"ai_mode": AI_LABELS[ai_mode], "controller": "keyboard+scripted_ai", "observation": "perception_v1",
+		"fair_view": fair_view and ai_mode != AI_ALL})
 	recorder.shot_recorded.connect(_on_shot_recorded)
 	recorder.episode_ended.connect(_on_episode_ended)
 	if not _headless:
@@ -89,6 +104,8 @@ func _parse_cli() -> void:
 			cli_seed = int(a.get_slice("=", 1))
 		elif a.begins_with("--time-limit="):
 			cli_time_limit = float(a.get_slice("=", 1))
+		elif a.begins_with("--log-obs="):
+			cli_log_obs_every = int(a.get_slice("=", 1))
 		elif a == "--ai":
 			ai_mode = AI_ALL
 	if _headless and episodes_left < 0:
@@ -133,6 +150,7 @@ func _setup_view() -> void:
 	add_child(_sight_mesh)
 	camera = TankViewCamera.new()
 	camera.map = map
+	camera.view = agents[player_index].view
 	add_child(camera)
 	camera.current = true
 	markers = WorldMarkers.new()
@@ -193,6 +211,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_TAB:
 			tanks[player_index].control = TankControlInput.new()
 			player_index = (player_index + 1) % tanks.size()
+			if camera:
+				camera.view = agents[player_index].view
+		KEY_K:
+			fair_view = not fair_view
+			banner = "공정 시야 %s" % ("켬: 사람도 AI 와 같은 정보만" if fair_view else "끔: 모든 전차·거리 표시(분석용)")
 		KEY_1, KEY_2, KEY_3:
 			tanks[player_index].select_ammo(event.physical_keycode - KEY_1)
 		KEY_G:
@@ -238,22 +261,35 @@ func _finish_and(path: String) -> void:
 		get_tree().change_scene_to_file(path)
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if tanks.is_empty():
 		return
-	var log_now := recorder.tick % 15 == 0
+	sounds.advance(delta)
+	var log_now := recorder.tick % 15 == 0 and not recorder.ended
+	var log_obs := cli_log_obs_every > 0 and recorder.tick % cli_log_obs_every == 0
 	for i in tanks.size():
 		var t: Tank = tanks[i]
+		var ag: TankAgent = agents[i]
 		var human := i == player_index and not _headless and ai_mode != AI_ALL
+		var a: Array = []
+		var who := ""
 		if human:
-			t.control = camera.apply_locks(KeyboardController.read()) if camera else KeyboardController.read()
+			# 사람: 화면 카메라(camera.view == ag.view)가 시점을 바꾸고, 관측은 기록·HUD 용으로 같이 만든다
+			ag.update(tanks, delta)
+			t.control = ag.view.apply_locks(KeyboardController.read())
+			a = Array(t.control.to_array())
+			who = "human"
 		elif ai_mode != AI_OFF and t.damage.is_combat_effective():
-			var a: Array = ais[i].act(t, tanks)
-			t.control = TankControlInput.from_array(a)
-			if log_now and not recorder.ended:
-				recorder.log_decision(t, t.damage.observation(), a, ais[i].last_info)
+			a = ag.step_ai(tanks, delta)
+			who = "scripted_ai"
 		else:
+			ag.update(tanks, delta)
 			t.control = TankControlInput.new()
+		if log_now and who != "" and t.damage.is_combat_effective():
+			var info: Dictionary = ag.ai.last_info.duplicate() if who == "scripted_ai" else {}
+			info["controller"] = who
+			info["perception"] = ag.perception.summary()
+			recorder.log_decision(t, ag.perception.vector if log_obs else PackedFloat32Array(), a, info)
 
 
 func _process(delta: float) -> void:
@@ -266,18 +302,21 @@ func _process(delta: float) -> void:
 		return
 	var p: Tank = tanks[player_index]
 	_update_vision(p, delta)
+	# 전원 AI 관전: 그 전차의 AI 가 고른 시점 그대로 보여준다(조작 불가)
+	camera.follow_only = ai_mode == AI_ALL
 	camera.update_view(p, delta)
+	_apply_fair_view(p)
 	# 조준경에는 자체 거리 눈금이 있으므로 거리 격자 글자가 가리지 않게 숨긴다
 	grid.visible = camera.mode != TankViewCamera.GUNNER
 	var d := p.damage
-	hud.text = "[%s] %s  팀 %d   (Tab: 전차 전환)   %s   ep%d  %s\n%s\n%s\n상태: %s  재장전 %.1fs  탄 %d  [%s] (1/2/3 탄종)\n궤도 L %.1f / R %.1f m/s  기어 %s   포탑 %.0f°  포 %.1f° (%+.0f°~%+.0f°)  차체 피치 %.1f°\n조준 오차 %.2f mrad (1000m에서 %.1fm)%s\n승무원: %s\n모듈: %s\n최근: %s\n조작: Q/A 좌궤도, E/D 우궤도, W/S 양쪽, Space 브레이크, ←→ 포탑, ↑↓ 포, F 발사, G 거리 격자/링, V 시선 표시\nShift 포수 조준경  C(누른 채) 자유 시선·포 고정  B 전차장 시점·포 고정  휠/+- 확대  마우스·방향키 시선\nF1 장갑 시험장  F2 오버레이  M 지도 크기  H 탄착  P 경로  F3 리플레이  F4 경기 종료·보고서  F5 새 경기  F6 기록 폴더  F7 AI 전환\n%s" % [
+	hud.text = "[%s] %s  팀 %d   (Tab: 전차 전환)   %s   ep%d  %s\n%s\n%s\n상태: %s  재장전 %.1fs  탄 %d  [%s] (1/2/3 탄종)\n궤도 L %.1f / R %.1f m/s  기어 %s   포탑 %.0f°  포 %.1f° (%+.0f°~%+.0f°)  차체 피치 %.1f°\n조준 오차 %.2f mrad (1000m에서 %.1fm)%s\n승무원: %s\n모듈: %s\n최근: %s\n조작: Q/A 좌궤도, E/D 우궤도, W/S 양쪽, Space 브레이크, ←→ 포탑, ↑↓ 포, F 발사, G 거리 격자/링, V 시선 표시\nShift 포수 조준경  C(누른 채) 자유 시선·포 고정  B 전차장 시점·포 고정  휠/+- 확대  마우스·방향키 시선\nF1 장갑 시험장  F2 오버레이  M 지도 크기  H 탄착  P 경로  F3 리플레이  F4 경기 종료·보고서  F5 새 경기  F6 기록 폴더  F7 AI 전환  K 공정 시야(%s)\n%s" % [
 		p.name, p.spec.display_name, p.team, AI_LABELS[ai_mode], recorder.episode, ReportBuilder._mmss(recorder.sim_time()),
-		camera.status_text(), _vision_text(), d.status_label(), p.reload_timer, d.ammo_remaining, p.current_shell().shell_name,
+		camera.status_text(), _vision_text(p), d.status_label(), p.reload_timer, d.ammo_remaining, p.current_shell().shell_name,
 		p.track_speed_left, p.track_speed_right, {1: "전진", -1: "후진", 0: "변속 중"}[p.gear],
 		rad_to_deg(p.turret_yaw), rad_to_deg(p.gun_pitch), p.spec.gun_depression_deg, p.spec.gun_elevation_max_deg,
 		p.hull_pitch_deg(), p.aim_error_mrad, p.aim_error_mrad, "  [안정장치]" if p.damage.stabilizer_working() else "",
 		", ".join(d.crew.map(func(c): return "%s:%s" % [c.id, c.status])),
-		_damaged_modules(d), last_event, banner]
+		_damaged_modules(d), last_event, "켬" if _fair() else "끔", banner]
 	_update_overlay()
 
 
@@ -287,8 +326,11 @@ func _update_overlay() -> void:
 	var tl := []
 	var paths := {}
 	var now := recorder.sim_time()
+	var known := _known_enemies(tanks[player_index])
 	for i in tanks.size():
 		var t: Tank = tanks[i]
+		if _fair() and t.team != tanks[player_index].team and not known.has(t.name):
+			continue
 		tl.append({"pos": t.global_position, "yaw": t.global_rotation.y, "turret": t.global_rotation.y + t.turret_yaw,
 			"team": t.team, "alive": t.damage.is_combat_effective(), "name": t.name, "selected": i == player_index})
 		var pts: PackedVector3Array = recorder.paths[t.name].duplicate()
@@ -314,14 +356,41 @@ func _update_overlay() -> void:
 		markers.set_paths(pl)
 
 
-## 조종 전차의 시야(AI 와 같은 LineOfSight 판정) + 거리 링 + 시선 표시
+func _fair() -> bool:
+	return fair_view and ai_mode != AI_ALL
+
+
+## 조종 전차가 지금 화면에서 보고 있는(탐지한) 적 이름 집합
+func _known_enemies(p: Tank) -> Dictionary:
+	var out := {}
+	var pc: TankPerception = agents[player_index].perception
+	for n in pc.contacts:
+		if pc.contacts[n].enemy and pc.contacts[n].visible_now:
+			out[n] = true
+	return out
+
+
+## 공정 시야: 탐지하지 못한 적은 그리지 않고, 적 이름표는 숨긴다(이름표는 숲·능선 너머로도 보이므로).
+## 사람 화면에 보이는 것 = AI 관측에 들어가는 것.
+func _apply_fair_view(p: Tank) -> void:
+	var fair := _fair()
+	var known := _known_enemies(p) if fair else {}
+	for t in tanks:
+		var enemy: bool = t.team != p.team
+		t.visible = not fair or not enemy or known.has(t.name)
+		var tag: Node3D = t.get_node_or_null("NameTag")
+		if tag and t != p:
+			tag.visible = not (fair and enemy)
+
+
+## 거리 링 + (분석용) 시선 표시. 공정 시야에서는 시선 표시를 끈다(가려진 적 위치가 드러나므로).
 func _update_vision(p: Tank, delta: float) -> void:
 	grid.set_ring_center(p.global_position, p.global_rotation.y + p.turret_yaw)
 	_vision_timer -= delta
 	if _vision_timer > 0.0:
 		return
 	_vision_timer = 0.2
-	vision = LineOfSight.spotted_enemies(map, p, tanks)
+	vision = [] if _fair() else LineOfSight.spotted_enemies(map, p, tanks)
 	var verts := PackedVector3Array()
 	var cols := PackedColorArray()
 	if _show_sight_lines:
@@ -344,14 +413,18 @@ func _update_vision(p: Tank, delta: float) -> void:
 	_sight_mesh.mesh = am
 
 
-func _vision_text() -> String:
+## HUD 시야·소리 줄. 공정 시야 = AI 관측과 같은 내용(거리 없음), 끄면 분석용 전체 정보
+func _vision_text(p: Tank) -> String:
+	if _fair():
+		return agents[player_index].perception.hud_text()
 	var parts := []
 	for v in vision:
 		var why := ""
 		if not v.detected and not v.blocked_by.is_empty():
 			why = " (" + ",".join(v.blocked_by.keys()) + ")"
 		parts.append("%s %.0fm %s%d%%%s" % [v.target, v.distance, "●" if v.detected else "○", int(v.visible_fraction * 100), why])
-	return "시야(● 탐지 ○ 미탐지, 보임%): " + ("  |  ".join(parts) if not parts.is_empty() else "-")
+	return "[분석용] 시야(● 탐지 ○ 미탐지, 보임%%): %s\n%s" % ["  |  ".join(parts) if not parts.is_empty() else "-",
+		agents[player_index].perception.hud_text().get_slice("\n", 1)]
 
 
 func _damaged_modules(d: TankDamageState) -> String:

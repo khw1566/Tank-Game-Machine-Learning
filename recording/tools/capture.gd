@@ -3,7 +3,7 @@ extends SceneTree
 ##   godot --path . -s res://recording/tools/capture.gd -- --scene=res://main.tscn --wait=600 --out=user://shot.png [--ai]
 ##   godot --path . -s res://recording/tools/capture.gd -- --scene=res://recording/replay_viewer.tscn --t=120 --cam=4 --out=...
 ##   ... -- --scene=res://main.tscn --view=gunner|commander [--zoom=2] [--look=30]   (게임 시점 캡처)
-## --wait = 물리 프레임 수, --t = 리플레이 시각(초), --cam = 리플레이 시점 1~5, --select = 선택 전차, --bigmap
+## --wait = 물리 프레임 수, --t = 리플레이 시각(초), --cam = 리플레이 시점 1~6, --select = 선택 전차, --bigmap
 
 var args := {}
 var node: Node

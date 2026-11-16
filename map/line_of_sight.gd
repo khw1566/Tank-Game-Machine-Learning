@@ -86,9 +86,10 @@ static func foliage(map: HillMap, from: Vector3, to: Vector3) -> Dictionary:
 	return {"transmittance": exp(-depth), "optical_depth": depth, "main": main}
 
 
-## 관측자 → 표적 가시성
-static func target_visibility(map: HillMap, observer: Tank, target: Tank) -> Dictionary:
-	var eye := eye_position(observer)
+## 관측자 → 표적 가시성. eye = 보는 눈 위치(기본: 전차장 큐폴라. 포수 조준경이면 TankView.sensor_position)
+static func target_visibility(map: HillMap, observer: Tank, target: Tank, eye := Vector3.INF) -> Dictionary:
+	if eye == Vector3.INF:
+		eye = eye_position(observer)
 	var exclude := [observer.get_rid(), target.get_rid()]
 	var total := 0.0
 	var seen := 0
@@ -104,9 +105,15 @@ static func target_visibility(map: HillMap, observer: Tank, target: Tank) -> Dic
 		"distance": eye.distance_to(target.global_position)}
 
 
+## 광학 배율 → 탐지거리 배수. 맨눈(x1) 1.0, 조준경 x3 ≈ 1.8, x6.7 ≈ 2.4, 쌍안경 x8.9 ≈ 2.6
+static func optics_factor(magnification: float) -> float:
+	return 1.0 + 0.5 * log(maxf(magnification, 1.0)) / log(2.0)
+
+
 ## 관측자가 표적을 탐지하는가. 반환에 target_visibility 결과 + detected, detect_range 포함
-static func spot(map: HillMap, observer: Tank, target: Tank) -> Dictionary:
-	var vis := target_visibility(map, observer, target)
+## eye: 보는 눈 위치(기본 큐폴라), optics: 광학 배율(TankView.magnification(), 기본 맨눈 x1)
+static func spot(map: HillMap, observer: Tank, target: Tank, eye := Vector3.INF, optics := 1.0) -> Dictionary:
+	var vis := target_visibility(map, observer, target, eye)
 	var size_f := clampf(target.spec.total_height() / 2.7, 0.75, 1.25)
 	var speed := Vector2(target.velocity.x, target.velocity.z).length()
 	var motion_f := 1.0 + 0.5 * clampf(speed / 6.0, 0.0, 1.0)
@@ -115,7 +122,7 @@ static func spot(map: HillMap, observer: Tank, target: Tank) -> Dictionary:
 		obs_f *= 0.8 # T-34/76: 전차장이 포수 겸임 → 상황인식 저하
 	if not observer.damage.is_combat_effective():
 		obs_f = 0.0
-	var detect_range := BASE_DETECT_RANGE * size_f * motion_f * obs_f
+	var detect_range := BASE_DETECT_RANGE * size_f * motion_f * obs_f * optics_factor(optics)
 	vis["detect_range"] = detect_range
 	vis["detected"] = vis.visible_fraction >= MIN_FRACTION and vis.distance <= detect_range * vis.visible_fraction
 	return vis
