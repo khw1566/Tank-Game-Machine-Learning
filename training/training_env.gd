@@ -134,14 +134,25 @@ func _send(header: Dictionary, bin := PackedByteArray()) -> void:
 
 func _read_exact(n: int) -> PackedByteArray:
 	var out := PackedByteArray()
+	var idle := 0
 	while out.size() < n:
 		_peer.poll()
 		if _peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 			return PackedByteArray()
 		var avail := _peer.get_available_bytes()
 		if avail <= 0:
-			OS.delay_usec(20)
+			# 처음 ~60ms 는 촘촘히(결정 사이 지연 최소). 그보다 오래 기다리면(PPO 갱신·일시정지) 15ms 씩 잠들어
+			# CPU 를 Python 쪽에 양보한다 — 기다리는 동안 Godot 여러 개가 코어를 다 쓰면 PPO 갱신이 느려진다.
+			# (Windows 의 delay_usec 는 1ms 미만이면 바쁜 대기라 짧은 값으로는 CPU 가 쉬지 않는다)
+			idle += 1
+			if idle < 100:
+				OS.delay_usec(20)
+			elif idle < 400:
+				OS.delay_usec(200)
+			else:
+				OS.delay_msec(15)
 			continue
+		idle = 0
 		var r := _peer.get_partial_data(mini(avail, n - out.size()))
 		if r[0] != OK:
 			return PackedByteArray()

@@ -206,6 +206,19 @@ class Curriculum:
             return ev
         return None
 
+    def set_stage(self, stage_id: str, global_step: int) -> dict | None:
+        """대시보드에서 단계를 직접 바꿀 때(앞·뒤 모두). 승급 기록에 reason = manual 로 남긴다."""
+        idx = STAGE_IDS.index(stage_id)
+        if idx == self.stage_idx:
+            return None
+        ev = {"tank": self.tank, "from": self.stage["id"], "to": stage_id, "episodes": self.episodes_in_stage,
+              "success_rate": round(self.success_rate(self.stage["id"], 100), 4), "reason": "manual",
+              "global_step": global_step}
+        self.stage_idx = idx
+        self.episodes_in_stage = 0
+        self.history.append(ev)
+        return ev
+
     def state(self) -> dict:
         return {"tank": self.tank, "stage_idx": self.stage_idx, "stage": self.stage["id"],
                 "episodes_in_stage": self.episodes_in_stage, "history": self.history,

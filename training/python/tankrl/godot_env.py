@@ -122,6 +122,10 @@ class GodotVecEnv(VecEnv):
         self._ret = np.zeros(n_envs)
         self._progress_path = self.run_dir / "progress.csv"
         new = not self._progress_path.exists()
+        if not new:
+            # 이어서 학습(--resume·환경 수 변경 재시작)할 때 에피소드 번호를 이어 가서 재현 파일 이름(uid)이 겹치지 않게
+            with open(self._progress_path, newline="", encoding="utf-8") as f:
+                self.episode_count = sum(1 for r in csv.DictReader(f) if r.get("tank") == learner)
         self._progress_f = open(self._progress_path, "a", newline="", encoding="utf-8")
         self._progress = csv.DictWriter(self._progress_f, fieldnames=PROGRESS_FIELDS)
         if new:
@@ -253,6 +257,11 @@ class GodotVecEnv(VecEnv):
         self._progress.writerow(row)
         self._progress_f.flush()
         promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step)
+        if promo:
+            self.log_stage_change(promo)
+
+    def log_stage_change(self, promo: dict) -> None:
+        """커리큘럼 단계 변경(자동 승급 또는 대시보드 수동 변경)을 curriculum_log.jsonl 에 남긴다."""
         if promo:
             promo["wall_time"] = round(time.time(), 2)
             promo["learner_policy"] = self.learner_version

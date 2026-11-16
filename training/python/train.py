@@ -13,6 +13,9 @@
   episodes/env*/<uid>.json 모든 에피소드 재현 파일(설정·시드·행동·보상·사격·동선)
   env*/replays/ep*/        record_every 마다 전체 리플레이(events.jsonl)·보고서(report.html)
   sb3/                     학습 통계(progress.csv, 텐서보드가 설치돼 있으면 이벤트 파일)
+  status.json              1초마다 현재 상태(대시보드가 읽음), control.jsonl = 대시보드 명령(일시정지·중지·단계 변경 …)
+
+모니터링·제어 GUI:  python dashboard.py  (브라우저에서 시작·일시정지·환경 수·단계 변경·학습 곡선·리플레이)
 """
 from __future__ import annotations
 
@@ -27,6 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
+from tankrl.control import TrainController
 from tankrl.curriculum import STAGE_IDS, STAGES, Curriculum
 from tankrl.godot_env import GodotVecEnv
 from tankrl.opponents import OpponentPool
@@ -56,6 +60,10 @@ def parse():
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--ent-coef", type=float, default=0.005)
     ap.add_argument("--sde-freq", type=int, default=20, help="gSDE 탐색 잡음을 몇 결정마다 다시 뽑을지(20 = 2초)")
+    ap.add_argument("--speed-cap", type=float, default=0.0,
+                    help="실시간 대비 최대 배속(모든 환경 합, 0 = 무제한). PC 를 같이 쓸 때 낮춘다")
+    ap.add_argument("--torch-threads", type=int, default=0,
+                    help="PyTorch 스레드 수(0 = 자동: 코어 수 - 환경 수, 최소 1). Godot 과 CPU 를 덜 다투게")
     ap.add_argument("--verbose-godot", action="store_true")
     return ap.parse_args()
 
@@ -90,7 +98,7 @@ def write_manifest(run_dir: Path, args, env: GodotVecEnv) -> None:
                                ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int) -> None:
+def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: TrainController) -> None:
     from stable_baselines3 import PPO
     from stable_baselines3.common.callbacks import BaseCallback
     from stable_baselines3.common.logger import configure
@@ -103,10 +111,15 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int) -> Non
         cur = Curriculum.load(cpath, tank, review_prob=args.review_prob, seed=args.seed)
     else:
         cur = Curriculum(tank, start_stage=start, review_prob=args.review_prob, seed=args.seed)
+    cur.review_prob = ctl.review_prob
+    ctl.curriculum = cur
+    ctl.info.update({"tank": tank, "target_timesteps": None})
+    ctl.write_status(None, force=True, phase="starting")
     pool = OpponentPool(pool_dir, exclude=tank, device=args.device)
     env = GodotVecEnv(args.n_envs, args.godot, args.project, run_dir, tank, cur, opponents=pool,
-                      seed=args.seed * 1000 + sum(map(ord, tank)), record_every=args.record_every,
+                      seed=args.seed * 1000 + sum(map(ord, tank)), record_every=ctl.record_every,
                       quiet=not args.verbose_godot, run_name=run_dir.name)
+    ctl.env = env
     write_manifest(run_dir, args, env)
     latest = tdir / "latest.zip"
     if latest.exists() and (args.resume or args.rotate):
@@ -127,6 +140,9 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int) -> Non
     except ImportError:
         pass
     model.set_logger(configure(str(run_dir / "sb3" / tank), fmt))
+    target = model.num_timesteps + steps
+    ctl.model = model
+    ctl.info["target_timesteps"] = target
 
     def version() -> str:
         return f"{run_dir.name}/{tank}/step_{model.num_timesteps:09d}"
@@ -139,6 +155,9 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int) -> Non
             super().__init__()
             self.next_save = (model.num_timesteps // args.save_every + 1) * args.save_every
 
+        def _on_rollout_start(self) -> None:
+            ctl.write_status(self.num_timesteps, force=True, phase="collecting")
+
         def _on_step(self) -> bool:
             env.learner_version = version()
             env.global_step = self.num_timesteps
@@ -148,13 +167,16 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int) -> Non
             if self.num_timesteps >= self.next_save:
                 self.next_save += args.save_every
                 save(snapshot=True)
-            return True
+            return ctl.tick(self.num_timesteps)
 
         def _on_rollout_end(self) -> None:
             self.logger.record("curriculum/stage_idx", cur.stage_idx)
             self.logger.record("curriculum/success_rate", cur.success_rate(cur.stage["id"], 100))
+            # 이제 PPO 갱신(몇 초). 그동안 Godot 은 기다리며 CPU 를 거의 안 쓴다
+            ctl.write_status(self.num_timesteps, force=True, phase="updating")
 
     def save(snapshot: bool) -> None:
+        ctl.write_status(model.num_timesteps, force=True, phase="saving")
         model.save(str(latest))
         cur.save(cpath)
         pdir = pool_dir / tank
@@ -166,13 +188,27 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int) -> Non
             name = f"step_{model.num_timesteps:09d}.zip"
             shutil.copy2(latest, tdir / name)
             shutil.copy2(latest, pdir / name)
+        ctl.last_save = {"t": round(__import__("time").time(), 1), "version": version(), "snapshot": snapshot,
+                         "stage": cur.stage["id"]}
         print(f"[train] {tank}: 저장 {version()} (단계 {cur.stage['id']})", flush=True)
 
+    def on_checkpoint(_msg):
+        save(snapshot=True)
+        ctl.note(f"체크포인트 저장 {version()}")
+
+    def on_set_stage(msg):
+        ev = cur.set_stage(str(msg["stage"]), model.num_timesteps)
+        if ev:
+            env.log_stage_change(ev)
+            ctl.note(f"단계 변경 {ev['from']} → {ev['to']}")
+
+    ctl.handlers.update({"checkpoint": on_checkpoint, "set_stage": on_set_stage})
     try:
         model.learn(total_timesteps=steps, callback=Cb(), reset_num_timesteps=False, progress_bar=False)
     finally:
         save(snapshot=True)
         env.close()
+        ctl.env = ctl.model = ctl.curriculum = None
 
 
 def main():
@@ -181,15 +217,31 @@ def main():
     run_dir = (Path(args.runs_dir) / run).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     pool_dir = Path(args.pool_dir).resolve() if args.pool_dir else (Path(args.runs_dir) / "pool").resolve()
-    if args.rotate:
-        tanks = [t.strip() for t in args.rotate.split(",") if t.strip()]
-        for c in range(args.cycles):
-            for t in tanks:
-                print(f"[train] 교대 {c + 1}/{args.cycles}: {t} {args.rotate_steps} 스텝")
-                train_one(args, run_dir, pool_dir, t, args.rotate_steps)
-    else:
-        train_one(args, run_dir, pool_dir, args.tank, args.timesteps)
+    set_torch_threads(args)
+    ctl = TrainController(run_dir, record_every=args.record_every, review_prob=args.review_prob,
+                          speed_cap=args.speed_cap)
+    try:
+        if args.rotate:
+            tanks = [t.strip() for t in args.rotate.split(",") if t.strip()]
+            for c in range(args.cycles):
+                for t in tanks:
+                    if ctl.stop_requested:
+                        break
+                    print(f"[train] 교대 {c + 1}/{args.cycles}: {t} {args.rotate_steps} 스텝")
+                    ctl.info["rotate"] = {"tanks": tanks, "cycle": c + 1, "cycles": args.cycles}
+                    train_one(args, run_dir, pool_dir, t, args.rotate_steps, ctl)
+        else:
+            train_one(args, run_dir, pool_dir, args.tank, args.timesteps, ctl)
+    finally:
+        ctl.write_status(None, force=True, phase="stopped")
     print(f"[train] 끝. 보고서: python report.py {run_dir}")
+
+
+def set_torch_threads(args) -> None:
+    import os
+    import torch
+    n = args.torch_threads or max(1, (os.cpu_count() or 2) - args.n_envs)
+    torch.set_num_threads(n)
 
 
 if __name__ == "__main__":

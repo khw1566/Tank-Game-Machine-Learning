@@ -71,15 +71,46 @@ python train.py --godot "..\..\build\TankGame.exe" --tank tiger1 --run tiger_a -
 python train.py --godot "C:\Godot\Godot_v4.3-stable_win64_console.exe" --project "..\.." --tank sherman75
 ```
 
-옵션: `--n-envs`(동시 Godot 수, CPU 코어 수 정도), `--start-stage gunnery_static`(중간 단계부터), `--record-every 200`(N판마다 전체 리플레이·경기 보고서), `--save-every 100000`, `--review-prob 0.1`.
+옵션: `--n-envs`(동시 Godot 수, CPU 코어 수 정도), `--speed-cap 20`(실시간 대비 최대 배속, 0 = 무제한), `--torch-threads`, `--start-stage gunnery_static`(중간 단계부터), `--record-every 200`(N판마다 전체 리플레이·경기 보고서), `--save-every 100000`, `--review-prob 0.1`.
 
 속도(클라우드 4코어 측정): 주행 단계 Godot 1개당 약 200~270 결정/초(실시간의 20~27배), 1대1 약 120~150. 4개 병렬 PPO 학습 전체 ≈ 600 결정/초.
+
+## 모니터링·제어 대시보드(GUI)
+
+추가 설치 없이(Python 표준 라이브러리만, GPU 불필요) 브라우저에서 학습을 시작·감시·조절한다.
+
+```
+cd "C:\Users\work\Desktop\Tank Game Machine Learning\training\python"
+.venv\Scripts\activate
+python dashboard.py                → 브라우저에 http://127.0.0.1:8765 이 열린다
+```
+
+- **시작**: 오른쪽 위 "새 학습 / 이어서" → 게임 실행 파일(기본 `..\..\build\TankGame.exe`), 전차 하나 또는 교대, 환경 수, 시작 단계, 배속 제한 …
+  보고 있는 실행이 멈춰 있으면 그 설정으로 "이어서"가 채워진다.
+- **제어**: 일시정지/재개, 저장 후 중지, 지금 체크포인트, 커리큘럼 단계 수동 변경(승급 기록에 "수동 변경"),
+  기록 간격·복습 확률·배속 제한은 실행 중 바로 반영. **환경 수**는 실행 중에 못 바꾸므로 "적용"하면 저장 → 같은 실행을 `--resume` 으로 다시 시작(남은 스텝, 바꾼 설정 유지).
+- **감시(2초마다)**: 단계·성공률(승급 기준 대비)·초당 결정·에피소드, 실시간 대비 배속, 남은 시간, 9단계 띠,
+  학습 곡선(단계별 성공률·보상·에피소드 길이, 명중·관통률, 학습 속도, PPO 엔트로피·가치 손실·KL — 가로축 스텝/에피소드/시간, 점선 = 단계 변경),
+  전차별 정책(단계·스냅숏·상대 풀), 단계 변경 기록, 학습 로그.
+- **최근 에피소드 → 보기**: 🎬 리플레이(기록된 판, 게임 리플레이 뷰어로 열림)·경기 보고서, 아무 판이나 "재현 후 보기"(`reproduce.py` 로 똑같이 다시 돌려 `runs/<run>/reproduced/` 에 저장 후 뷰어로 열기, 해시 OK/MISMATCH 표시).
+  "학습 보고서 만들기" = `report.py`.
+- 대시보드를 닫아도 학습은 계속된다. 다시 열면 그대로 이어서 보인다. 명령줄로 시작한 `train.py` 도 같은 `runs` 폴더면 감시·제어된다.
+
+가속 요령
+- 환경 수 ≈ 논리 코어 수 − 1~2(Godot 1개 = 코어 1개). 대시보드의 "초당 결정 수"를 보며 늘려 보고, 더 안 오르면 그 앞이 적정.
+- 전체 리플레이 기록은 느리니 간격을 크게(또는 0). 재현 파일은 항상 남으므로 어떤 판이든 나중에 다시 볼 수 있다.
+- 게임 시간 배속은 이미 최대(헤드리스·잠금 단계, 렌더링 없음)라 더 올릴 수 없다. 반대로 PC 를 같이 쓰려면 "배속 제한"으로 낮춘다.
+- Godot 은 Python 을 오래 기다리면(PPO 갱신·일시정지) 잠들어 CPU 를 양보한다 → PPO 갱신이 빨라지고, 일시정지 중 CPU 사용 ≈ 0.
+  `--torch-threads`(기본 = 코어 수 − 환경 수)로 PyTorch 스레드가 Godot 과 코어를 다투지 않게 한다.
+
+제어는 파일로 주고받는다: `runs/<run>/control.jsonl`(명령 한 줄씩), `runs/<run>/status.json`(1초마다 상태). 형식은 [python/tankrl/control.py](python/tankrl/control.py) 맨 위.
 
 ## 기록(보고서용) — `runs/<run>/`
 
 | 파일 | 내용 |
 |---|---|
 | `run.json` | 실행 인자, git 커밋, Python/torch/SB3/Godot 버전, 단계 정의 전체, 관측·행동 이름 |
+| `status.json`, `control.jsonl`, `train_log.txt` | 현재 상태(1초마다), 대시보드 명령, 대시보드로 시작한 학습의 출력 |
 | `progress.csv` | **에피소드마다 한 줄**: 단계, 성공, 종료 사유, 승자, 보상 합, 길이, 스폰 거리, 맵 시드, 에피소드 시드, 발사·명중·관통·격파, 학습 정책 버전, 상대 정책 버전, 재현 파일 경로, 리플레이 경로, 끝 상태 해시 |
 | `curriculum_log.jsonl` | 승급 기록(언제, 몇 판 만에, 성공률, 그때 정책 버전) |
 | `episodes/env*/<uid>.json` | **모든 에피소드 재현 파일**: reset 설정 전체(시드·맵·전차·단계·보상 가중치·정책 버전), 결정마다 외부 행동(int8)·보상(float32), 사격 기록(명중 부위·관통·거리), 1초 간격 동선, 결과 |
