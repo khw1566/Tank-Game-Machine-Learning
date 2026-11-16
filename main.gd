@@ -312,7 +312,7 @@ func _process(delta: float) -> void:
 	hud.text = "[%s] %s  팀 %d   (Tab: 전차 전환)   %s   ep%d  %s\n%s\n%s\n상태: %s  재장전 %.1fs  탄 %d  [%s] (1/2/3 탄종)\n궤도 L %.1f / R %.1f m/s  기어 %s   포탑 %.0f°  포 %.1f° (%+.0f°~%+.0f°)  차체 피치 %.1f°\n조준 오차 %.2f mrad (1000m에서 %.1fm)%s\n승무원: %s\n모듈: %s\n최근: %s\n조작: Q/A 좌궤도, E/D 우궤도, W/S 양쪽, Space 브레이크, ←→ 포탑, ↑↓ 포, F 발사, G 거리 격자/링, V 시선 표시\nShift 포수 조준경  C(누른 채) 자유 시선·포 고정  B 전차장 시점·포 고정  휠/+- 확대  마우스·방향키 시선\nF1 장갑 시험장  F2 오버레이  M 지도 크기  H 탄착  P 경로  F3 리플레이  F4 경기 종료·보고서  F5 새 경기  F6 기록 폴더  F7 AI 전환  K 공정 시야(%s)\n%s" % [
 		p.name, p.spec.display_name, p.team, AI_LABELS[ai_mode], recorder.episode, ReportBuilder._mmss(recorder.sim_time()),
 		camera.status_text(), _vision_text(p), d.status_label(), p.reload_timer, d.ammo_remaining, p.current_shell().shell_name,
-		p.track_speed_left, p.track_speed_right, {1: "전진", -1: "후진", 0: "변속 중"}[p.gear],
+		p.track_speed_left, p.track_speed_right, p.gear_label(),
 		rad_to_deg(p.turret_yaw), rad_to_deg(p.gun_pitch), p.spec.gun_depression_deg, p.spec.gun_elevation_max_deg,
 		p.hull_pitch_deg(), p.aim_error_mrad, p.aim_error_mrad, "  [안정장치]" if p.damage.stabilizer_working() else "",
 		", ".join(d.crew.map(func(c): return "%s:%s" % [c.id, c.status])),
