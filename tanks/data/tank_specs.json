@@ -116,48 +116,46 @@
       }
     ],
     "armor": {
+      "gun_barrel": {
+        "t": 0
+      },
       "hull_bottom": {
-        "slope": 0,
         "t": 13
       },
       "hull_front_lower": {
-        "slope": 30,
         "t": 51
       },
       "hull_front_upper": {
-        "slope": 56,
         "t": 51
       },
       "hull_rear": {
-        "slope": 10,
         "t": 38
       },
       "hull_side_lower": {
-        "slope": 0,
         "t": 38
       },
       "hull_side_upper": {
-        "slope": 0,
         "t": 38
       },
       "hull_top": {
-        "slope": 0,
         "t": 19
       },
+      "mantlet": {
+        "t": 89
+      },
+      "track": {
+        "t": 0
+      },
       "turret_front": {
-        "slope": 30,
         "t": 76
       },
       "turret_rear": {
-        "slope": 0,
         "t": 51
       },
       "turret_side": {
-        "slope": 5,
         "t": 51
       },
       "turret_top": {
-        "slope": 0,
         "t": 25
       }
     },
@@ -222,7 +220,6 @@
     "display_name": "M4 Sherman (75mm)",
     "engine_fire_chance": 0.12,
     "engine_hp": 400,
-    "front_lower_split_y": 1.05,
     "fuel_fire_chance": 0.3,
     "gun": {
       "caliber_mm": 75,
@@ -266,19 +263,32 @@
         "Wikipedia: 75 mm gun M2/M3/M6 (penetration table, 30°)"
       ]
     },
-    "gun_depression_deg": -10,
-    "gun_elevation_max_deg": 25,
-    "gun_elevation_rate_deg_s": 4,
-    "hull_bottom_y": 0.43,
-    "hull_size": [
-      2.62,
-      1.47,
-      5.84
-    ],
+    "gunnery": {
+      "aim_time_s": 2.2,
+      "bloom_hull_turn_mrad_per_dps": 0.12,
+      "bloom_move_mrad_per_mps": 1.2,
+      "bloom_pitch_mrad_per_dps": 0.6,
+      "bloom_traverse_mrad_per_dps": 0.05,
+      "gun_depression_deg": -10,
+      "gun_elevation_max_deg": 25,
+      "gun_elevation_rate_deg_s": 5,
+      "stabilizer_bloom_factor": 0.35,
+      "stabilizer_efficiency": 0.85,
+      "stabilizer_vertical": true,
+      "turret_traverse_deg_s": 24
+    },
     "id": "sherman75",
     "mass_t": 30.3,
-    "max_speed_offroad_kmh": 24,
-    "max_speed_road_kmh": 39,
+    "mobility": {
+      "accel_mps2": 1.4,
+      "brake_mps2": 6,
+      "climb_penalty": 1.45,
+      "direction_change_s": 1.2,
+      "max_forward_kmh": 26,
+      "max_reverse_kmh": 12,
+      "neutral_steer": false,
+      "steer_efficiency": 0.18
+    },
     "modules": [
       {
         "id": "engine",
@@ -320,7 +330,7 @@
         "pos": [
           0,
           0.8,
-          -2.5
+          -2.4
         ],
         "radius": 0.45
       },
@@ -347,15 +357,59 @@
         "radius": 0.4
       },
       {
+        "id": "gun_mount",
+        "in_turret": true,
+        "kind": "gun_mount",
+        "pos": [
+          0,
+          0.4,
+          -0.539
+        ],
+        "radius": 0.22
+      },
+      {
+        "id": "recoil",
+        "in_turret": true,
+        "kind": "recoil",
+        "pos": [
+          0,
+          0.45,
+          -0.169
+        ],
+        "radius": 0.24
+      },
+      {
         "id": "gun_breech",
         "in_turret": true,
         "kind": "gun",
         "pos": [
           0,
-          0.3,
-          -0.35
+          0.35,
+          0.231
         ],
-        "radius": 0.32
+        "radius": 0.3
+      },
+      {
+        "id": "sight",
+        "in_turret": true,
+        "kind": "sight",
+        "pos": [
+          0.4,
+          0.45,
+          -0.419
+        ],
+        "radius": 0.15
+      },
+      {
+        "id": "traverse_drive",
+        "in_turret": true,
+        "kind": "traverse_drive",
+        "pos": [
+          0.4,
+          0.05,
+          0.031
+        ],
+        "radius": 0.2
       },
       {
         "id": "turret_ring",
@@ -370,20 +424,50 @@
       }
     ],
     "nation": "USA",
-    "notes": "경사 상부 전면판(51mm@56°)은 75mm급에는 유효하나 88mm에는 장거리에서도 관통됨. 기동성·선회속도·재장전이 강점.",
-    "side_lower_split_y": 1.1,
-    "sources": [
-      "Hunnicutt, Sherman",
-      "Wikipedia: M4 Sherman"
-    ],
-    "track_width_m": 2.11,
-    "turret_offset_z": -0.4,
-    "turret_size": [
-      1.8,
-      0.84,
-      1.85
-    ],
-    "turret_traverse_deg_s": 24
+    "notes": "피탄면적은 셋 중 가장 크고(특히 높이) 장갑은 얇다. 대신 헐다운하면 포탑(76mm@30°)+포방패만 노출된다.",
+    "power_to_weight": 13.2,
+    "shape": {
+      "barrel_length": 3,
+      "front_lower_slope_deg": 45,
+      "front_upper_slope_deg": 56,
+      "frontal_area_m2": 5.79,
+      "gun_height": 0.4,
+      "hull_bottom_y": 0.43,
+      "hull_length": 5.84,
+      "hull_top_y": 1.95,
+      "hull_width": 2.62,
+      "mantlet_size": [
+        1.2,
+        0.55,
+        0.22
+      ],
+      "nose_y": 0.95,
+      "rear_lower_slope_deg": 20,
+      "rear_upper_slope_deg": 10,
+      "rear_y": 1,
+      "side_area_m2": 11.72,
+      "side_split_y": 1.25,
+      "side_upper_slope_deg": 0,
+      "total_height": 2.75,
+      "track_armor_mm": 10,
+      "track_gauge_m": 2.11,
+      "track_height": 1,
+      "track_length": 5.5,
+      "track_width": 0.42,
+      "turret_front_slope_deg": 30,
+      "turret_height": 0.8,
+      "turret_length": 1.9,
+      "turret_offset_z": -0.4,
+      "turret_rear_slope_deg": 0,
+      "turret_side_slope_deg": 10,
+      "turret_width": 1.8
+    },
+    "traits": [
+      "높은 차체(지붕 1.95m) + 포 내림 −10° → 능선 뒤에 차체를 숨기고 포탑만 내미는 헐다운이 가장 쉬움",
+      "수직 1축 안정장치: 차체가 출렁여도 포 고저각 유지, 기동 중 조준 흔들림 35% 로 감소 → 기동간 사격",
+      "포탑 선회 24°/s: 측면으로 빠르게 돌며 쏘는 기동전에 유리",
+      "75mm 는 티거 정면 불가 → 헐다운으로 버티며 다른 전차가 측면을 잡게 하거나 근접 측면 공격"
+    ]
   },
   "t34_76": {
     "ammo_capacity": 100,
@@ -502,48 +586,46 @@
       }
     ],
     "armor": {
+      "gun_barrel": {
+        "t": 0
+      },
       "hull_bottom": {
-        "slope": 0,
         "t": 16
       },
       "hull_front_lower": {
-        "slope": -53,
         "t": 45
       },
       "hull_front_upper": {
-        "slope": 60,
         "t": 45
       },
       "hull_rear": {
-        "slope": 47,
         "t": 40
       },
       "hull_side_lower": {
-        "slope": 0,
         "t": 45
       },
       "hull_side_upper": {
-        "slope": 40,
         "t": 40
       },
       "hull_top": {
-        "slope": 0,
         "t": 20
       },
+      "mantlet": {
+        "t": 60
+      },
+      "track": {
+        "t": 0
+      },
       "turret_front": {
-        "slope": 30,
         "t": 52
       },
       "turret_rear": {
-        "slope": 15,
         "t": 52
       },
       "turret_side": {
-        "slope": 20,
         "t": 52
       },
       "turret_top": {
-        "slope": 0,
         "t": 20
       }
     },
@@ -597,7 +679,6 @@
     "display_name": "T-34/76 (1942)",
     "engine_fire_chance": 0.05,
     "engine_hp": 500,
-    "front_lower_split_y": 0.95,
     "fuel_fire_chance": 0.12,
     "gun": {
       "caliber_mm": 76.2,
@@ -641,19 +722,32 @@
         "Wikipedia: 76 mm tank gun M1940 F-34"
       ]
     },
-    "gun_depression_deg": -5,
-    "gun_elevation_max_deg": 26,
-    "gun_elevation_rate_deg_s": 4,
-    "hull_bottom_y": 0.4,
-    "hull_size": [
-      3,
-      1.3,
-      5.92
-    ],
+    "gunnery": {
+      "aim_time_s": 3,
+      "bloom_hull_turn_mrad_per_dps": 0.14,
+      "bloom_move_mrad_per_mps": 1.5,
+      "bloom_pitch_mrad_per_dps": 0.9,
+      "bloom_traverse_mrad_per_dps": 0.06,
+      "gun_depression_deg": -5,
+      "gun_elevation_max_deg": 26,
+      "gun_elevation_rate_deg_s": 4,
+      "stabilizer_bloom_factor": 1,
+      "stabilizer_efficiency": 0,
+      "stabilizer_vertical": false,
+      "turret_traverse_deg_s": 20
+    },
     "id": "t34_76",
     "mass_t": 28.5,
-    "max_speed_offroad_kmh": 30,
-    "max_speed_road_kmh": 53,
+    "mobility": {
+      "accel_mps2": 1.9,
+      "brake_mps2": 6,
+      "climb_penalty": 1.1,
+      "direction_change_s": 2.5,
+      "max_forward_kmh": 34,
+      "max_reverse_kmh": 5,
+      "neutral_steer": false,
+      "steer_efficiency": 0.12
+    },
     "modules": [
       {
         "id": "engine",
@@ -673,7 +767,7 @@
         "pos": [
           0,
           0.9,
-          2.6
+          2.55
         ],
         "radius": 0.4
       },
@@ -682,22 +776,22 @@
         "in_turret": false,
         "kind": "fuel",
         "pos": [
-          -1.15,
+          -1.1,
           1.1,
           -0.6
         ],
-        "radius": 0.35
+        "radius": 0.33
       },
       {
         "id": "fuel_r",
         "in_turret": false,
         "kind": "fuel",
         "pos": [
-          1.15,
+          1.1,
           1.1,
           -0.6
         ],
-        "radius": 0.35
+        "radius": 0.33
       },
       {
         "id": "ammo_floor",
@@ -711,15 +805,59 @@
         "radius": 0.55
       },
       {
+        "id": "gun_mount",
+        "in_turret": true,
+        "kind": "gun_mount",
+        "pos": [
+          0,
+          0.36,
+          -0.612
+        ],
+        "radius": 0.22
+      },
+      {
+        "id": "recoil",
+        "in_turret": true,
+        "kind": "recoil",
+        "pos": [
+          0,
+          0.41,
+          -0.242
+        ],
+        "radius": 0.24
+      },
+      {
         "id": "gun_breech",
         "in_turret": true,
         "kind": "gun",
         "pos": [
           0,
-          0.3,
-          -0.3
+          0.31,
+          0.158
         ],
-        "radius": 0.32
+        "radius": 0.3
+      },
+      {
+        "id": "sight",
+        "in_turret": true,
+        "kind": "sight",
+        "pos": [
+          -0.38,
+          0.41,
+          -0.492
+        ],
+        "radius": 0.15
+      },
+      {
+        "id": "traverse_drive",
+        "in_turret": true,
+        "kind": "traverse_drive",
+        "pos": [
+          -0.38,
+          0.05,
+          -0.042
+        ],
+        "radius": 0.2
       },
       {
         "id": "turret_ring",
@@ -734,20 +872,50 @@
       }
     ],
     "nation": "USSR",
-    "notes": "전면 경사장갑(45mm@60°)과 빠른 속도가 강점. 전차장이 포수를 겸해 상황인식(탐지)이 떨어짐.",
-    "side_lower_split_y": 1.05,
-    "sources": [
-      "Zaloga, T-34/76 Medium Tank",
-      "Wikipedia: T-34"
-    ],
-    "track_width_m": 2.45,
-    "turret_offset_z": -1,
-    "turret_size": [
-      1.9,
-      0.75,
-      1.9
-    ],
-    "turret_traverse_deg_s": 25
+    "notes": "피탄면적은 작지만 88mm 에는 어디든 관통된다. 장점은 '덜 맞고, 튕기고, 빨리 다가가는 것'.",
+    "power_to_weight": 17.5,
+    "shape": {
+      "barrel_length": 3.2,
+      "front_lower_slope_deg": 53,
+      "front_upper_slope_deg": 60,
+      "frontal_area_m2": 5.11,
+      "gun_height": 0.36,
+      "hull_bottom_y": 0.4,
+      "hull_length": 5.92,
+      "hull_top_y": 1.65,
+      "hull_width": 3,
+      "mantlet_size": [
+        1.1,
+        0.5,
+        0.2
+      ],
+      "nose_y": 0.85,
+      "rear_lower_slope_deg": 45,
+      "rear_upper_slope_deg": 47,
+      "rear_y": 0.95,
+      "side_area_m2": 10.49,
+      "side_split_y": 1.05,
+      "side_upper_slope_deg": 40,
+      "total_height": 2.37,
+      "track_armor_mm": 12,
+      "track_gauge_m": 2.45,
+      "track_height": 1.05,
+      "track_length": 5.9,
+      "track_width": 0.55,
+      "turret_front_slope_deg": 30,
+      "turret_height": 0.72,
+      "turret_length": 2,
+      "turret_offset_z": -0.6,
+      "turret_rear_slope_deg": 15,
+      "turret_side_slope_deg": 20,
+      "turret_width": 1.9
+    },
+    "traits": [
+      "낮은 차체(지붕 1.65m, 전고 2.37m) + 경사장갑 → 피탄면적 최소, 비스듬히 맞으면 도탄 가능성 큼",
+      "전진 34km/h·가속 1.9m/s² → 빠르게 우회해 티거 측면으로 파고드는 기동",
+      "후진 5km/h, 전후진 전환 2.5s → 한 번 들어가면 빠지기 어려움(후퇴는 차체를 돌려서)",
+      "포 내림 −5° → 능선 위 헐다운에서 아래쪽 적을 못 겨눔. 정지 사격도 조준이 느림(3.0s)"
+    ]
   },
   "tiger1": {
     "ammo_capacity": 92,
@@ -755,7 +923,7 @@
     "ammo_types": [
       {
         "caliber_mm": 88,
-        "dispersion_mrad": 0.35,
+        "dispersion_mrad": 0.3,
         "display_name": "8.8 cm KwK 36 L/56",
         "filler_g": 59,
         "fuse_delay_m": 1.2,
@@ -797,7 +965,7 @@
       },
       {
         "caliber_mm": 88,
-        "dispersion_mrad": 0.35,
+        "dispersion_mrad": 0.3,
         "display_name": "8.8 cm KwK 36 L/56",
         "filler_g": 0,
         "fuse_delay_m": 1.2,
@@ -839,7 +1007,7 @@
       },
       {
         "caliber_mm": 88,
-        "dispersion_mrad": 0.35,
+        "dispersion_mrad": 0.3,
         "display_name": "8.8 cm KwK 36 L/56",
         "filler_g": 900,
         "fuse_delay_m": 0.05,
@@ -866,48 +1034,46 @@
       }
     ],
     "armor": {
+      "gun_barrel": {
+        "t": 0
+      },
       "hull_bottom": {
-        "slope": 0,
         "t": 25
       },
       "hull_front_lower": {
-        "slope": 25,
         "t": 100
       },
       "hull_front_upper": {
-        "slope": 9,
         "t": 100
       },
       "hull_rear": {
-        "slope": 9,
         "t": 80
       },
       "hull_side_lower": {
-        "slope": 0,
         "t": 60
       },
       "hull_side_upper": {
-        "slope": 0,
         "t": 80
       },
       "hull_top": {
-        "slope": 0,
         "t": 25
       },
-      "turret_front": {
-        "slope": 0,
+      "mantlet": {
         "t": 120
       },
+      "track": {
+        "t": 0
+      },
+      "turret_front": {
+        "t": 100
+      },
       "turret_rear": {
-        "slope": 0,
         "t": 80
       },
       "turret_side": {
-        "slope": 0,
         "t": 80
       },
       "turret_top": {
-        "slope": 0,
         "t": 25
       }
     },
@@ -972,11 +1138,10 @@
     "display_name": "Tiger I Ausf. E",
     "engine_fire_chance": 0.12,
     "engine_hp": 650,
-    "front_lower_split_y": 1.15,
     "fuel_fire_chance": 0.3,
     "gun": {
       "caliber_mm": 88,
-      "dispersion_mrad": 0.35,
+      "dispersion_mrad": 0.3,
       "display_name": "8.8 cm KwK 36 L/56",
       "filler_g": 59,
       "fuse_delay_m": 1.2,
@@ -1016,19 +1181,32 @@
         "Wikipedia: 8.8 cm KwK 36 (penetration table, 30°)"
       ]
     },
-    "gun_depression_deg": -8,
-    "gun_elevation_max_deg": 15,
-    "gun_elevation_rate_deg_s": 4,
-    "hull_bottom_y": 0.47,
-    "hull_size": [
-      3.56,
-      1.48,
-      6.32
-    ],
+    "gunnery": {
+      "aim_time_s": 1.8,
+      "bloom_hull_turn_mrad_per_dps": 0.12,
+      "bloom_move_mrad_per_mps": 1.4,
+      "bloom_pitch_mrad_per_dps": 0.6,
+      "bloom_traverse_mrad_per_dps": 0.05,
+      "gun_depression_deg": -8,
+      "gun_elevation_max_deg": 15,
+      "gun_elevation_rate_deg_s": 4,
+      "stabilizer_bloom_factor": 1,
+      "stabilizer_efficiency": 0,
+      "stabilizer_vertical": false,
+      "turret_traverse_deg_s": 6
+    },
     "id": "tiger1",
     "mass_t": 57,
-    "max_speed_offroad_kmh": 20,
-    "max_speed_road_kmh": 38,
+    "mobility": {
+      "accel_mps2": 0.9,
+      "brake_mps2": 5,
+      "climb_penalty": 1.7,
+      "direction_change_s": 0.8,
+      "max_forward_kmh": 20,
+      "max_reverse_kmh": 9,
+      "neutral_steer": true,
+      "steer_efficiency": 0.22
+    },
     "modules": [
       {
         "id": "engine",
@@ -1097,15 +1275,59 @@
         "radius": 0.4
       },
       {
+        "id": "gun_mount",
+        "in_turret": true,
+        "kind": "gun_mount",
+        "pos": [
+          0,
+          0.45,
+          -1.07
+        ],
+        "radius": 0.22
+      },
+      {
+        "id": "recoil",
+        "in_turret": true,
+        "kind": "recoil",
+        "pos": [
+          0,
+          0.5,
+          -0.7
+        ],
+        "radius": 0.24
+      },
+      {
         "id": "gun_breech",
         "in_turret": true,
         "kind": "gun",
         "pos": [
           0,
-          0.35,
-          -0.4
+          0.4,
+          -0.3
         ],
-        "radius": 0.35
+        "radius": 0.3
+      },
+      {
+        "id": "sight",
+        "in_turret": true,
+        "kind": "sight",
+        "pos": [
+          -0.45,
+          0.5,
+          -0.95
+        ],
+        "radius": 0.15
+      },
+      {
+        "id": "traverse_drive",
+        "in_turret": true,
+        "kind": "traverse_drive",
+        "pos": [
+          -0.45,
+          0.05,
+          -0.5
+        ],
+        "radius": 0.2
       },
       {
         "id": "turret_ring",
@@ -1116,24 +1338,53 @@
           0,
           0
         ],
-        "radius": 0.55
+        "radius": 0.5
       }
     ],
     "nation": "Germany",
-    "notes": "전면은 거의 수직이지만 두꺼움. 30~45° 비스듬히 대면(티타임/정오 자세) 하면 전면·측면 유효장갑이 모두 크게 늘어난다.",
-    "side_lower_split_y": 1.3,
-    "sources": [
-      "Jentz & Doyle, Germany's Tiger Tanks",
-      "Tank Museum Bovington Tiger 131 data",
-      "Wikipedia: Tiger I"
-    ],
-    "track_width_m": 2.82,
-    "turret_offset_z": -0.15,
-    "turret_size": [
-      2.25,
-      0.95,
-      2.35
-    ],
-    "turret_traverse_deg_s": 6
+    "notes": "넓고 각진 상자형 실루엣(피탄면적 큼). 측면 하부 60mm 가 약점이지만 대형 보기륜·궤도가 15mm 만큼 막아 준다.",
+    "power_to_weight": 11.4,
+    "shape": {
+      "barrel_length": 4.9,
+      "front_lower_slope_deg": 25,
+      "front_upper_slope_deg": 9,
+      "frontal_area_m2": 7.87,
+      "gun_height": 0.45,
+      "hull_bottom_y": 0.47,
+      "hull_length": 6.32,
+      "hull_top_y": 1.87,
+      "hull_width": 3.56,
+      "mantlet_size": [
+        1.9,
+        0.75,
+        0.25
+      ],
+      "nose_y": 1.15,
+      "rear_lower_slope_deg": 20,
+      "rear_upper_slope_deg": 9,
+      "rear_y": 1.05,
+      "side_area_m2": 13.87,
+      "side_split_y": 1.3,
+      "side_upper_slope_deg": 0,
+      "total_height": 2.82,
+      "track_armor_mm": 15,
+      "track_gauge_m": 2.82,
+      "track_height": 1.15,
+      "track_length": 6,
+      "track_width": 0.72,
+      "turret_front_slope_deg": 0,
+      "turret_height": 0.95,
+      "turret_length": 2.5,
+      "turret_offset_z": -0.15,
+      "turret_rear_slope_deg": 0,
+      "turret_side_slope_deg": 0,
+      "turret_width": 2.3
+    },
+    "traits": [
+      "정면 장갑 100~120mm: 연합군 75/76mm 는 정면을 어떤 거리에서도 못 뚫음 → 정면을 적에게 두고 30~45° 비스듬히",
+      "88mm: 포구초속 773m/s(평탄한 탄도), 분산 0.30mrad, 조준 1.8s → 1000m 이상 원거리 정지 사격이 강점",
+      "포탑 선회 6°/s(360°에 60초): 측면으로 돌아오는 적에 대응이 늦음 → 차체를 돌려 대응해야 함",
+      "최고 20km/h, 가속 0.9m/s², 오르막에서 크게 느려짐. 대신 제자리 선회 가능, 전후진 전환 0.8s"
+    ]
   }
 }

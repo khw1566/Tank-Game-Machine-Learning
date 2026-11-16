@@ -10,7 +10,7 @@
 
 | 폴더 | 내용 |
 |---|---|
-| `tanks/` | 전차 제원·장갑·관통·피해 모델, 전차 노드 → [tanks/README.md](tanks/README.md) |
+| `tanks/` | 전차별 고유 모델(형상·경사장갑, 기동, 사격 특성), 공통 모듈(궤도·포탑·포방패·주퇴기/주포·장갑), 피해 모델, 전차 노드 → [tanks/README.md](tanks/README.md) |
 | `controls/` | 공용 조작 입력(`TankControlInput`, 액션 벡터 6개), 키보드 조작, 통합 스모크 테스트 |
 | `map/` | 구릉지 + 숲 군락 + 바위 생성기(`HillMap`, 시드로 재현) |
 | `tanks/lab/` | 장갑 시험장(시각화 + 관통 시험) |
@@ -34,6 +34,10 @@
 
 AI 는 `tank.control = TankControlInput.from_array([...])` 로 같은 입력을 넣는다.
 
+같은 입력이라도 전차마다 결과가 다르다: T-34 는 후진이 5km/h 이고 전진→후진 전환에 2.5초가 걸리며,
+차체가 경사를 따라 기울기 때문에 포 내림각(T-34 −5°, 티거 −8°, 셔먼 −10°)이 헐다운 가능 여부를 정한다.
+움직이며 쏘면 조준 오차가 커지는데 셔먼은 안정장치 덕에 그 폭이 작다. 자세한 내용은 [tanks/README.md](tanks/README.md).
+
 ## 실행 파일
 
 `build/TankGame.exe` 를 더블클릭하면 바로 실행된다(Godot 설치 불필요, 데이터 내장).
@@ -54,7 +58,8 @@ AI 는 `tank.control = TankControlInput.from_array([...])` 로 같은 입력을 
 
 ```
 godot --path .                                                     # 게임 실행(키보드 조작)
-godot --headless --path . -s res://tanks/tests/run_tank_tests.gd   # 장갑·피해 모델 검증
+godot --headless --path . -s res://tanks/tests/run_tank_tests.gd   # 장갑·피해·모듈 검증
+godot --headless --path . -s res://tanks/tests/run_trait_tests.gd  # 전차별 특성(기동·헐다운·안정장치·조준·탄도)
 godot --headless --path . -s res://controls/tests/run_sim_smoke.gd # 주행·선회·사격 통합 테스트
 ```
 

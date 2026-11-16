@@ -101,9 +101,11 @@ func _process(_delta: float) -> void:
 	camera.global_position = target + back * 14.0 + Vector3.UP * 4.0
 	camera.look_at(target - back * 30.0, Vector3.UP)
 	var d := p.damage
-	hud.text = "[%s] %s  팀 %d   (Tab: 전차 전환)\n상태: %s  재장전 %.1fs  탄 %d  [%s] (1/2/3 탄종)\n궤도 L %.1f / R %.1f m/s   포탑 %.0f°  포 %.1f°\n승무원: %s\n모듈: %s\n최근: %s\n조작: Q/A 좌궤도, E/D 우궤도, W/S 양쪽, Space 브레이크, ←→ 포탑, ↑↓ 포, F 발사, F1 장갑 시험장" % [
+	hud.text = "[%s] %s  팀 %d   (Tab: 전차 전환)\n상태: %s  재장전 %.1fs  탄 %d  [%s] (1/2/3 탄종)\n궤도 L %.1f / R %.1f m/s  기어 %s   포탑 %.0f°  포 %.1f° (%+.0f°~%+.0f°)  차체 피치 %.1f°\n조준 오차 %.2f mrad (1000m에서 %.1fm)%s\n승무원: %s\n모듈: %s\n최근: %s\n조작: Q/A 좌궤도, E/D 우궤도, W/S 양쪽, Space 브레이크, ←→ 포탑, ↑↓ 포, F 발사, F1 장갑 시험장" % [
 		p.name, p.spec.display_name, p.team, d.status_label(), p.reload_timer, d.ammo_remaining, p.current_shell().shell_name,
-		p.track_speed_left, p.track_speed_right, rad_to_deg(p.turret_yaw), rad_to_deg(p.gun_pitch),
+		p.track_speed_left, p.track_speed_right, {1: "전진", -1: "후진", 0: "변속 중"}[p.gear],
+		rad_to_deg(p.turret_yaw), rad_to_deg(p.gun_pitch), p.spec.gun_depression_deg, p.spec.gun_elevation_max_deg,
+		p.hull_pitch_deg(), p.aim_error_mrad, p.aim_error_mrad, "  [안정장치]" if p.damage.stabilizer_working() else "",
 		", ".join(d.crew.map(func(c): return "%s:%s" % [c.id, c.status])),
 		_damaged_modules(d), last_event]
 
