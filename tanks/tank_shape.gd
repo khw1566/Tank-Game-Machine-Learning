@@ -36,7 +36,7 @@ func _build(s: TankSpec) -> void:
 	# 차체
 	var hp := []
 	hp.append(_pl(Vector3.DOWN, -s.hull_bottom_y, "hull_bottom"))
-	hp.append(_pl(Vector3.UP, s.hull_top_y, "hull_top"))
+	hp.append(_pl(Vector3.UP, s.hull_roof_y, "hull_top"))
 	var a := deg_to_rad(s.front_upper_slope_deg)
 	hp.append(_pl(Vector3(0, sin(a), -cos(a)), s.nose_y * sin(a) + L * cos(a), "hull_front_upper"))
 	var b := deg_to_rad(s.front_lower_slope_deg)

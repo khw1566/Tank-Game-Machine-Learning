@@ -83,7 +83,7 @@ func _physics_process(_delta: float) -> bool:
 ## 간단한 비례 조준기(스크립트 AI 기준선). Tank.aim_solution() 이 탄도 낙차까지 보정한 목표 각을 준다.
 ## 조준 오차(aim_error_mrad)가 충분히 줄어든 뒤에만 쏜다. 반환: 액션 벡터
 static func _aim_action(me: Tank, target: Tank) -> Array:
-	var aim := target.global_position + target.global_transform.basis.y * (target.spec.hull_bottom_y + (target.spec.hull_top_y - target.spec.hull_bottom_y) * 0.6)
+	var aim := target.global_position + target.global_transform.basis.y * (target.spec.hull_bottom_y + (target.spec.hull_roof_y - target.spec.hull_bottom_y) * 0.6)
 	var sol := me.aim_solution(aim)
 	var e_yaw := wrapf(float(sol.turret_yaw) - me.turret_yaw, -PI, PI)
 	var e_pitch := float(sol.gun_pitch) - me.gun_pitch

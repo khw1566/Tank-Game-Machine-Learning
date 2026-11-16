@@ -37,7 +37,7 @@ func ray_from_bearing(bearing_deg: float, aim: Vector3) -> Array:
 
 
 func aim_point(spec: TankSpec, where: String) -> Vector3:
-	var hh := spec.hull_top_y - spec.hull_bottom_y
+	var hh := spec.hull_roof_y - spec.hull_bottom_y
 	match where:
 		"turret":
 			# 포방패 위쪽 포탑면(포방패를 피해 포탑 장갑 자체를 겨냥)
@@ -160,7 +160,7 @@ func _unit_tests() -> void:
 	for sp in [tiger, sherman, t34]:
 		fa[sp.id] = sp.shape().projected_area(Vector3.FORWARD)
 	check(fa.t34_76 < fa.sherman75 and fa.sherman75 < fa.tiger1, "정면 피탄면적 T-34 %.1f < 셔먼 %.1f < 티거 %.1f m²" % [fa.t34_76, fa.sherman75, fa.tiger1])
-	check(t34.total_height() < sherman.total_height() and sherman.hull_top_y > t34.hull_top_y + 0.25, "셔먼 차체 지붕 %.2fm > T-34 %.2fm" % [sherman.hull_top_y, t34.hull_top_y])
+	check(t34.total_height() < sherman.total_height() and sherman.hull_roof_y > t34.hull_roof_y + 0.25, "셔먼 차체 지붕 %.2fm > T-34 %.2fm" % [sherman.hull_roof_y, t34.hull_roof_y])
 	# 도탄: 같은 88mm 로 30° 비스듬히 쏘면 T-34 전면이 셔먼 전면보다 도탄 가능성이 큼
 	var ric_t34 := pen_prob(t34, tiger.gun, 1000, 30, "hull_high")
 	var ric_sh := pen_prob(sherman, tiger.gun, 1000, 30, "hull_high")

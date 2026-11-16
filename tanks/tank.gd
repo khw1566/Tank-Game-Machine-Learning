@@ -103,9 +103,9 @@ func _build_body() -> void:
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
 	var y0 := 0.6
-	bs.size = Vector3(spec.hull_width, spec.hull_top_y - y0, spec.hull_length * 0.95)
+	bs.size = Vector3(spec.hull_width, spec.hull_roof_y - y0, spec.hull_length * 0.95)
 	cs.shape = bs
-	cs.position = Vector3(0, (spec.hull_top_y + y0) * 0.5, 0)
+	cs.position = Vector3(0, (spec.hull_roof_y + y0) * 0.5, 0)
 	add_child(cs)
 	# 포탑 충돌체(시야 판정 등 물리 레이용). 포탄 명중은 TankShape 로 해석적으로 계산한다.
 	_turret_shape = CollisionShape3D.new()

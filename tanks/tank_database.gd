@@ -93,7 +93,7 @@ static func tiger1() -> TankSpec:
 	s.hull_length = 6.32
 	s.hull_width = 3.56
 	s.hull_bottom_y = 0.47
-	s.hull_top_y = 1.87
+	s.hull_roof_y = 1.87
 	s.nose_y = 1.15
 	s.front_upper_slope_deg = 9.0
 	s.front_lower_slope_deg = 25.0
@@ -224,7 +224,7 @@ static func sherman75() -> TankSpec:
 	s.hull_length = 5.84
 	s.hull_width = 2.62
 	s.hull_bottom_y = 0.43
-	s.hull_top_y = 1.95
+	s.hull_roof_y = 1.95
 	s.nose_y = 0.95
 	s.front_upper_slope_deg = 56.0
 	s.front_lower_slope_deg = 45.0   # 둥근 주조 변속기 덮개를 평균 45° 로
@@ -357,7 +357,7 @@ static func t34_76() -> TankSpec:
 	s.hull_length = 5.92
 	s.hull_width = 3.00
 	s.hull_bottom_y = 0.40
-	s.hull_top_y = 1.65
+	s.hull_roof_y = 1.65
 	s.nose_y = 0.85
 	s.front_upper_slope_deg = 60.0
 	s.front_lower_slope_deg = 53.0

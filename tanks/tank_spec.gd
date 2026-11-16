@@ -35,7 +35,14 @@ var hull_width: float = 3.0
 ## 지상고(차체 바닥 높이)
 var hull_bottom_y: float = 0.45
 ## 차체 지붕 높이(지면 기준)
-var hull_top_y: float = 1.9
+var hull_roof_y: float = 1.9
+## 호환용(시야·지도 코드에서 쓰는 이전 이름): 차체 외곽 상자 폭·높이·길이, 포탑 상자
+var hull_size: Vector3:
+	get:
+		return Vector3(hull_width, hull_roof_y - hull_bottom_y, hull_length)
+var turret_size: Vector3:
+	get:
+		return Vector3(turret_width, turret_height, turret_length)
 ## 상·하부 전면판이 만나는 코(nose) 높이
 var nose_y: float = 1.0
 ## 전면판 경사(수직 기준 °). 상부는 위가 뒤로, 하부는 아래가 뒤로 기운다.
@@ -146,14 +153,19 @@ func shape() -> TankShape:
 	return _shape
 
 
+## 차체 지붕 높이(호환용 함수)
+func hull_top_y() -> float:
+	return hull_roof_y
+
+
 ## 포탑 좌표계 원점(포탑 링 중심, 차체 지붕 높이)
 func turret_origin() -> Vector3:
-	return Vector3(0.0, hull_top_y, turret_offset_z)
+	return Vector3(0.0, hull_roof_y, turret_offset_z)
 
 
 ## 전체 높이(실루엣)
 func total_height() -> float:
-	return hull_top_y + turret_height
+	return hull_roof_y + turret_height
 
 
 ## 차체 지붕 위로 드러나는 높이(헐다운 시 노출되는 포탑 높이)
@@ -191,7 +203,7 @@ func to_dict() -> Dictionary:
 		"mass_t": mass_t, "engine_hp": engine_hp, "power_to_weight": snappedf(power_to_weight(), 0.1),
 		"shape": {
 			"hull_length": hull_length, "hull_width": hull_width, "hull_bottom_y": hull_bottom_y,
-			"hull_top_y": hull_top_y, "nose_y": nose_y,
+			"hull_top_y": hull_roof_y, "nose_y": nose_y,
 			"front_upper_slope_deg": front_upper_slope_deg, "front_lower_slope_deg": front_lower_slope_deg,
 			"rear_y": rear_y, "rear_upper_slope_deg": rear_upper_slope_deg, "rear_lower_slope_deg": rear_lower_slope_deg,
 			"side_split_y": side_split_y, "side_upper_slope_deg": side_upper_slope_deg,
