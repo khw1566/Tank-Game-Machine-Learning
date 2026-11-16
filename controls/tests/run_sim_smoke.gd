@@ -18,6 +18,7 @@ var shots := 0
 func _initialize() -> void:
 	map = HillMap.new()
 	map.height_amplitude = 0.0 # 평지: 사격 검증을 단순하게
+	map.features_enabled = false
 	map.forest_patches = 0
 	map.lone_trees = 0
 	map.rock_count = 0

@@ -16,6 +16,12 @@ var hud: Label
 var last_event := ""
 var _log: FileAccess
 var _headless := DisplayServer.get_name() == "headless"
+var grid: RangeGrid
+## 조종 전차가 본 적 목록(LineOfSight.spotted_enemies), 0.2초마다 갱신
+var vision: Array = []
+var _vision_timer := 0.0
+var _show_sight_lines := true
+var _sight_mesh: MeshInstance3D
 
 
 func _ready() -> void:
@@ -58,6 +64,15 @@ func _setup_view() -> void:
 	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.environment.ambient_light_color = Color(0.6, 0.6, 0.6)
 	add_child(env)
+	grid = RangeGrid.new(map)
+	add_child(grid)
+	_sight_mesh = MeshInstance3D.new()
+	var sm := StandardMaterial3D.new()
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sm.vertex_color_use_as_albedo = true
+	sm.no_depth_test = true
+	_sight_mesh.material_override = sm
+	add_child(_sight_mesh)
 	camera = Camera3D.new()
 	camera.far = 3000.0
 	add_child(camera)
@@ -80,6 +95,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			player_index = (player_index + 1) % tanks.size()
 		KEY_1, KEY_2, KEY_3:
 			tanks[player_index].select_ammo(event.physical_keycode - KEY_1)
+		KEY_G:
+			grid.mode = grid.mode + 1
+		KEY_V:
+			_show_sight_lines = not _show_sight_lines
 		KEY_F1:
 			get_tree().change_scene_to_file("res://tanks/lab/armor_lab.tscn")
 
@@ -96,16 +115,57 @@ func _process(_delta: float) -> void:
 		return
 	var p: Tank = tanks[player_index]
 	var yaw := p.global_rotation.y + p.turret_yaw
+	_update_vision(p, _delta)
 	var back := Vector3(sin(yaw), 0, cos(yaw))
 	var target := p.global_position + Vector3.UP * 3.0
 	camera.global_position = target + back * 14.0 + Vector3.UP * 4.0
 	camera.look_at(target - back * 30.0, Vector3.UP)
 	var d := p.damage
-	hud.text = "[%s] %s  팀 %d   (Tab: 전차 전환)\n상태: %s  재장전 %.1fs  탄 %d  [%s] (1/2/3 탄종)\n궤도 L %.1f / R %.1f m/s   포탑 %.0f°  포 %.1f°\n승무원: %s\n모듈: %s\n최근: %s\n조작: Q/A 좌궤도, E/D 우궤도, W/S 양쪽, Space 브레이크, ←→ 포탑, ↑↓ 포, F 발사, F1 장갑 시험장" % [
-		p.name, p.spec.display_name, p.team, d.status_label(), p.reload_timer, d.ammo_remaining, p.current_shell().shell_name,
+	hud.text = "[%s] %s  팀 %d   (Tab: 전차 전환)\n%s\n상태: %s  재장전 %.1fs  탄 %d  [%s] (1/2/3 탄종)\n궤도 L %.1f / R %.1f m/s   포탑 %.0f°  포 %.1f°\n승무원: %s\n모듈: %s\n최근: %s\n조작: Q/A 좌궤도, E/D 우궤도, W/S 양쪽, Space 브레이크, ←→ 포탑, ↑↓ 포, F 발사, G 거리 격자/링, V 시선 표시, F1 장갑 시험장" % [
+		p.name, p.spec.display_name, p.team, _vision_text(), d.status_label(), p.reload_timer, d.ammo_remaining, p.current_shell().shell_name,
 		p.track_speed_left, p.track_speed_right, rad_to_deg(p.turret_yaw), rad_to_deg(p.gun_pitch),
 		", ".join(d.crew.map(func(c): return "%s:%s" % [c.id, c.status])),
 		_damaged_modules(d), last_event]
+
+
+## 조종 전차의 시야(AI 와 같은 LineOfSight 판정) + 거리 링 + 시선 표시
+func _update_vision(p: Tank, delta: float) -> void:
+	grid.set_ring_center(p.global_position, p.global_rotation.y + p.turret_yaw)
+	_vision_timer -= delta
+	if _vision_timer > 0.0:
+		return
+	_vision_timer = 0.2
+	vision = LineOfSight.spotted_enemies(map, p, tanks)
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	if _show_sight_lines:
+		var eye := LineOfSight.eye_position(p)
+		for v in vision:
+			var t: Tank = get_node(NodePath(v.target))
+			# 초록 = 탐지, 노랑 = 일부 보이나 미탐지, 빨강 = 가려짐
+			var col := Color(0.2, 1, 0.2) if v.detected else (Color(1, 0.9, 0.2) if v.visible_fraction > 0.01 else Color(1, 0.2, 0.2, 0.5))
+			verts.append(eye)
+			verts.append(t.global_position + Vector3.UP * t.spec.hull_top_y())
+			cols.append(col)
+			cols.append(col)
+	var am := ArrayMesh.new()
+	if not verts.is_empty():
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_COLOR] = cols
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	_sight_mesh.mesh = am
+
+
+func _vision_text() -> String:
+	var parts := []
+	for v in vision:
+		var why := ""
+		if not v.detected and not v.blocked_by.is_empty():
+			why = " (" + ",".join(v.blocked_by.keys()) + ")"
+		parts.append("%s %.0fm %s%d%%%s" % [v.target, v.distance, "●" if v.detected else "○", int(v.visible_fraction * 100), why])
+	return "시야(● 탐지 ○ 미탐지, 보임%): " + ("  |  ".join(parts) if not parts.is_empty() else "-")
 
 
 func _damaged_modules(d: TankDamageState) -> String:
