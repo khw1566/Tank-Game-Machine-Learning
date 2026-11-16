@@ -26,7 +26,7 @@ var map: HillMap
 var tanks: Array = []
 var ais: Array = []
 var player_index := 0
-var camera: Camera3D
+var camera: TankViewCamera
 var hud: Label
 var recorder: MatchRecorder
 var markers: WorldMarkers
@@ -131,8 +131,8 @@ func _setup_view() -> void:
 	sm.no_depth_test = true
 	_sight_mesh.material_override = sm
 	add_child(_sight_mesh)
-	camera = Camera3D.new()
-	camera.far = 3000.0
+	camera = TankViewCamera.new()
+	camera.map = map
 	add_child(camera)
 	camera.current = true
 	markers = WorldMarkers.new()
@@ -144,6 +144,7 @@ func _setup_view() -> void:
 	hud = Label.new()
 	hud.position = Vector2(10, 10)
 	_outline(hud)
+	layer.add_child(camera.reticle)
 	layer.add_child(hud)
 	# 관찰 오버레이(F2)
 	overlay = CanvasLayer.new()
@@ -245,7 +246,7 @@ func _physics_process(_delta: float) -> void:
 		var t: Tank = tanks[i]
 		var human := i == player_index and not _headless and ai_mode != AI_ALL
 		if human:
-			t.control = KeyboardController.read()
+			t.control = camera.apply_locks(KeyboardController.read()) if camera else KeyboardController.read()
 		elif ai_mode != AI_OFF and t.damage.is_combat_effective():
 			var a: Array = ais[i].act(t, tanks)
 			t.control = TankControlInput.from_array(a)
@@ -264,16 +265,14 @@ func _process(delta: float) -> void:
 	if camera == null or tanks.is_empty():
 		return
 	var p: Tank = tanks[player_index]
-	var yaw := p.global_rotation.y + p.turret_yaw
 	_update_vision(p, delta)
-	var back := Vector3(sin(yaw), 0, cos(yaw))
-	var target := p.global_position + Vector3.UP * 3.0
-	camera.global_position = target + back * 14.0 + Vector3.UP * 4.0
-	camera.look_at(target - back * 30.0, Vector3.UP)
+	camera.update_view(p, delta)
+	# 조준경에는 자체 거리 눈금이 있으므로 거리 격자 글자가 가리지 않게 숨긴다
+	grid.visible = camera.mode != TankViewCamera.GUNNER
 	var d := p.damage
-	hud.text = "[%s] %s  팀 %d   (Tab: 전차 전환)   %s   ep%d  %s\n%s\n상태: %s  재장전 %.1fs  탄 %d  [%s] (1/2/3 탄종)\n궤도 L %.1f / R %.1f m/s  기어 %s   포탑 %.0f°  포 %.1f° (%+.0f°~%+.0f°)  차체 피치 %.1f°\n조준 오차 %.2f mrad (1000m에서 %.1fm)%s\n승무원: %s\n모듈: %s\n최근: %s\n조작: Q/A 좌궤도, E/D 우궤도, W/S 양쪽, Space 브레이크, ←→ 포탑, ↑↓ 포, F 발사, G 거리 격자/링, V 시선 표시\nF1 장갑 시험장  F2 오버레이  M 지도 크기  H 탄착  P 경로  F3 리플레이  F4 경기 종료·보고서  F5 새 경기  F6 기록 폴더  F7 AI 전환\n%s" % [
+	hud.text = "[%s] %s  팀 %d   (Tab: 전차 전환)   %s   ep%d  %s\n%s\n%s\n상태: %s  재장전 %.1fs  탄 %d  [%s] (1/2/3 탄종)\n궤도 L %.1f / R %.1f m/s  기어 %s   포탑 %.0f°  포 %.1f° (%+.0f°~%+.0f°)  차체 피치 %.1f°\n조준 오차 %.2f mrad (1000m에서 %.1fm)%s\n승무원: %s\n모듈: %s\n최근: %s\n조작: Q/A 좌궤도, E/D 우궤도, W/S 양쪽, Space 브레이크, ←→ 포탑, ↑↓ 포, F 발사, G 거리 격자/링, V 시선 표시\nShift 포수 조준경  C(누른 채) 자유 시선·포 고정  B 전차장 시점·포 고정  휠/+- 확대  마우스·방향키 시선\nF1 장갑 시험장  F2 오버레이  M 지도 크기  H 탄착  P 경로  F3 리플레이  F4 경기 종료·보고서  F5 새 경기  F6 기록 폴더  F7 AI 전환\n%s" % [
 		p.name, p.spec.display_name, p.team, AI_LABELS[ai_mode], recorder.episode, ReportBuilder._mmss(recorder.sim_time()),
-		_vision_text(), d.status_label(), p.reload_timer, d.ammo_remaining, p.current_shell().shell_name,
+		camera.status_text(), _vision_text(), d.status_label(), p.reload_timer, d.ammo_remaining, p.current_shell().shell_name,
 		p.track_speed_left, p.track_speed_right, p.gear_label(),
 		rad_to_deg(p.turret_yaw), rad_to_deg(p.gun_pitch), p.spec.gun_depression_deg, p.spec.gun_elevation_max_deg,
 		p.hull_pitch_deg(), p.aim_error_mrad, p.aim_error_mrad, "  [안정장치]" if p.damage.stabilizer_working() else "",

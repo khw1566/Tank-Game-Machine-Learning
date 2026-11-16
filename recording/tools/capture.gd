@@ -2,6 +2,7 @@ extends SceneTree
 ## 화면 캡처(문서·보고서 그림용). 그래픽 환경에서 실행:
 ##   godot --path . -s res://recording/tools/capture.gd -- --scene=res://main.tscn --wait=600 --out=user://shot.png [--ai]
 ##   godot --path . -s res://recording/tools/capture.gd -- --scene=res://recording/replay_viewer.tscn --t=120 --cam=4 --out=...
+##   ... -- --scene=res://main.tscn --view=gunner|commander [--zoom=2] [--look=30]   (게임 시점 캡처)
 ## --wait = 물리 프레임 수, --t = 리플레이 시각(초), --cam = 리플레이 시점 1~5, --select = 선택 전차, --bigmap
 
 var args := {}
@@ -34,6 +35,11 @@ func _process(_d: float) -> bool:
 	if frames == 5 and args.has("bigmap") and "minimap_big" in node:
 		node.minimap_big = true
 		node._layout_overlay()
+	if frames == 5 and args.has("view") and "camera" in node:
+		node.camera.capture_mouse = false
+		node.camera.set_mode({"gunner": TankViewCamera.GUNNER, "commander": TankViewCamera.COMMANDER}.get(args.view, 0))
+		node.camera.cmd_yaw += deg_to_rad(float(args.get("look", "0")))
+		node.camera.zoom(int(args.get("zoom", "0")))
 	if frames == int(args.get("wait", "30")) + 5:
 		var img := root.get_texture().get_image()
 		img.save_png(args.get("out", "user://capture.png"))
