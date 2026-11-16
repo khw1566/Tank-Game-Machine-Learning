@@ -1,4 +1,5 @@
-# 학습 쪽(Python 3.10+). CPU 만으로 충분(정책이 작은 MLP). GPU 가 있으면 torch 를 CUDA 판으로 설치해도 된다.
+# Training side (Python 3.10+). CPU only is fine (small MLP policy).
+# Keep this file ASCII-only: old pip on Korean Windows reads it as cp949.
 numpy>=1.24
 gymnasium>=0.29
 stable-baselines3>=2.3

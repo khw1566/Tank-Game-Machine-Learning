@@ -330,14 +330,19 @@ class Dashboard:
         log_path = self.runs_dir / "pip_install.log"
 
         def job():
+            # PYTHONUTF8: 한국어 Windows(cp949)에서 옛 pip 이 파일을 못 읽는 문제 방지. pip 부터 최신으로.
+            env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
+            kw = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if sys.platform == "win32" else {}
+            steps = [[py, "-m", "pip", "install", "--upgrade", "pip"],
+                     [py, "-m", "pip", "install", "--disable-pip-version-check", "-r", str(HERE / "requirements.txt")]]
             with open(log_path, "w", encoding="utf-8") as log:
-                log.write(f"{py} -m pip install -r requirements.txt\n")
-                log.flush()
-                kw = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if sys.platform == "win32" else {}
-                r = subprocess.run([py, "-m", "pip", "install", "--disable-pip-version-check", "-r",
-                                    str(HERE / "requirements.txt")], cwd=str(HERE), stdout=log,
-                                   stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                   env=dict(os.environ, PYTHONIOENCODING="utf-8"), **kw)
+                for cmd in steps:
+                    log.write("> " + subprocess.list2cmdline(cmd) + "\n")
+                    log.flush()
+                    r = subprocess.run(cmd, cwd=str(HERE), stdout=log, stderr=subprocess.STDOUT,
+                                       stdin=subprocess.DEVNULL, env=env, **kw)
+                    if r.returncode != 0 and cmd is steps[-1]:
+                        break
             d = self.check_deps()
             if r.returncode != 0 or d["state"] != "ok":
                 raise RuntimeError(f"설치 실패(종료 코드 {r.returncode}) — 아래 설치 로그를 확인하세요")
@@ -407,7 +412,7 @@ class Dashboard:
         if sys.platform == "win32":
             # 대시보드를 닫아도(콘솔 Ctrl+C) 학습은 계속되게 별도 프로세스 그룹으로
             kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+        env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1", PYTHONUTF8="1")
         self.procs[run] = subprocess.Popen(cmd, cwd=str(HERE), stdout=log, stderr=subprocess.STDOUT,
                                            stdin=subprocess.DEVNULL, env=env, **kw)
         log.close()
@@ -497,7 +502,7 @@ class Dashboard:
         out = self.run_dir(run) / "reproduced"
 
         def job():
-            cmd = [sys.executable, str(HERE / "reproduce.py"), str(ep), "--out-dir", str(out)]
+            cmd = [self.train_python(), str(HERE / "reproduce.py"), str(ep), "--out-dir", str(out)]
             g = self.game_cmd()
             cmd += ["--godot", g[0]] + (["--project", g[2]] if len(g) > 2 else [])
             r = subprocess.run(cmd, cwd=str(HERE), capture_output=True, text=True, encoding="utf-8",
@@ -516,7 +521,7 @@ class Dashboard:
         d = self.run_dir(run)
 
         def job():
-            r = subprocess.run([sys.executable, str(HERE / "report.py"), str(d)], cwd=str(HERE),
+            r = subprocess.run([self.train_python(), str(HERE / "report.py"), str(d)], cwd=str(HERE),
                                capture_output=True, text=True, encoding="utf-8", errors="replace")
             if r.returncode != 0:
                 raise RuntimeError((r.stdout + r.stderr)[-500:])

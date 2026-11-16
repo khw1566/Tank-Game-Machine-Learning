@@ -1,10 +1,19 @@
 @echo off
-rem 학습 대시보드 실행(더블클릭). training\python\.venv 가 있으면 그 Python 을 쓴다.
+rem Training dashboard launcher (double-click).
+rem Python choice: training\python\.venv  ->  "py -3" launcher (newest installed)  ->  python on PATH.
+rem The dashboard then uses the SAME Python for train.py, pip install, reproduce and report.
 chcp 65001 >nul
+set PYTHONUTF8=1
 cd /d "%~dp0"
 if exist ".venv\Scripts\python.exe" (
   ".venv\Scripts\python.exe" dashboard.py %*
-) else (
-  python dashboard.py %*
+  goto end
 )
+where py >nul 2>nul
+if %errorlevel%==0 (
+  py -3 dashboard.py %*
+  goto end
+)
+python dashboard.py %*
+:end
 pause

@@ -533,7 +533,7 @@ function wire() {
 }
 function openStart() {
   const f = $("startForm"), s = INFO.settings;
-  f.godot.value = s.godot || ""; f.project.value = s.project || ""; f.python.value = s.python || "";
+  f.godot.value = s.godot || ""; f.project.value = s.project || ""; f.python.value = s.python || ""; f.python.placeholder = INFO.deps?.python ? `(자동: ${INFO.deps.python})` : "(자동)";
   const a = S?.run_json?.args;
   if (a && !S.alive) {   // 지금 보고 있는 실행을 이어서 하기 좋게 채운다
     f.run.value = RUN; f.resume.checked = true; f.n_envs.value = a.n_envs; f.mode.value = a.rotate ? "rotate" : "single";
