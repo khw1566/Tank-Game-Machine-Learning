@@ -77,6 +77,7 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .form .wide { grid-column: 1 / -1; }
 .form input[type=text], .form select, .form input[type=number] { width: 100%; }
 .hint { font-size: 12px; color: var(--muted); }
+.warnbox { border-color: var(--warn); }
 .toast { position: fixed; right: 16px; bottom: 16px; background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 70vw; z-index: 20; }
 .toast.show { opacity: .95; }
 .tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: none; z-index: 10; white-space: nowrap; }
@@ -94,6 +95,15 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
   <button id="btnNew" class="primary">새 학습 / 이어서</button>
 </header>
 <main>
+  <section class="panel warnbox" id="depsBox" hidden>
+    <h2 id="depsTitle">학습용 Python 패키지 확인 중…</h2>
+    <div id="depsBody" class="hint"></div>
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+      <button id="btnInstall" class="primary">필수 패키지 설치</button>
+      <button id="btnRecheck">다시 확인</button>
+    </div>
+    <pre class="log" id="depsLog" hidden style="margin-top:8px;max-height:180px"></pre>
+  </section>
   <section class="panel">
     <h2>제어 <span class="sub" id="ctlNote"></span></h2>
     <div class="controls">
@@ -179,6 +189,7 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
     <h2 style="margin:0 0 12px;font-size:16px">학습 시작</h2>
     <div class="form">
       <div class="ctl wide"><label>게임 실행 파일 (내보낸 TankGame.exe 또는 Godot 편집기 실행 파일)</label><input type="text" name="godot" placeholder="..\..\build\TankGame.exe"></div>
+      <div class="ctl wide"><label>학습용 Python (비우면 training\python\.venv 가 있으면 그것, 없으면 대시보드를 실행한 Python)</label><input type="text" name="python" placeholder="(자동)"></div>
       <div class="ctl wide"><label>프로젝트 폴더 (Godot 편집기 실행 파일을 쓸 때만, exe 면 비움)</label><input type="text" name="project" placeholder="..\.."></div>
       <div class="ctl"><label>실행 이름 (같은 이름 + 이어서 = 계속 학습)</label><input type="text" name="run" list="runList"><datalist id="runList"></datalist></div>
       <div class="ctl"><label>학습 방식</label><select name="mode"><option value="single">전차 하나</option><option value="rotate">여러 전차 교대(자기대전)</option></select></div>
@@ -512,7 +523,7 @@ function wire() {
   f.run.oninput = () => { f.resume.checked = [...$("runList").options].some(o => o.value === f.run.value); };
   $("btnGo").onclick = async (e) => {
     e.preventDefault();
-    const a = {godot: f.godot.value, project: f.project.value, run: f.run.value.trim(), n_envs: +f.n_envs.value, start_stage: f.start_stage.value,
+    const a = {godot: f.godot.value, project: f.project.value, python: f.python.value, run: f.run.value.trim(), n_envs: +f.n_envs.value, start_stage: f.start_stage.value,
       speed_cap: +f.speed_cap.value, record_every: +f.record_every.value, save_every: +f.save_every.value, resume: f.resume.checked, extra: f.extra.value};
     if (f.mode.value === "rotate") Object.assign(a, {rotate: f.rotate.value, rotate_steps: +f.rotate_steps.value, cycles: +f.cycles.value});
     else Object.assign(a, {tank: f.tank.value, timesteps: +f.timesteps.value});
@@ -522,7 +533,7 @@ function wire() {
 }
 function openStart() {
   const f = $("startForm"), s = INFO.settings;
-  f.godot.value = s.godot || ""; f.project.value = s.project || "";
+  f.godot.value = s.godot || ""; f.project.value = s.project || ""; f.python.value = s.python || "";
   const a = S?.run_json?.args;
   if (a && !S.alive) {   // 지금 보고 있는 실행을 이어서 하기 좋게 채운다
     f.run.value = RUN; f.resume.checked = true; f.n_envs.value = a.n_envs; f.mode.value = a.rotate ? "rotate" : "single";
@@ -537,8 +548,37 @@ function openStart() {
   $("dlg").showModal();
 }
 
+// ------------------------------------------------------------------ 패키지 확인·설치
+let depsTimer = null;
+function renderDeps(d) {
+  const box = $("depsBox"), inst = d.install, running = inst && inst.state === "running";
+  if (d.state === "ok" && !running) { if (!box.hidden && inst && inst.state === "done") toast("필수 패키지 설치 완료 — 이제 학습을 시작할 수 있습니다", 4000); box.hidden = true; return false; }
+  box.hidden = false;
+  const py = `<code>${esc(d.python || "")}</code>${d.version ? ` (Python ${esc(d.version)})` : ""}`;
+  if (running) { $("depsTitle").textContent = "필수 패키지 설치 중… (처음 한 번, torch 때문에 수 분 걸릴 수 있음)"; $("depsBody").innerHTML = `학습용 Python: ${py}`; }
+  else if (d.state === "checking" || d.state === "unknown") { $("depsTitle").textContent = "학습용 Python 패키지 확인 중…"; $("depsBody").innerHTML = py; }
+  else if (d.state === "missing") {
+    $("depsTitle").textContent = "학습에 필요한 Python 패키지가 없습니다";
+    $("depsBody").innerHTML = `학습용 Python: ${py}<br>없는 패키지: <b>${esc(d.missing.join(", "))}</b><br>` +
+      `"필수 패키지 설치"를 누르면 이 Python 에 <code>pip install -r requirements.txt</code>(numpy, gymnasium, stable-baselines3, torch CPU판)를 실행합니다. ` +
+      (d.venv ? "" : `가상환경(.venv)을 따로 쓰고 싶으면 README 의 설치 절차대로 만든 뒤 대시보드를 다시 열면 자동으로 그쪽을 씁니다.`);
+  } else { $("depsTitle").textContent = "학습용 Python 을 실행하지 못했습니다"; $("depsBody").innerHTML = `${py}<br><pre class="log">${esc(d.detail || "")}</pre>새 학습 창의 "학습용 Python" 칸에 올바른 python.exe 경로를 넣어 주세요.`; }
+  if (inst && inst.state === "error") $("depsTitle").textContent = "설치 실패 — 아래 로그를 확인하세요";
+  $("btnInstall").disabled = running || d.state === "checking"; $("btnRecheck").disabled = running;
+  $("depsLog").hidden = !inst; if (inst) { $("depsLog").textContent = inst.log || ""; $("depsLog").scrollTop = 1e9; }
+  return running || d.state === "checking" || d.state === "unknown";
+}
+async function pollDeps(refresh) {
+  clearTimeout(depsTimer);
+  try { const d = await api("/api/deps" + (refresh ? "?refresh=1" : "")); INFO.deps = d; if (renderDeps(d)) depsTimer = setTimeout(() => pollDeps(false), 2000); }
+  catch (e) { depsTimer = setTimeout(() => pollDeps(false), 4000); }
+}
+
 async function init() {
   INFO = await api("/api/info");
+  $("btnInstall").onclick = async () => { try { await api("/api/install", {}); pollDeps(false); } catch (e) { toast("실패: " + e.message, 5000); } };
+  $("btnRecheck").onclick = () => { $("depsTitle").textContent = "확인 중…"; pollDeps(true); };
+  pollDeps(false);
   const stOpts = INFO.stages.map((s, i) => `<option value="${s.id}">${i + 1}. ${STAGE_LABEL[s.id]}</option>`).join("");
   $("stageSel").innerHTML = stOpts;
   $("startForm").start_stage.innerHTML = `<option value="">처음(1단계) / 저장된 단계</option>` + stOpts;

@@ -45,6 +45,19 @@ SB3_KEYS = ["time/total_timesteps", "rollout/ep_rew_mean", "rollout/ep_len_mean"
             "train/explained_variance", "train/std", "time/fps", "curriculum/stage_idx", "curriculum/success_rate"]
 
 
+REQUIRED = ["numpy", "gymnasium", "stable_baselines3", "torch"]
+DEPS_CHECK = ("import importlib.util, sys; mods = %r; "
+              "miss = [m for m in mods if importlib.util.find_spec(m) is None]; "
+              "print('MISSING=' + ','.join(miss)); print('PY=' + sys.version.split()[0])") % REQUIRED
+
+
+def venv_python() -> Path | None:
+    for p in [HERE / ".venv" / "Scripts" / "python.exe", HERE / ".venv" / "bin" / "python"]:
+        if p.exists():
+            return p
+    return None
+
+
 def default_godot() -> str:
     for p in [HERE.parents[1] / "build" / "TankGame.exe", HERE.parents[1] / "build" / "TankGame.x86_64"]:
         if p.exists():
@@ -220,7 +233,10 @@ class Dashboard:
         self.jobs: list[dict] = []                         # 재현·보고서 등 백그라운드 작업
         self.lock = threading.Lock()
         self.settings_path = self.runs_dir / "dashboard_settings.json"
-        self.settings = {"godot": default_godot(), "project": ""} | read_json(self.settings_path)
+        self.settings = {"godot": default_godot(), "project": "", "python": ""} | read_json(self.settings_path)
+        self.deps: dict = {"state": "unknown"}
+        self.install_job: dict | None = None
+        threading.Thread(target=self.check_deps, daemon=True).start()
 
     # ------------------------------------------------------------ 공통
 
@@ -267,12 +283,74 @@ class Dashboard:
         return {"stages": [{"id": s["id"], "kind": s["kind"], "promote": s.get("promote"),
                             "time_limit_s": s["time_limit_s"]} for s in STAGES],
                 "tanks": TANKS, "cpu_count": os.cpu_count() or 1, "settings": self.settings,
-                "runs_dir": str(self.runs_dir), "platform": sys.platform}
+                "runs_dir": str(self.runs_dir), "platform": sys.platform, "deps": self.deps_info()}
+
+    # ------------------------------------------------------------ 학습용 Python·패키지
+
+    def train_python(self) -> str:
+        """학습에 쓸 Python: 설정에 적은 것 → training/python/.venv → 대시보드를 실행한 Python."""
+        p = self.settings.get("python", "")
+        if p and Path(p).exists():
+            return str(Path(p))
+        v = venv_python()
+        return str(v) if v else sys.executable
+
+    def check_deps(self) -> dict:
+        py = self.train_python()
+        self.deps = {"state": "checking", "python": py}
+        try:
+            r = subprocess.run([py, "-c", DEPS_CHECK], capture_output=True, text=True, timeout=120,
+                               encoding="utf-8", errors="replace")
+            out = dict(ln.split("=", 1) for ln in r.stdout.splitlines() if "=" in ln)
+            missing = [m for m in out.get("MISSING", "").split(",") if m]
+            if r.returncode != 0 or "MISSING" not in out:
+                self.deps = {"state": "error", "python": py, "detail": (r.stdout + r.stderr)[-800:]}
+            else:
+                self.deps = {"state": "ok" if not missing else "missing", "python": py, "missing": missing,
+                             "version": out.get("PY", "")}
+        except Exception as e:
+            self.deps = {"state": "error", "python": py, "detail": str(e)}
+        self.deps["venv"] = str(venv_python() or "")
+        self.deps["checked"] = time.time()
+        return self.deps
+
+    def deps_info(self) -> dict:
+        d = dict(self.deps)
+        j = self.install_job
+        if j:
+            d["install"] = {k: j.get(k) for k in ("state", "result", "t", "t_end")}
+            log = self.runs_dir / "pip_install.log"
+            d["install"]["log"] = tail_text(log, 3000) if log.exists() else ""
+        return d
+
+    def install_deps(self) -> dict:
+        if self.install_job and self.install_job["state"] == "running":
+            return {"job": self.install_job["id"]}
+        py = self.train_python()
+        log_path = self.runs_dir / "pip_install.log"
+
+        def job():
+            with open(log_path, "w", encoding="utf-8") as log:
+                log.write(f"{py} -m pip install -r requirements.txt\n")
+                log.flush()
+                kw = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if sys.platform == "win32" else {}
+                r = subprocess.run([py, "-m", "pip", "install", "--disable-pip-version-check", "-r",
+                                    str(HERE / "requirements.txt")], cwd=str(HERE), stdout=log,
+                                   stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                   env=dict(os.environ, PYTHONIOENCODING="utf-8"), **kw)
+            d = self.check_deps()
+            if r.returncode != 0 or d["state"] != "ok":
+                raise RuntimeError(f"설치 실패(종료 코드 {r.returncode}) — 아래 설치 로그를 확인하세요")
+            return "설치 완료"
+
+        res = self.background(f"필수 패키지 설치 ({Path(py).name})", job)
+        self.install_job = self.jobs[-1]
+        return res
 
     # ------------------------------------------------------------ 학습 프로세스
 
     def build_cmd(self, a: dict) -> list[str]:
-        cmd = [sys.executable, "-u", str(HERE / "train.py"), "--godot", a["godot"], "--run", a["run"],
+        cmd = [self.train_python(), "-u", str(HERE / "train.py"), "--godot", a["godot"], "--run", a["run"],
                "--runs-dir", str(self.runs_dir), "--n-envs", str(int(a.get("n_envs", 4)))]
         if a.get("project"):
             cmd += ["--project", a["project"]]
@@ -308,6 +386,17 @@ class Dashboard:
             a["project"] = str(abs_path(a["project"]))
         if not Path(a["godot"]).exists():
             raise ValueError(f"실행 파일이 없습니다: {a['godot']}")
+        if a.get("python") is not None and a.get("python", "").strip() != self.settings.get("python", ""):
+            py = a["python"].strip()
+            if py and not abs_path(py).exists():
+                raise ValueError(f"Python 실행 파일이 없습니다: {py}")
+            self.save_settings(python=str(abs_path(py)) if py else "")
+            self.check_deps()
+        if self.deps.get("state") in ("unknown", "checking"):
+            self.check_deps()
+        if self.deps.get("state") != "ok":
+            miss = ", ".join(self.deps.get("missing", [])) or self.deps.get("detail", "")[-200:]
+            raise ValueError(f"학습용 Python 에 필요한 패키지가 없습니다({miss}). 화면 위의 '필수 패키지 설치'를 먼저 눌러 주세요")
         self.save_settings(godot=a["godot"], project=a.get("project", ""))
         d.mkdir(parents=True, exist_ok=True)
         cmd = self.build_cmd(a)
@@ -478,6 +567,10 @@ def make_handler(dash: Dashboard):
                     return self.send_body(200, page_path.read_bytes(), "text/html; charset=utf-8")
                 if u.path == "/api/info":
                     return self.send_json(dash.info())
+                if u.path == "/api/deps":
+                    if q.get("refresh"):
+                        dash.check_deps()
+                    return self.send_json(dash.deps_info())
                 if u.path == "/api/runs":
                     return self.send_json({"runs": dash.runs(), "jobs": dash.jobs[-10:]})
                 if u.path == "/api/state":
@@ -516,8 +609,10 @@ def make_handler(dash: Dashboard):
                     return self.send_json(dash.reproduce(a["run"], a["episode_file"], bool(a.get("view", True))))
                 if u.path == "/api/report":
                     return self.send_json(dash.report(a["run"]))
+                if u.path == "/api/install":
+                    return self.send_json(dash.install_deps())
                 if u.path == "/api/settings":
-                    dash.save_settings(godot=a.get("godot"), project=a.get("project"))
+                    dash.save_settings(godot=a.get("godot"), project=a.get("project"), python=a.get("python"))
                     return self.send_json(dash.settings)
                 self.send_json({"error": "not found"}, 404)
             except Exception as e:

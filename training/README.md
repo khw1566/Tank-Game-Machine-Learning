@@ -45,7 +45,7 @@ Python train.py ─┬─ GodotVecEnv ─ TCP ─ Godot #0 (training_env.tscn, -
 
 ## 설치 (Windows, 한 번만)
 
-1. Python 3.10~3.12 설치(python.org, "Add to PATH" 체크)
+1. Python 3.10~3.14 설치(python.org, "Add to PATH" 체크)
 2. 이 폴더에서:
    ```
    cd "C:\Users\work\Desktop\Tank Game Machine Learning\training\python"
@@ -84,6 +84,10 @@ cd "C:\Users\work\Desktop\Tank Game Machine Learning\training\python"
 .venv\Scripts\activate
 python dashboard.py                → 브라우저에 http://127.0.0.1:8765 이 열린다
 ```
+
+또는 `training\python\dashboard.bat` 더블클릭(`.venv` 가 있으면 그 Python 으로 실행).
+학습용 Python 에 필요한 패키지(numpy, gymnasium, stable-baselines3, torch)가 없으면 화면 맨 위에 알림이 뜨고 **"필수 패키지 설치"** 버튼으로 `pip install -r requirements.txt` 를 실행한다(처음 한 번, 수 분).
+학습용 Python 은 새 학습 창에서 지정할 수 있고, 비우면 `training\python\.venv` → 대시보드를 실행한 Python 순서로 고른다. Python 3.10~3.14 모두 Windows 용 torch(CPU) 휠이 있다.
 
 - **시작**: 오른쪽 위 "새 학습 / 이어서" → 게임 실행 파일(기본 `..\..\build\TankGame.exe`), 전차 하나 또는 교대, 환경 수, 시작 단계, 배속 제한 …
   보고 있는 실행이 멈춰 있으면 그 설정으로 "이어서"가 채워진다.
