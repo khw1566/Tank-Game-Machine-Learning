@@ -3,9 +3,13 @@ extends CharacterBody3D
 ## 게임 속 전차 1대. 제원(TankSpec) + 형상(TankShape) + 피해상태(TankDamageState) + 공용 조작(TankControlInput).
 ##
 ## 전차마다 다른 특성은 데이터로만 있지 않고 여기서 **물리·조작·사격에 강제**된다:
-##   - 차체가 지형 경사를 따라 기운다 → 포 고저각은 차체 기준이라, 내림각(−5° / −8° / −10°)이 헐다운 가능 여부를 정한다
-##   - 전진/후진 최고속도가 다르고, 전후진 전환은 멈춘 뒤 기어 변경 시간(direction_change_s)이 걸린다
-##   - 오르막 속도 손실(출력중량비), 조향 효율, 제자리 선회 가능 여부
+##   - 차체가 지형 굴곡·낮은 장애물(돌·통나무)을 따라 피치/롤로 기울고, 현가장치(스프링-감쇠)로 출렁인다.
+##     가감속하면 앞뒤로, 선회하면 옆으로 쏠린다(전차마다 고유진동수·감쇠가 다름: T-34 크리스티는 오래 출렁임)
+##     → 포 고저각·포탑 선회는 차체 기준이라, 차체가 기울면 같은 표적에도 포 각도를 다시 맞춰야 한다.
+##       내림각(−5° / −8° / −10°)이 헐다운 가능 여부를 정하고, 기운 차체에서 포탑을 오르막 쪽으로 돌리면 느려진다
+##   - 변속기: 실제 기어별 속도표 + 엔진 출력 → 견인력. 구름저항(접지압)·경사를 이겨야 다음 단으로 올라가고,
+##     변속 중에는 동력이 끊긴다(T-34 2→3단 3s). 전후진 전환은 멈춘 뒤 direction_change_s 가 걸린다
+##   - 넘을 수 있는 수직 장애물 높이, 조향 효율, 제자리 선회 가능 여부
 ##   - 조준 오차(mrad)가 이동·선회·포탑 선회·차체 흔들림으로 커지고, 멈추면 aim_time_s 시상수로 줄어든다
 ##   - 수직 안정장치(셔먼): 차체가 출렁여도 포의 월드 고저각 유지 + 이동 흔들림 감소
 ##   - 포탄은 포구초속에 따른 포물선으로 날아간다(공기저항 무시) → 고속 88mm 는 원거리에서 유리
@@ -23,9 +27,15 @@ const GRAVITY := 9.8
 ## 포탄 궤적 적분 간격(초). 0.1s ≈ 60~80m 구간마다 지형/전차 교차 검사
 const SHELL_STEP_S := 0.1
 ## 엔진 브레이크(스로틀을 놓았을 때 감속, m/s²)
-const COAST_DECEL := 2.0
-## 차체가 지형 경사를 따라가는 속도(1/s). 클수록 즉시 따라감
-const SUSPENSION_RATE := 8.0
+const COAST_DECEL := 1.0
+## 궤도·보기륜 회전 관성까지 포함한 유효 질량 배율
+const MASS_FACTOR := 1.2
+## 현가 적분 최대 간격(초). 학습 루프가 큰 delta 로 호출해도 안정하게 나눠 적분
+const SUSPENSION_SUBSTEP := 1.0 / 60.0
+## 궤도 반쪽(앞/뒤)마다 지면을 재는 위치(궤도 끝 = 1.0). 0.7m 간격이라 통나무 하나도 놓치지 않는다
+const SUPPORT_SAMPLES := [1.0, 0.75, 0.5, 0.25]
+## 차체 기울기 한계(°): 이 이상은 전복 대신 잘라 둔다
+const MAX_TILT_DEG := 40.0
 ## 그룹 이름: 포탄이 맞을 수 있는 전차 목록
 const GROUP := "tanks"
 
@@ -53,10 +63,32 @@ var track_speed_right := 0.0
 var heading := 0.0
 ## 차체 선회율(라디안/초, + = 좌)
 var yaw_rate := 0.0
-## 변속 상태: 1 = 전진, -1 = 후진, 0 = 기어 변경 중
+## 진행 방향: 1 = 전진, -1 = 후진, 0 = 전후진 전환 중
 var gear := 1
+## 전후진 전환 / 변속 남은 시간(초)
 var shift_timer := 0.0
 var _pending_gear := 1
+## 현재 단(1부터, 진행 방향의 기어표 기준)
+var gear_index := 1
+## 단 변경 중이면 목표 단(0 = 변속 안 함)
+var _shift_to := 0
+## 엔진 출력 비율(0~1): 스로틀 응답·변속 중 동력 단절
+var engine_output := 0.0
+## 엔진 회전 비율(0~1, 현재 단 최고속도 대비 속도) — HUD·관측용
+var engine_rpm_frac := 0.0
+## 현가 상태: 차체 피치/롤(라디안, 피치 + = 앞이 들림, 롤 + = 오른쪽이 들림)과 각속도
+var hull_pitch := 0.0
+var hull_roll := 0.0
+var _pitch_rate := 0.0
+var _roll_rate := 0.0
+## 지면이 요구하는 피치/롤(현가 목표, 관측용)
+var ground_pitch := 0.0
+var ground_roll := 0.0
+## 길이방향 가속도(m/s², 저역통과)
+var long_accel := 0.0
+## 마지막 지면 표본: Vector2i(좌-1/우+1, 앞-1/뒤+1) → 지지 높이
+var _support := {}
+var _prev_forward := 0.0
 ## 현재 조준 오차(분산 1σ, mrad). 발사 시 이 값으로 탄이 흩어진다.
 var aim_error_mrad := 1.0
 ## 지면 법선(부드럽게 따라감)
@@ -92,6 +124,7 @@ func setup(p_tank_id: String, p_team: int, p_seed := 0) -> void:
 	collision_mask = LAYER_GROUND | LAYER_TANKS
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	aim_error_mrad = spec.gun.dispersion_mrad
+	gear_index = spec.start_gear
 	add_to_group(GROUP)
 	_build_body()
 
@@ -102,7 +135,9 @@ func _build_body() -> void:
 	# 높이는 지면 표본으로 직접 맞추므로 지형과는 충돌시키지 않는다.
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	var y0 := 0.6
+	# 충돌 상자 바닥 = 넘을 수 있는 장애물 높이: 이보다 낮은 돌·통나무는 상자에 걸리지 않고
+	# 지면 표본(_follow_ground)에 잡혀 차체를 들어 올린다.
+	var y0 := spec.obstacle_step_m + 0.1
 	bs.size = Vector3(spec.hull_width, spec.hull_roof_y - y0, spec.hull_length * 0.95)
 	cs.shape = bs
 	cs.position = Vector3(0, (spec.hull_roof_y + y0) * 0.5, 0)
@@ -218,6 +253,8 @@ func step(delta: float) -> void:
 
 
 # ------------------------------------------------------------------ 기동
+## 기동 한 스텝: 전후진 선택 → 자동 변속 → 견인력(엔진 출력 / 기어 최고속도) − 저항(구름·경사) → 궤도 속도.
+## 궤도 명령은 "그 방향 최고속도 대비 목표 속도 비율"이다(키보드 1.0 = 낼 수 있는 만큼).
 func _drive(c: TankControlInput, delta: float) -> void:
 	var cmd := (c.left_track + c.right_track) * 0.5
 	var want := gear if gear != 0 else _pending_gear
@@ -225,44 +262,154 @@ func _drive(c: TankControlInput, delta: float) -> void:
 		want = 1
 	elif cmd < -0.05:
 		want = -1
-	var shifting := false
+	var reversing := false # 전후진 전환 중(동력 없음)
 	if gear != 0 and want != gear:
 		# 반대 방향으로 가려면 먼저 멈춰야 한다
-		shifting = true
+		reversing = true
 		if absf(track_speed_left) < 0.3 and absf(track_speed_right) < 0.3:
 			gear = 0
 			_pending_gear = want
+			_shift_to = 0
 			shift_timer = spec.direction_change_s
 	elif gear == 0:
-		shifting = true
+		reversing = true
 		_pending_gear = want
 		shift_timer -= delta
 		if shift_timer <= 0.0:
 			gear = _pending_gear
+			gear_index = spec.start_gear if gear > 0 else 1
 			shift_timer = 0.0
 
-	var fwd := -global_transform.basis.z
 	var g := gear if gear != 0 else _pending_gear
-	var vmax := spec.max_forward_mps() if g > 0 else spec.max_reverse_mps()
-	var climb := maxf(fwd.y * float(g), 0.0) # 진행 방향 오르막 sin
-	var slope_f := clampf(1.0 - spec.climb_penalty * climb, 0.15, 1.0)
+	var rev := g < 0
+	var table: Array = spec.reverse_gears_kmh if rev else spec.forward_gears_kmh
+	gear_index = clampi(gear_index, 1, table.size())
+	var dir_max := float(table[table.size() - 1]) / 3.6
+	var fwd := -global_transform.basis.z
+	var v := forward_speed()
+	var va := absf(v)
+	var sin_slope := fwd.y * float(g) # 진행 방향 오르막 sin
+	var m_eff := spec.mass_t * 1000.0 * MASS_FACTOR
+	var resist := spec.resistance_n(sin_slope)
 	var brake := c.brake
+	var want_speed := maxf(absf(c.left_track), absf(c.right_track)) * dir_max * (1.0 - brake)
+
+	# 자동 변속(같은 방향 안에서 단 올리기/내리기). 변속 중에는 동력이 끊긴다.
+	if not reversing:
+		if _shift_to != 0:
+			shift_timer -= delta
+			if shift_timer <= 0.0:
+				gear_index = _shift_to
+				_shift_to = 0
+				shift_timer = 0.0
+		elif va < 0.3 and absf(track_speed_left - track_speed_right) < 0.3:
+			# 정지 중에는 출발단으로(시간 없음). 오르막이라 출발단으로 못 움직이면 더 낮은 단에서 출발
+			gear_index = spec.start_gear if not rev else 1
+			while gear_index > 1 and spec.gear_force_n(gear_index, rev) < resist * 1.1:
+				gear_index -= 1
+		else:
+			_auto_shift(table, rev, va, want_speed, resist, m_eff)
+	var shifting := reversing or _shift_to != 0
+	var v_top := spec.gear_top_mps(gear_index, rev)
+
 	var tl := 0.0
 	var tr := 0.0
-	if not shifting:
-		tl = _track_target(c.left_track, g, vmax * slope_f) * damage.track_efficiency("left") * (1.0 - brake)
-		tr = _track_target(c.right_track, g, vmax * slope_f) * damage.track_efficiency("right") * (1.0 - brake)
-	var accel := spec.accel_mps2 * slope_f
-	var decel := COAST_DECEL + spec.brake_mps2 * (1.0 if shifting else brake)
-	track_speed_left = _approach(track_speed_left, tl, accel, decel, delta)
-	track_speed_right = _approach(track_speed_right, tr, accel, decel, delta)
-	var forward := (track_speed_left + track_speed_right) * 0.5
+	if not reversing:
+		tl = _track_target(c.left_track, g, dir_max)
+		tr = _track_target(c.right_track, g, dir_max)
+		# 현재 단 최고속도를 넘지 않게 두 궤도를 같은 비율로 줄인다(조향 비율 유지)
+		var peak := maxf(absf(tl), absf(tr))
+		if peak > v_top:
+			tl *= v_top / peak
+			tr *= v_top / peak
+		tl *= damage.track_efficiency("left") * (1.0 - brake)
+		tr *= damage.track_efficiency("right") * (1.0 - brake)
+	var need_power := not shifting and (_below(track_speed_left, tl) or _below(track_speed_right, tr))
+	# 엔진 출력: 스로틀 응답 시간으로 올라가고, 클러치를 끊으면(변속) 빠르게 떨어진다
+	if need_power:
+		engine_output = move_toward(engine_output, 1.0, delta / maxf(spec.engine_response_s, 0.05))
+	else:
+		engine_output = move_toward(engine_output, 0.0, delta / (0.15 if shifting else 0.5))
+	var force := engine_output * spec.gear_force_n(gear_index, rev)
+	var a_drive := (force - resist) / m_eff                    # 동력이 걸린 궤도의 가속(음수면 못 버팀)
+	# 동력 없이 굴러갈 때 감속: 저항 + (클러치가 붙어 있으면) 엔진 브레이크
+	var a_coast := maxf(resist, 0.0) / m_eff + (0.0 if shifting else COAST_DECEL)
+	var a_brake := a_coast + spec.brake_mps2 * (1.0 if reversing else brake)
+	track_speed_left = _track_step(track_speed_left, tl, a_drive, a_brake, delta)
+	track_speed_right = _track_step(track_speed_right, tr, a_drive, a_brake, delta)
+	engine_rpm_frac = clampf(absf(forward_speed()) / maxf(v_top, 0.1), 0.0, 1.0)
+	var forward := forward_speed()
 	yaw_rate = (track_speed_right - track_speed_left) / spec.track_gauge_m * spec.steer_efficiency
 	heading = wrapf(heading + yaw_rate * delta, -PI, PI)
+	long_accel = lerpf(long_accel, (forward - _prev_forward) / maxf(delta, 1e-4), clampf(delta * 10.0, 0.0, 1.0))
+	_prev_forward = forward
 	# 경사면을 따라 간 거리의 수평 성분만큼 이동(높이는 _follow_ground 가 지면에 맞춤)
 	velocity = Vector3(-sin(heading), 0, -cos(heading)) * forward * sqrt(maxf(1.0 - fwd.y * fwd.y, 0.0))
+	if _step_blocked(signf(forward), absf(forward) * delta):
+		velocity = Vector3.ZERO
+		track_speed_left = 0.0
+		track_speed_right = 0.0
 	_slide(velocity * delta)
 	_follow_ground(delta)
+
+
+## 진행 방향 궤도 앞끝 바로 앞의 높이를 재서, 지금 궤도가 딛고 있는 높이보다 obstacle_step_m 이상 높으면 막힘.
+## (돌·통나무·턱처럼 충돌 상자 아래로 들어오는 낮은 장애물에 대한 수직 장애물 한계)
+func _step_blocked(dir: float, dist: float) -> bool:
+	if dir == 0.0 or not is_inside_tree() or _support.is_empty():
+		return false
+	var space := get_world_3d().direct_space_state
+	var hx := spec.hull_width * 0.5 - spec.track_width * 0.5
+	var half := -1 if dir > 0.0 else 1 # 앞(-Z) 또는 뒤
+	var z := float(half) * (spec.track_length * 0.5 + 0.05 + dist)
+	for side in [-1, 1]:
+		var p: Vector3 = global_transform * Vector3(side * hx, 0.0, z)
+		var base: float = _support[Vector2i(side, half)]
+		var top := Vector3(p.x, base + spec.obstacle_step_m + 1.0, p.z)
+		var q := PhysicsRayQueryParameters3D.create(top, Vector3(p.x, base - 3.0, p.z), LAYER_GROUND, [get_rid()])
+		var hit := space.intersect_ray(q)
+		if not hit.is_empty() and hit.position.y - base > spec.obstacle_step_m:
+			return true
+	return false
+
+
+## 조종수의 자동 변속 판단.
+##  올림: 현재 단 최고속도 근처 + 더 빨리 가고 싶음 + 다음 단 견인력이 저항을 이김
+##        + 변속하는 동안(동력 단절) 속도를 너무 잃지 않음 → 그래서 T-34 는 오르막에서 2단에 머문다
+##  내림: 현재 단으로 저항을 못 이기는데 속도가 아래 단 영역까지 떨어짐, 또는 속도가 아주 낮아짐
+func _auto_shift(table: Array, rev: bool, va: float, want_speed: float, resist: float, m_eff: float) -> void:
+	var n := table.size()
+	var vt := spec.gear_top_mps(gear_index, rev)
+	if gear_index < n and va >= 0.95 * vt and want_speed > vt * 1.02:
+		var t_shift := spec.shift_time(gear_index, gear_index + 1)
+		var v_after := va - maxf(resist, 0.0) / m_eff * t_shift # 클러치를 끊으면 저항만 감속
+		if spec.gear_force_n(gear_index + 1, rev) > resist * 1.05 and v_after > 0.55 * vt:
+			_begin_shift(gear_index + 1)
+	elif gear_index > 1:
+		var vp := spec.gear_top_mps(gear_index - 1, rev)
+		var lugging := spec.gear_force_n(gear_index, rev) < resist and va < 0.95 * vp
+		var low := gear_index > (1 if rev else spec.start_gear) and va < 0.45 * vp
+		if lugging or low:
+			_begin_shift(gear_index - 1)
+
+
+func _begin_shift(to_gear: int) -> void:
+	shift_timer = spec.shift_time(gear_index, to_gear)
+	_shift_to = to_gear
+
+
+## 궤도 속도 s 가 목표 t 쪽으로 더 빨라져야 하나(동력 필요)
+static func _below(s: float, t: float) -> bool:
+	return absf(t) > absf(s) + 1e-3 and (signf(t) == signf(s) or absf(s) < 1e-3)
+
+
+## 궤도 하나의 속도 갱신: 목표보다 느리면 견인 가속(a_drive), 빠르거나 반대면 감속(a_brake)
+static func _track_step(s: float, t: float, a_drive: float, a_brake: float, delta: float) -> float:
+	if _below(s, t):
+		if a_drive >= 0.0:
+			return move_toward(s, t, a_drive * delta)
+		return move_toward(s, 0.0, -a_drive * delta) # 견인력 부족: 속도가 떨어짐
+	return move_toward(s, t, a_brake * delta)
 
 
 ## 수평 이동 + 장애물(바위·나무·전차)에 미끄러짐. step(delta) 의 delta 를 그대로 쓰므로
@@ -296,48 +443,67 @@ func _track_target(cmd: float, g: int, vmax: float) -> float:
 	return 0.0 # 반대 궤도는 브레이크만 걸림(그쪽을 축으로 선회)
 
 
-static func _approach(v: float, target: float, accel: float, decel: float, delta: float) -> float:
-	# 같은 방향으로 더 빨라질 때만 가속, 그 외(감속·역방향)는 감속률
-	var speeding_up := absf(target) > absf(v) and signf(target) == signf(v) or is_zero_approx(v)
-	return move_toward(v, target, (accel if speeding_up else decel) * delta)
-
-
-## 궤도 네 모서리 아래 지면을 표본 → 높이와 기울기(차체가 경사를 따라감)
+## 궤도 아래 지면 표본 → 지면이 요구하는 피치/롤(ground_pitch/roll)과 높이.
+## 궤도마다 앞/뒤 절반에서 각각 4점씩 재고 가장 높은 곳을 지지점으로 본다 → 한쪽 궤도로 돌·통나무를 타면 그쪽이 들림.
+## 실제 차체 자세는 현가장치 스프링-감쇠 모델로 이 목표를 따라가고, 가감속·선회 관성으로 출렁인다.
 func _follow_ground(delta: float, snap := false) -> void:
 	var space := get_world_3d().direct_space_state if is_inside_tree() else null
-	var yaw_b := Basis(Vector3.UP, heading)
 	var hx := spec.hull_width * 0.5 - spec.track_width * 0.5
 	var hz := spec.track_length * 0.45
-	var pts := []
+	var xf := global_transform
+	var lift := spec.obstacle_step_m + 0.8
+	var h := {}
 	var ok := space != null
 	if ok:
-		for off in [Vector3(-hx, 0, -hz), Vector3(hx, 0, -hz), Vector3(-hx, 0, hz), Vector3(hx, 0, hz)]:
-			var p: Vector3 = global_position + yaw_b * off
-			var q := PhysicsRayQueryParameters3D.create(p + Vector3.UP * 6.0, p + Vector3.DOWN * 12.0, LAYER_GROUND, [get_rid()])
-			var hit := space.intersect_ray(q)
-			if hit.is_empty():
-				ok = false
-				break
-			pts.append(hit.position)
-	var n := Vector3.UP
+		for side in [-1, 1]:
+			for half in [-1, 1]: # -1 = 앞, +1 = 뒤
+				var best := -INF
+				for k in SUPPORT_SAMPLES:
+					var lp := Vector3(side * hx, 0.0, half * hz * k)
+					var p: Vector3 = xf * lp
+					var q := PhysicsRayQueryParameters3D.create(p + Vector3.UP * lift, p + Vector3.DOWN * 10.0, LAYER_GROUND, [get_rid()])
+					var hit := space.intersect_ray(q)
+					if not hit.is_empty():
+						best = maxf(best, hit.position.y)
+				if best == -INF:
+					ok = false
+				h[Vector2i(side, half)] = best
+	var span_z := hz * 1.25
 	if ok:
-		var front: Vector3 = (pts[0] + pts[1]) * 0.5
-		var rear: Vector3 = (pts[2] + pts[3]) * 0.5
-		var left: Vector3 = (pts[0] + pts[2]) * 0.5
-		var right: Vector3 = (pts[1] + pts[3]) * 0.5
-		n = (right - left).cross(front - rear).normalized()
-		if n.y < 0.0:
-			n = -n
-		var h: float = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) * 0.25
-		global_position.y = h
+		var front: float = (h[Vector2i(-1, -1)] + h[Vector2i(1, -1)]) * 0.5
+		var rear: float = (h[Vector2i(-1, 1)] + h[Vector2i(1, 1)]) * 0.5
+		var left: float = (h[Vector2i(-1, -1)] + h[Vector2i(-1, 1)]) * 0.5
+		var right: float = (h[Vector2i(1, -1)] + h[Vector2i(1, 1)]) * 0.5
+		_support = h
+		ground_pitch = atan2(front - rear, span_z)
+		ground_roll = atan2(right - left, 2.0 * hx)
+		global_position.y = (front + rear) * 0.5
 	elif is_inside_tree():
 		global_position.y -= 5.0 * delta # 지면 밖: 천천히 낙하
-	ground_normal = n if snap else ground_normal.slerp(n, clampf(delta * SUSPENSION_RATE, 0.0, 1.0)).normalized()
-	var flat_fwd := yaw_b * Vector3.FORWARD
-	var up := ground_normal
-	var f := (flat_fwd - up * flat_fwd.dot(up)).normalized()
-	var r := f.cross(up).normalized()
-	global_transform.basis = Basis(r, up, -f)
+	# 관성: 가속하면 앞이 들리고(제동 시 숙여짐), 선회하면 바깥쪽으로 기운다
+	var a_lat := forward_speed() * yaw_rate # 좌측(+) 구심가속
+	var tp := ground_pitch + deg_to_rad(spec.suspension_pitch_deg_per_mps2) * clampf(long_accel, -8.0, 8.0)
+	var tr := ground_roll - deg_to_rad(spec.suspension_roll_deg_per_mps2) * clampf(a_lat, -6.0, 6.0)
+	if snap:
+		hull_pitch = tp
+		hull_roll = tr
+		_pitch_rate = 0.0
+		_roll_rate = 0.0
+	else:
+		var w := TAU * spec.suspension_freq_hz
+		var z := spec.suspension_damping
+		var n := maxi(1, ceili(delta / SUSPENSION_SUBSTEP))
+		var dt := delta / n
+		for i in n:
+			_pitch_rate += (w * w * (tp - hull_pitch) - 2.0 * z * w * _pitch_rate) * dt
+			_roll_rate += (w * w * (tr - hull_roll) - 2.0 * z * w * _roll_rate) * dt
+			hull_pitch += _pitch_rate * dt
+			hull_roll += _roll_rate * dt
+	var lim := deg_to_rad(MAX_TILT_DEG)
+	hull_pitch = clampf(hull_pitch, -lim, lim)
+	hull_roll = clampf(hull_roll, -lim, lim)
+	global_transform.basis = Basis(Vector3.UP, heading) * Basis(Vector3.RIGHT, hull_pitch) * Basis(Vector3.BACK, hull_roll)
+	ground_normal = global_transform.basis.y
 
 
 # ------------------------------------------------------------------ 포탑·포
@@ -357,10 +523,36 @@ func _stabilize(pitch_before: float, delta: float) -> void:
 
 
 func _aim(c: TankControlInput, delta: float) -> void:
-	turret_yaw = wrapf(turret_yaw - c.turret_traverse * deg_to_rad(damage.traverse_rate_deg_s()) * delta, -PI, PI)
+	turret_yaw = wrapf(turret_yaw - c.turret_traverse * deg_to_rad(traverse_rate_deg_s(c.turret_traverse)) * delta, -PI, PI)
 	gun_pitch = clampf(gun_pitch + c.gun_elevation * deg_to_rad(damage.elevation_rate_deg_s()) * delta,
 		deg_to_rad(spec.gun_depression_deg), deg_to_rad(spec.gun_elevation_max_deg))
 	_sync_turret()
+
+
+## 지금 자세에서 포탑 선회속도(°/s). 차체가 기울면 포탑 무게 때문에 "오르막 쪽"으로 돌릴 때 느려지고
+## 내리막 쪽은 빨라진다. direction: 조작 부호(+ = 우선회).
+func traverse_rate_deg_s(direction: float) -> float:
+	var base := damage.traverse_rate_deg_s()
+	if absf(direction) < 1e-3:
+		return base
+	var up := global_transform.basis.y
+	var tilt := sqrt(maxf(1.0 - up.y * up.y, 0.0)) # sin(차체 기울기)
+	if tilt < 1e-3:
+		return base
+	# 포탑이 도는 방향으로 포 축이 얼마나 올라가나(+ = 오르막 쪽으로 돌림)
+	var yaw_dir := -signf(direction)
+	var a := global_transform.basis * (Basis(Vector3.UP, turret_yaw) * Vector3.FORWARD)
+	var b := global_transform.basis * (Basis(Vector3.UP, turret_yaw + yaw_dir * 0.05) * Vector3.FORWARD)
+	var climb := clampf((b.y - a.y) / (0.05 * tilt), -1.0, 1.0)
+	return base * clampf(1.0 - spec.traverse_slope_penalty * tilt * climb, 0.25, 1.6)
+
+
+## 지금 포탑 방향에서 포가 겨눌 수 있는 월드 고저각 범위(°). 차체가 앞으로 숙이면 둘 다 내려간다.
+func gun_world_limits_deg() -> Vector2:
+	var b := global_transform.basis * Basis(Vector3.UP, turret_yaw)
+	var lo := b * (Basis(Vector3.RIGHT, deg_to_rad(spec.gun_depression_deg)) * Vector3.FORWARD)
+	var hi := b * (Basis(Vector3.RIGHT, deg_to_rad(spec.gun_elevation_max_deg)) * Vector3.FORWARD)
+	return Vector2(rad_to_deg(asin(clampf(lo.y, -1, 1))), rad_to_deg(asin(clampf(hi.y, -1, 1))))
 
 
 ## 조준 오차 갱신: 움직이면 즉시 커지고, 멈추면 정지 분산까지 지수적으로 줄어든다.
@@ -550,6 +742,16 @@ func hull_roll_deg() -> float:
 	return rad_to_deg(asin(clampf(global_transform.basis.x.y, -1.0, 1.0)))
 
 
+## HUD·로그용 변속 상태: "전진 3단", "후진 1단", "변속 2→3", "전후진 전환"
+func gear_label() -> String:
+	if gear == 0:
+		return "전후진 전환"
+	var d := "전진" if gear > 0 else "후진"
+	if _shift_to != 0:
+		return "%s 변속 %d→%d" % [d, gear_index, _shift_to]
+	return "%s %d단" % [d, gear_index]
+
+
 ## 차체 기준 진행 속도(m/s, + = 전진)
 func forward_speed() -> float:
 	return (track_speed_left + track_speed_right) * 0.5
@@ -560,6 +762,8 @@ const OBSERVATION_LABELS := [
 	"speed_norm", "gear", "shifting", "yaw_rate_norm", "hull_pitch_norm", "hull_roll_norm",
 	"turret_yaw_sin", "turret_yaw_cos", "gun_pitch_norm", "depression_margin_norm",
 	"aim_error_norm", "reload_frac",
+	"gear_index_norm", "engine_rpm_frac", "ground_pitch_norm", "ground_roll_norm",
+	"gun_world_min_norm", "gun_world_max_norm",
 ]
 
 
@@ -567,6 +771,7 @@ func observation() -> PackedFloat32Array:
 	var dep := deg_to_rad(spec.gun_depression_deg)
 	var ele := deg_to_rad(spec.gun_elevation_max_deg)
 	var reload_total := damage.reload_time_s()
+	var lim := gun_world_limits_deg()
 	return PackedFloat32Array([
 		forward_speed() / spec.max_forward_mps(),
 		float(gear),
@@ -579,6 +784,12 @@ func observation() -> PackedFloat32Array:
 		clampf((gun_pitch - dep) / deg_to_rad(10.0), 0.0, 1.0),
 		clampf(aim_error_mrad / 10.0, 0.0, 1.0),
 		0.0 if is_inf(reload_total) else clampf(reload_timer / reload_total, 0.0, 1.0),
+		float(gear_index) / float((spec.forward_gears_kmh if gear >= 0 else spec.reverse_gears_kmh).size()),
+		engine_rpm_frac,
+		clampf(rad_to_deg(ground_pitch) / 30.0, -1.0, 1.0),
+		clampf(rad_to_deg(ground_roll) / 30.0, -1.0, 1.0),
+		clampf(lim.x / 30.0, -1.0, 1.0),
+		clampf(lim.y / 30.0, -1.0, 1.0),
 	])
 
 
@@ -591,7 +802,10 @@ func state_dict() -> Dictionary:
 		"turret_yaw_deg": snappedf(rad_to_deg(turret_yaw), 0.1),
 		"gun_pitch_deg": snappedf(rad_to_deg(gun_pitch), 0.1),
 		"track_speed": [snappedf(track_speed_left, 0.01), snappedf(track_speed_right, 0.01)],
-		"gear": gear, "shift_timer": snappedf(shift_timer, 0.01),
+		"gear": gear, "gear_index": gear_index, "gear_label": gear_label(),
+		"shift_timer": snappedf(shift_timer, 0.01), "engine_output": snappedf(engine_output, 0.01),
+		"ground_pitch_deg": snappedf(rad_to_deg(ground_pitch), 0.1), "ground_roll_deg": snappedf(rad_to_deg(ground_roll), 0.1),
+		"gun_world_limits_deg": [snappedf(gun_world_limits_deg().x, 0.1), snappedf(gun_world_limits_deg().y, 0.1)],
 		"aim_error_mrad": snappedf(aim_error_mrad, 0.01),
 		"reload_timer": snappedf(reload_timer, 0.01), "ammo": current_shell().shell_name,
 		"control": control.to_dict(), "damage": damage.to_dict(),

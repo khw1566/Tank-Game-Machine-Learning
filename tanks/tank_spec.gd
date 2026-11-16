@@ -84,11 +84,11 @@ var barrel_length: float = 3.5
 var armor: Dictionary = {}
 
 # ---------------------------------------------------------------- 기동
-## 야지 최고속도: 전진 / 후진 (km/h)
+## 최고속도: 전진 / 후진 (km/h). 변속기 최고단 속도(기어표에서 계산, 호환용 필드).
+## 야지에서 실제로 낼 수 있는 속도는 출력·구름저항·경사로 정해진다(Tank._drive).
 var max_forward_kmh: float = 25.0
 var max_reverse_kmh: float = 8.0
-## 가속(m/s²) / 브레이크 감속(m/s²)
-var accel_mps2: float = 1.5
+## 브레이크 감속(m/s²)
 var brake_mps2: float = 6.0
 ## 전진 ↔ 후진 전환 시 완전히 멈춘 뒤 기어를 바꾸는 데 걸리는 시간(초)
 var direction_change_s: float = 1.0
@@ -96,8 +96,31 @@ var direction_change_s: float = 1.0
 var steer_efficiency: float = 0.35
 ## 제자리 선회(양쪽 궤도 역회전) 가능 여부. 불가면 반대 궤도는 멈추기만 한다.
 var neutral_steer: bool = false
-## 오르막 속도 손실 계수. 최고속도 × (1 − 계수 × sin(경사)). 출력중량비가 낮을수록 크다.
-var climb_penalty: float = 1.5
+
+# ---------------------------------------------------------------- 변속기·엔진
+## 기어별 최고속도(km/h, 엔진 정격 회전수 기준). 실제 변속기 기어비에서 계산한 값.
+var forward_gears_kmh: Array = [5.0, 10.0, 25.0]
+var reverse_gears_kmh: Array = [5.0]
+## 출발 기어(전진). 실제 조종수가 보통 쓰던 출발단.
+var start_gear: int = 1
+## 기어 하나 바꾸는 데 걸리는 시간(초). 이동 중 이 시간 동안 동력이 끊긴다.
+var shift_time_s: float = 1.0
+## 특정 변속만 다른 시간: {"2>3": 3.0} (위로/아래로 각각)
+var shift_time_overrides: Dictionary = {}
+## 엔진 반응 시간(초): 스로틀을 열고 나서 최대 견인력까지
+var engine_response_s: float = 1.0
+## 접지압(kg/cm²). 클수록 야지 구름저항이 커진다(넓은 궤도 = 유리).
+var ground_pressure_kgcm2: float = 0.9
+## 넘을 수 있는 수직 장애물 높이(m). 이보다 낮은 돌·통나무는 타고 넘으며 차체가 기운다.
+var obstacle_step_m: float = 0.6
+
+# ---------------------------------------------------------------- 현가장치(차체 출렁임)
+## 피치/롤 고유진동수(Hz)와 감쇠비(0~1). 낮은 감쇠 = 오래 출렁임.
+var suspension_freq_hz: float = 1.0
+var suspension_damping: float = 0.3
+## 가감속 1 m/s² 당 차체 피치(°, 가속 시 앞이 들림·제동 시 앞이 숙여짐) / 선회 원심가속 1 m/s² 당 롤(°)
+var suspension_pitch_deg_per_mps2: float = 0.5
+var suspension_roll_deg_per_mps2: float = 0.4
 
 # ---------------------------------------------------------------- 포·사격
 ## 기본 탄(ammo_types[0])
@@ -105,6 +128,9 @@ var gun: GunSpec
 ## 이 전차가 쓸 수 있는 탄종 목록(포 공통값은 같고 탄만 다름)
 var ammo_types: Array = []
 var turret_traverse_deg_s: float = 15.0
+## 차체가 기울었을 때 포탑을 "오르막 쪽"으로 돌리면 느려지고 내리막 쪽은 빨라지는 정도.
+## 선회속도 × (1 − 계수 × sin(기울기) × 방향). 포탑이 무겁고 선회장치가 약할수록 크다.
+var traverse_slope_penalty: float = 2.0
 var gun_elevation_rate_deg_s: float = 4.0
 ## 포 내림 한계(음수) / 올림 한계 (차체 기준 °). 헐다운 가능 여부를 정한다.
 var gun_depression_deg: float = -8.0
@@ -189,6 +215,56 @@ func power_to_weight() -> float:
 	return engine_hp / maxf(mass_t, 0.001)
 
 
+## 동력 전달 효율(엔진 → 궤도). 변속기·조향장치·궤도 손실 포함.
+const DRIVE_EFFICIENCY := 0.6
+## 접지 마찰 한계(견인력 상한 = μ × 중량)
+const TRACTION_MU := 0.6
+const G := 9.8
+
+
+## 야지 구름저항 계수: 단단한 땅 0.045 + 접지압에 비례하는 침하 손실
+func rolling_resistance() -> float:
+	return 0.045 + 0.025 * ground_pressure_kgcm2
+
+
+## 궤도에 전달되는 엔진 출력(W)
+func drive_power_w() -> float:
+	return engine_hp * 745.7 * DRIVE_EFFICIENCY
+
+
+## 기어 i(1부터)의 견인력(N). 엔진 토크가 대략 일정하다고 보고 정격출력 / 그 기어 최고속도.
+func gear_force_n(gear_index: int, reverse := false) -> float:
+	var table := reverse_gears_kmh if reverse else forward_gears_kmh
+	var v := float(table[clampi(gear_index, 1, table.size()) - 1]) / 3.6
+	return minf(drive_power_w() / maxf(v, 0.1), TRACTION_MU * mass_t * 1000.0 * G)
+
+
+## 기어 i 최고속도(m/s)
+func gear_top_mps(gear_index: int, reverse := false) -> float:
+	var table := reverse_gears_kmh if reverse else forward_gears_kmh
+	return float(table[clampi(gear_index, 1, table.size()) - 1]) / 3.6
+
+
+## 변속 시간(초): from → to
+func shift_time(from_gear: int, to_gear: int) -> float:
+	return float(shift_time_overrides.get("%d>%d" % [from_gear, to_gear], shift_time_s))
+
+
+## 주행 저항(N): 구름저항 + 경사(sin_slope > 0 = 오르막)
+func resistance_n(sin_slope: float) -> float:
+	return mass_t * 1000.0 * G * (rolling_resistance() + sin_slope)
+
+
+## 일정한 경사(°)에서 계속 낼 수 있는 최고속도(km/h): 저항을 이기는 가장 높은 기어의 최고속도
+func sustained_speed_kmh(slope_deg: float) -> float:
+	var r := resistance_n(sin(deg_to_rad(slope_deg)))
+	var best := 0.0
+	for i in forward_gears_kmh.size():
+		if gear_force_n(i + 1) > r:
+			best = float(forward_gears_kmh[i])
+	return best
+
+
 func to_dict() -> Dictionary:
 	var crew_out := []
 	for c in crew:
@@ -220,12 +296,24 @@ func to_dict() -> Dictionary:
 		"armor": armor,
 		"mobility": {
 			"max_forward_kmh": max_forward_kmh, "max_reverse_kmh": max_reverse_kmh,
-			"accel_mps2": accel_mps2, "brake_mps2": brake_mps2,
+			"brake_mps2": brake_mps2,
 			"direction_change_s": direction_change_s, "steer_efficiency": steer_efficiency,
-			"neutral_steer": neutral_steer, "climb_penalty": climb_penalty,
+			"neutral_steer": neutral_steer,
+			"forward_gears_kmh": forward_gears_kmh, "reverse_gears_kmh": reverse_gears_kmh,
+			"start_gear": start_gear, "shift_time_s": shift_time_s, "shift_time_overrides": shift_time_overrides,
+			"engine_response_s": engine_response_s, "ground_pressure_kgcm2": ground_pressure_kgcm2,
+			"rolling_resistance": snappedf(rolling_resistance(), 0.0001),
+			"obstacle_step_m": obstacle_step_m,
+			"offroad_top_kmh": snappedf(sustained_speed_kmh(0.0), 0.1),
+			"top_kmh_on_5deg": snappedf(sustained_speed_kmh(5.0), 0.1),
+			"top_kmh_on_10deg": snappedf(sustained_speed_kmh(10.0), 0.1),
+		},
+		"suspension": {
+			"freq_hz": suspension_freq_hz, "damping": suspension_damping,
+			"pitch_deg_per_mps2": suspension_pitch_deg_per_mps2, "roll_deg_per_mps2": suspension_roll_deg_per_mps2,
 		},
 		"gunnery": {
-			"turret_traverse_deg_s": turret_traverse_deg_s,
+			"turret_traverse_deg_s": turret_traverse_deg_s, "traverse_slope_penalty": traverse_slope_penalty,
 			"gun_elevation_rate_deg_s": gun_elevation_rate_deg_s,
 			"gun_depression_deg": gun_depression_deg, "gun_elevation_max_deg": gun_elevation_max_deg,
 			"stabilizer_vertical": stabilizer_vertical, "stabilizer_efficiency": stabilizer_efficiency,

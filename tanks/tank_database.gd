@@ -121,19 +121,32 @@ static func tiger1() -> TankSpec:
 		"turret_front": {"t": 100.0}, "turret_side": {"t": 80.0}, "turret_rear": {"t": 80.0}, "turret_top": {"t": 25.0},
 		"mantlet": {"t": 120.0}, "gun_barrel": {"t": 0.0}, "track": {"t": 0.0},
 	}
-	# 기동: 느리고 무겁다. 대신 반자동 프리셀렉터 변속기 → 전후진 전환이 빠르고 후진도 쓸 만함, 제자리 선회 가능.
-	s.max_forward_kmh = 20.0
-	s.max_reverse_kmh = 9.0
-	s.accel_mps2 = 0.9
+	# 기동: 무겁다(57t, 11.4 hp/t). Maybach OLVAR 반자동 유압 프리셀렉터 변속기 전진 8단·후진 4단
+	# → 변속이 빠르고(0.6s) 후진도 4단까지 있어 9.2km/h, 전후진 전환 빠름. L600C 조향 → 제자리 선회 가능.
+	# 기어별 속도: 엔진 3000rpm 기준(Tiger I Information Center). 야지에서는 6단(20.9km/h)이 한계.
+	s.forward_gears_kmh = [2.8, 4.3, 6.2, 9.2, 14.1, 20.9, 30.5, 45.4]
+	s.reverse_gears_kmh = [2.8, 4.3, 6.2, 9.2]
+	s.max_forward_kmh = 45.4
+	s.max_reverse_kmh = 9.2
+	s.start_gear = 2
+	s.shift_time_s = 0.6
+	s.engine_response_s = 1.2
+	s.ground_pressure_kgcm2 = 1.05 # 전투용 725mm 궤도
+	s.obstacle_step_m = 0.79
 	s.brake_mps2 = 5.0
 	s.direction_change_s = 0.8
 	s.steer_efficiency = 0.22
 	s.neutral_steer = true
-	s.climb_penalty = 1.7          # 출력중량비 11.4 hp/t → 오르막에서 크게 느려짐
+	# 현가: 교차배치 보기륜 + 토션바 + 앞뒤 완충기 → 부드럽고 출렁임이 빨리 가라앉음
+	s.suspension_freq_hz = 0.8
+	s.suspension_damping = 0.5
+	s.suspension_pitch_deg_per_mps2 = 0.25
+	s.suspension_roll_deg_per_mps2 = 0.25
 	# 포·사격: 정지 사격은 최고(작은 분산·좋은 조준경), 포탑은 매우 느림, 안정장치 없음.
 	s.gun = g
 	s.ammo_types = [g, g40, ghe]
 	s.turret_traverse_deg_s = 6.0
+	s.traverse_slope_penalty = 2.5 # 무거운 포탑(11t), 유압 선회는 엔진 회전수에 의존 → 경사에서 크게 느려짐
 	s.gun_elevation_rate_deg_s = 4.0
 	s.gun_depression_deg = -8.0
 	s.gun_elevation_max_deg = 15.0
@@ -168,7 +181,9 @@ static func tiger1() -> TankSpec:
 		"정면 장갑 100~120mm: 연합군 75/76mm 는 정면을 어떤 거리에서도 못 뚫음 → 정면을 적에게 두고 30~45° 비스듬히",
 		"88mm: 포구초속 773m/s(평탄한 탄도), 분산 0.30mrad, 조준 1.8s → 1000m 이상 원거리 정지 사격이 강점",
 		"포탑 선회 6°/s(360°에 60초): 측면으로 돌아오는 적에 대응이 늦음 → 차체를 돌려 대응해야 함",
-		"최고 20km/h, 가속 0.9m/s², 오르막에서 크게 느려짐. 대신 제자리 선회 가능, 전후진 전환 0.8s",
+		"8+4단 프리셀렉터: 도로 45km/h 지만 야지는 6단 20.9km/h 가 한계, 오르막에서 크게 느려짐(11.4hp/t)",
+		"변속 0.6s·후진 4단 9.2km/h·전후진 전환 0.8s·제자리 선회 → 후진·자세 전환은 셋 중 가장 좋음",
+		"0.79m 장애물까지 넘음. 무겁고 감쇠 좋은 토션바 현가 → 출렁임이 빨리 가라앉음",
 	]
 	s.notes = "넓고 각진 상자형 실루엣(피탄면적 큼). 측면 하부 60mm 가 약점이지만 대형 보기륜·궤도가 15mm 만큼 막아 준다."
 	return s
@@ -254,19 +269,33 @@ static func sherman75() -> TankSpec:
 		"turret_front": {"t": 76.0}, "turret_side": {"t": 51.0}, "turret_rear": {"t": 51.0}, "turret_top": {"t": 25.0},
 		"mantlet": {"t": 89.0}, "gun_barrel": {"t": 0.0}, "track": {"t": 0.0},
 	}
-	# 기동: 중간. 후진도 무난(12km/h), 제어차동식 조향(제자리 선회 불가).
-	s.max_forward_kmh = 26.0
-	s.max_reverse_kmh = 12.0
-	s.accel_mps2 = 1.4
+	# 기동: 30.3t, 400hp(13.2 hp/t). 동기물림 5단 + 후진 1단(기어비 7.56/3.11/1.78/1.11/0.73, R 5.65),
+	# 조속기 2400rpm 에서 5단 38.6km/h(24mph) → 기어별 속도는 기어비로 환산. 후진은 1단뿐이라 5.0km/h.
+	# 1단은 비동기(비상용 저단) → 보통 2단 출발. 후진 기어도 비동기라 멈춘 뒤 넣어야 한다.
+	# 제어차동식 조향(제자리 선회 불가).
+	s.forward_gears_kmh = [3.7, 9.1, 15.8, 25.4, 38.6]
+	s.reverse_gears_kmh = [5.0]
+	s.max_forward_kmh = 38.6
+	s.max_reverse_kmh = 5.0
+	s.start_gear = 2
+	s.shift_time_s = 1.0
+	s.engine_response_s = 0.8
+	s.ground_pressure_kgcm2 = 0.96 # 16.5인치(420mm) 좁은 궤도
+	s.obstacle_step_m = 0.61
 	s.brake_mps2 = 6.0
-	s.direction_change_s = 1.2
+	s.direction_change_s = 1.5
 	s.steer_efficiency = 0.18
 	s.neutral_steer = false
-	s.climb_penalty = 1.45
+	# 현가: VVSS(수직 볼류트 스프링 보기) → 단단하고 통통 튐
+	s.suspension_freq_hz = 1.3
+	s.suspension_damping = 0.3
+	s.suspension_pitch_deg_per_mps2 = 0.3
+	s.suspension_roll_deg_per_mps2 = 0.3
 	# 포·사격: 포 내림 −10°(헐다운 핵심), 빠른 동력 선회, 수직 1축 안정장치 → 기동간 사격.
 	s.gun = g
 	s.ammo_types = [g, g72, ghe]
 	s.turret_traverse_deg_s = 24.0
+	s.traverse_slope_penalty = 1.5 # 유압(Oilgear) 동력 선회가 강함 → 경사 영향 적음
 	s.gun_elevation_rate_deg_s = 5.0
 	s.gun_depression_deg = -10.0
 	s.gun_elevation_max_deg = 25.0
@@ -302,6 +331,7 @@ static func sherman75() -> TankSpec:
 		"높은 차체(지붕 1.95m) + 포 내림 −10° → 능선 뒤에 차체를 숨기고 포탑만 내미는 헐다운이 가장 쉬움",
 		"수직 1축 안정장치: 차체가 출렁여도 포 고저각 유지, 기동 중 조준 흔들림 35% 로 감소 → 기동간 사격",
 		"포탑 선회 24°/s: 측면으로 빠르게 돌며 쏘는 기동전에 유리",
+		"5+1단: 야지 4단 25.4km/h, 후진 1단 5.0km/h 뿐 → 물러날 때 가장 느림. 넘는 장애물 0.61m(가장 낮음)",
 		"75mm 는 티거 정면 불가 → 헐다운으로 버티며 다른 전차가 측면을 잡게 하거나 근접 측면 공격",
 	]
 	s.notes = "피탄면적은 셋 중 가장 크고(특히 높이) 장갑은 얇다. 대신 헐다운하면 포탑(76mm@30°)+포방패만 노출된다."
@@ -388,20 +418,35 @@ static func t34_76() -> TankSpec:
 		"turret_front": {"t": 52.0}, "turret_side": {"t": 52.0}, "turret_rear": {"t": 52.0}, "turret_top": {"t": 20.0},
 		"mantlet": {"t": 60.0}, "gun_barrel": {"t": 0.0}, "track": {"t": 0.0},
 	}
-	# 기동: 전진 최고속도·가속 최고. 후진은 5km/h, 4단 변속기라 전후진 전환에 2.5s,
-	# 클러치-브레이크 조향이라 선회 효율이 낮다.
-	s.max_forward_kmh = 34.0
-	s.max_reverse_kmh = 5.0
-	s.accel_mps2 = 1.9
+	# 기동: 28.5t, V-2 디젤 500hp(17.5 hp/t) → 오르막·가속은 최고. 미끄럼물림(비동기) 4단 + 후진 1단.
+	# 기어별 속도: 교범의 1700rpm 계산값(7.4/15.45/25.6/48.3, R 6.9)을 최대출력 1800rpm 으로 환산.
+	# 2→3단 변속은 "초인적인 힘"이 필요했다 → 3.0s 동안 동력 단절, 그래서 조종수들은 2단으로 버티곤 했다.
+	# 4단은 도로 전용(야지 저항을 못 이김). 후진은 1단 7.3km/h 이지만 전후진 전환이 3.0s 로 가장 느리다.
+	# 넓은 550mm 궤도 → 접지압이 낮아 야지 구름저항 최소. 클러치-브레이크 조향이라 선회 효율이 낮다.
+	s.forward_gears_kmh = [7.8, 16.4, 27.1, 51.1]
+	s.reverse_gears_kmh = [7.3]
+	s.max_forward_kmh = 51.1
+	s.max_reverse_kmh = 7.3
+	s.start_gear = 2
+	s.shift_time_s = 2.0
+	s.shift_time_overrides = {"2>3": 3.0, "3>2": 2.5}
+	s.engine_response_s = 0.9
+	s.ground_pressure_kgcm2 = 0.62
+	s.obstacle_step_m = 0.73
 	s.brake_mps2 = 6.0
-	s.direction_change_s = 2.5
+	s.direction_change_s = 3.0
 	s.steer_efficiency = 0.12
 	s.neutral_steer = false
-	s.climb_penalty = 1.1          # 출력중량비 17.5 hp/t
+	# 현가: 크리스티(큰 보기륜 + 긴 코일스프링, 완충기 거의 없음) → 앞뒤로 크게, 오래 출렁임
+	s.suspension_freq_hz = 0.9
+	s.suspension_damping = 0.2
+	s.suspension_pitch_deg_per_mps2 = 0.45
+	s.suspension_roll_deg_per_mps2 = 0.35
 	# 포·사격: 포 내림 −5° 뿐(헐다운하면 앞쪽 아래 적을 못 겨눔). 전차장 겸 포수 → 조준이 느리고 분산 큼.
 	s.gun = g
 	s.ammo_types = [g, gp, ghe]
 	s.turret_traverse_deg_s = 20.0
+	s.traverse_slope_penalty = 2.5 # 전기 선회 모터가 약하고 포탑 균형이 나쁨
 	s.gun_elevation_rate_deg_s = 4.0
 	s.gun_depression_deg = -5.0
 	s.gun_elevation_max_deg = 26.0
@@ -433,8 +478,10 @@ static func t34_76() -> TankSpec:
 	s.engine_fire_chance = 0.05
 	s.traits = [
 		"낮은 차체(지붕 1.65m, 전고 2.37m) + 경사장갑 → 피탄면적 최소, 비스듬히 맞으면 도탄 가능성 큼",
-		"전진 34km/h·가속 1.9m/s² → 빠르게 우회해 티거 측면으로 파고드는 기동",
-		"후진 5km/h, 전후진 전환 2.5s → 한 번 들어가면 빠지기 어려움(후퇴는 차체를 돌려서)",
+		"출력중량비 17.5hp/t·넓은 궤도 → 출발(0→10km/h)·오르막·야지 최고속도(3단 27km/h) 모두 최고 → 빠르게 우회해 측면으로",
+		"4단 비동기 변속기: 2→3단 3s 동안 동력 단절(속도 손실 최대), 4단(51km/h)은 도로 전용",
+		"후진 1단 7.3km/h 지만 전후진 전환 3.0s 로 가장 느림 → 한 번 들어가면 빠지기 어려움(후퇴는 차체를 돌려서)",
+		"크리스티 현가: 급정거·장애물 후 차체가 크게, 오래 출렁임 → 기동 직후 사격이 부정확",
 		"포 내림 −5° → 능선 위 헐다운에서 아래쪽 적을 못 겨눔. 정지 사격도 조준이 느림(3.0s)",
 	]
 	s.notes = "피탄면적은 작지만 88mm 에는 어디든 관통된다. 장점은 '덜 맞고, 튕기고, 빨리 다가가는 것'."
