@@ -63,7 +63,11 @@ func _setup() -> void:
 	print("== 3) 규칙 AI 경기 기록")
 	map = HillMap.new()
 	map.map_seed = 2
+	# 기록 검증이 목적이라 지형(능선)만 두고 숲·울타리는 뺀다(규칙 AI 가 우회를 못 해도 교전이 일어나도록)
+	map.features_enabled = false
 	root.add_child(map)
+	map.add_building(Vector2(60, 0), Vector3(10, 6, 8), 0.3)
+	map.add_wall(Vector2(-80, 50), Vector2(-20, 60))
 	var lineup := ["tiger1", "sherman75", "sherman75", "t34_76"]
 	var idx := [0, 0]
 	for i in lineup.size():

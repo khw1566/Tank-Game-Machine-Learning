@@ -11,6 +11,13 @@ var engage_range := 550.0
 var flank_offset := 0.0       # 연합군 접근 시 표적 기준 좌우 오프셋(m)
 var max_fire_range := 1500.0
 var last_info := {}
+# 막힘 탈출: 전진 명령인데 거의 안 움직이면 잠시 후진하며 방향을 튼다
+var _stuck_s := 0.0
+var _escape_s := 0.0
+var _escape_dir := 1.0
+var _detour_s := 0.0           # 탈출 후 옆으로 돌아가는 시간
+var _stuck_count := 0
+const STEP_S := 1.0 / 30.0
 
 
 static func for_tank(t: Tank, index_in_team: int) -> ScriptedAI:
@@ -43,11 +50,33 @@ func act(me: Tank, tanks: Array) -> Array:
 		var goal := target.global_position + side * flank_offset * clampf((dist - engage_range) / 400.0, 0.0, 1.0)
 		var g := goal - me.global_position
 		if dist > engage_range or not los:
-			drive = _turn_to(me, atan2(-g.x, -g.z), 1.0)
+			var want_yaw := atan2(-g.x, -g.z)
+			if _detour_s > 0.0:
+				_detour_s -= STEP_S
+				want_yaw += _escape_dir * deg_to_rad(80.0)
+			drive = _turn_to(me, want_yaw, 1.0)
 			mode = ("advance_flank" if absf(flank_offset) > 1.0 else "advance") if dist > engage_range else "seek_los"
 		else:
 			drive = _turn_to(me, atan2(-to_t.x, -to_t.z), 0.0)
 			mode = "engage"
+	if _escape_s > 0.0:
+		# 1단계: 비스듬히 후진(기어 변환 시간 포함)  2단계: 반대쪽으로 크게 돌며 전진
+		_escape_s -= STEP_S
+		if _escape_s > 2.5:
+			drive = [-1.0 if _escape_dir > 0 else -0.3, -0.3 if _escape_dir > 0 else -1.0, 0.0]
+		else:
+			drive = [1.0 if _escape_dir > 0 else 0.2, 0.2 if _escape_dir > 0 else 1.0, 0.0]
+		mode = "unstick"
+	elif drive[0] + drive[1] > 1.0:
+		var v := Vector2(me.velocity.x, me.velocity.z).length()
+		_stuck_s = _stuck_s + STEP_S if v < 0.5 else 0.0
+		if _stuck_s > 2.0:
+			_stuck_s = 0.0
+			_escape_s = 8.0
+			_stuck_count += 1
+			if _stuck_count % 2 == 1:
+				_escape_dir = -_escape_dir
+			_detour_s = 8.0 + 4.0 * _stuck_count
 	var aim := aim_action(me, target, aim_point if los else Vector3.INF)
 	var fire: bool = aim[2] > 0.5 and dist < max_fire_range and los
 	last_info = {"mode": mode, "target": target.name, "dist_m": snappedf(dist, 0.1), "los": los,
@@ -96,15 +125,15 @@ static func visible_point(me: Tank, target: Tank) -> Vector3:
 
 
 ## 비례 조준기. 반환 [traverse, elevation, on_target(0/1), 오차(도)]
+## 탄도 낙차는 Tank.aim_solution() 이 보정, 조준 오차(aim_error_mrad)가 줄어든 뒤에만 쏜다.
 static func aim_action(me: Tank, target: Tank, aim := Vector3.INF) -> Array:
 	if aim == Vector3.INF:
 		aim = target.global_position + target.global_transform.basis.y * (target.spec.hull_bottom_y + target.spec.hull_size.y * 0.6)
-	var ld := me.global_transform.basis.inverse() * (aim - me.muzzle_position())
-	var want_yaw := atan2(-ld.x, -ld.z)
-	var want_pitch := atan2(ld.y, Vector2(ld.x, ld.z).length())
-	var e_yaw := wrapf(want_yaw - me.turret_yaw, -PI, PI)
-	var e_pitch := want_pitch - me.gun_pitch
+	var sol := me.aim_solution(aim)
+	var e_yaw := wrapf(float(sol.turret_yaw) - me.turret_yaw, -PI, PI)
+	var e_pitch := float(sol.gun_pitch) - me.gun_pitch
 	var trav := clampf(-e_yaw * 20.0, -1.0, 1.0)
 	var elev := clampf(e_pitch * 40.0, -1.0, 1.0)
-	var on_target := absf(e_yaw) < 0.002 and absf(e_pitch) < 0.002
+	var on_target: bool = absf(e_yaw) < 0.002 and absf(e_pitch) < 0.002 and sol.reachable \
+		and me.aim_error_mrad < me.current_shell().dispersion_mrad * 1.5
 	return [trav, elev, 1.0 if on_target else 0.0, rad_to_deg(Vector2(e_yaw, e_pitch).length())]
