@@ -30,6 +30,9 @@
 | ↑ / ↓ | 포 고저 | [4] gun_elevation −1~1 |
 | F / Enter | 발사 | [5] fire (>0.5) |
 | 1 / 2 / 3 | 탄종 선택(철갑 / 고속철갑·고체철갑 / 고폭) | (`tank.select_ammo(i)`) |
+| Shift | 포수 조준경 시점 켜기/끄기: 포구에서 포 방향을 보고, 거리별 조준 눈금(현재 탄종 탄도)·조준 오차 원 표시. 휠/+− 로 저·고배율(약 3배/6배) | - |
+| C (누르는 동안) | 3인칭 자유 시선: 포탑·포는 그대로 두고 마우스/방향키로 카메라만 돌림. 떼면 포 뒤로 복귀 | 포탑·포 입력 0 |
+| B | 전차장 시점 켜기/끄기: 해치 높이에서 마우스/방향키로 둘러봄, 포는 고정. 휠/+− 로 확대(최대 약 9배) | 포탑·포 입력 0 |
 | Tab | 조종 전차 전환 | - |
 | G | 거리 표시 순환: 격자+거리 링 → 끔 → 격자 → 링만 | - |
 | V | 시선 표시(초록 탐지 / 노랑 일부 보임 / 빨강 가려짐) | - |
@@ -43,6 +46,10 @@
 | F7 | AI 전환: 꺼짐 → 다른 전차 AI → 전원 AI(관전) | - |
 
 AI 는 `tank.control = TankControlInput.from_array([...])` 로 같은 입력을 넣는다.
+
+시점(`controls/view_camera.gd`, `controls/view_reticle.gd`)은 화면 전용이라 헤드리스 학습에는 영향이 없다.
+C·B 로 시선이 포와 분리된 동안은 방향키가 카메라를 돌리고 포탑·포 입력이 0 으로 기록된다(포가 움직이지 않음).
+자유 시선·전차장 시점에서는 왼쪽 아래 방위판(차체 사각형, 노란 선 = 포, 하늘색 = 시야)과 ◇포 표시로 포가 어디를 겨누는지 보여 준다.
 
 같은 입력이라도 전차마다 결과가 다르다: T-34 는 후진이 5km/h 이고 전진→후진 전환에 2.5초가 걸리며,
 차체가 경사를 따라 기울기 때문에 포 내림각(T-34 −5°, 티거 −8°, 셔먼 −10°)이 헐다운 가능 여부를 정한다.
@@ -71,6 +78,7 @@ godot --path .                                                     # 게임 실�
 godot --headless --path . -s res://tanks/tests/run_tank_tests.gd   # 장갑·피해·모듈 검증
 godot --headless --path . -s res://tanks/tests/run_trait_tests.gd  # 전차별 특성(기동·헐다운·안정장치·조준·탄도)
 godot --headless --path . -s res://controls/tests/run_sim_smoke.gd # 주행·선회·사격 통합 테스트
+godot --headless --path . -s res://controls/tests/run_view_tests.gd # 포수·전차장·자유 시선 시점, 포 고정
 godot --headless --path . -s res://map/tests/run_map_tests.gd      # 맵 재현성·차단물별 시야 판정·시선 통계
 godot --headless --fixed-fps 30 --path . -s res://recording/tests/run_record_tests.gd  # 기록·리플레이·보고서 검증
 godot --headless --fixed-fps 30 --path . -- --episodes=10           # AI 끼리 10판 연속(빠르게) 기록
