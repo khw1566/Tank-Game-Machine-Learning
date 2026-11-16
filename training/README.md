@@ -53,7 +53,48 @@ Python train.py ─┬─ GodotVecEnv ─ TCP ─ Godot #0 (training_env.tscn, -
    .venv\Scripts\activate
    pip install -r requirements.txt
    ```
-   GPU 는 필요 없다(정책이 작은 MLP 라 CPU 가 더 빠를 때가 많음). 속도는 Godot 시뮬레이션이 좌우한다.
+   CPU 학습은 `--device cpu`를 사용한다. CUDA 환경은 아래 절차로 준비한다.
+
+### NVIDIA GPU 설치 및 혼합 학습
+
+`training/python/setup_gpu.bat`를 실행하면 프로젝트의 `.venv`에 Python 3.14용
+PyTorch 2.15.0+cu132와 학습 패키지를 설치하고 CUDA 연산을 확인한다.
+기존 전역 Python의 CPU용 torch는 별도로 유지한다. 이 PC에서는 설치와 GPU 동작 검증까지 완료했다.
+
+```bat
+cd "C:\Users\work\Desktop\Tank Game Machine Learning\training\python"
+setup_gpu.bat
+dashboard.bat
+```
+
+대시보드의 **새 학습 / 이어서 → 학습 장치 → 혼합 (CPU 추론 + GPU 갱신)**을 선택한다.
+`auto`도 CUDA 사용 가능 시 혼합 모드, 없으면 CPU를 사용한다.
+명시적인 `hybrid` 또는 `cuda` 요청은 CUDA를 사용할 수 없으면 오류를 표시한다.
+
+```bat
+.venv\Scripts\python.exe train.py --godot "..\..\build\TankGame.exe" --tank tiger1 --run tiger_a --resume --device hybrid
+```
+
+작은 관측 배치의 행동 추론·보상/advantage 계산은 CPU에서, PPO 역전파와 optimizer 갱신은 GPU에서 수행한다.
+가중치는 매 rollout 시작 시 동기화하고, rollout 전체를 GPU로 한 번 전송해 여러 epoch에서 재사용한다.
+기존 PPO의 수집 후 갱신 순서와 gSDE 탐색을 유지한다. 전체 GPU 경로 비교는 `--device cuda`로 가능하다.
+Godot 시뮬레이션과 레이캐스트는 CPU에서 실행되므로 GPU 사용률은 주기적으로 올라가는 형태가 정상이다.
+
+장치·실제 배치·수집 크기·torch 스레드·PyTorch GPU 메모리는 대시보드와 `run.json`의 `runtime`에서 확인한다.
+GPU 전체 사용률/VRAM/전력도 별도로 표시한다(다른 앱 포함). 환경 수 변경 재시작에서 장치와 PPO 설정이 유지된다.
+중지한 CPU 체크포인트를 그대로 혼합 모드로 재개할 수 있으며, CPU로 다시 불러오는 것도 지원한다.
+
+`--n-steps`, `--batch-size`, `--n-epochs`를 명시하면 재개 시에도 적용한다.
+생략하면 저장된 값을 유지한다(새 모델 기본: 1024 / 최대 2048 / 8).
+CUDA/혼합 모드의 자동 torch 스레드는 1개, CPU 모드는 기존 자동 배분을 사용한다.
+
+원본 체크포인트를 변경하지 않는 실제 환경 비교:
+
+```bat
+.venv\Scripts\python.exe benchmark_devices.py --godot "..\..\build\TankGame.exe" --checkpoint runs\tiger_a\tiger1\latest.zip --devices cpu,hybrid --n-envs 8 --rollouts 3 --repeats 3
+```
+
+실험별 디렉터리와 `results.json`이 별도로 생성된다. 수집·갱신 시간과 전체 처리량을 함께 비교한다.
 
 ## 학습 실행
 
@@ -105,7 +146,7 @@ python dashboard.py                → 브라우저에 http://127.0.0.1:8765 이
 - 전체 리플레이 기록은 느리니 간격을 크게(또는 0). 재현 파일은 항상 남으므로 어떤 판이든 나중에 다시 볼 수 있다.
 - 게임 시간 배속은 이미 최대(헤드리스·잠금 단계, 렌더링 없음)라 더 올릴 수 없다. 반대로 PC 를 같이 쓰려면 "배속 제한"으로 낮춘다.
 - Godot 은 Python 을 오래 기다리면(PPO 갱신·일시정지) 잠들어 CPU 를 양보한다 → PPO 갱신이 빨라지고, 일시정지 중 CPU 사용 ≈ 0.
-  `--torch-threads`(기본 = 코어 수 − 환경 수)로 PyTorch 스레드가 Godot 과 코어를 다투지 않게 한다.
+  `--torch-threads`(CPU 자동 = 논리 코어 수 − 환경 수, CUDA/혼합 자동 = 1)로 CPU 배분을 조절한다.
 
 제어는 파일로 주고받는다: `runs/<run>/control.jsonl`(명령 한 줄씩), `runs/<run>/status.json`(1초마다 상태). 형식은 [python/tankrl/control.py](python/tankrl/control.py) 맨 위.
 

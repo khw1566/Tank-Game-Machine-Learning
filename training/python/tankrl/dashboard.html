@@ -105,6 +105,10 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
     <pre class="log" id="depsLog" hidden style="margin-top:8px;max-height:180px"></pre>
   </section>
   <section class="panel">
+    <h2>학습 장치</h2>
+    <div id="hardwareInfo" class="hint">CUDA 환경 확인 중…</div>
+  </section>
+  <section class="panel">
     <h2>제어 <span class="sub" id="ctlNote"></span></h2>
     <div class="controls">
       <div class="ctl"><label>실행</label><div class="row">
@@ -115,6 +119,10 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
       </div></div>
       <div class="ctl"><label>동시 환경 수 (적용 = 저장 후 다시 시작)</label><div class="row">
         <input type="number" id="nEnvs" min="1" max="64"><button id="btnEnvs">적용</button>
+      </div></div>
+      <div class="ctl"><label>학습 장치 (적용 = 저장 후 다시 시작)</label><div class="row">
+        <select id="trainDevice"><option value="auto">자동 (혼합 CUDA 우선)</option><option value="hybrid">혼합 (CPU 추론 + GPU 갱신)</option><option value="cuda">GPU (추론·갱신 모두 CUDA)</option><option value="cpu">CPU</option></select>
+        <button id="btnDevice">적용</button>
       </div></div>
       <div class="ctl"><label>배속 제한 (실시간 대비, 모든 환경 합)</label><div class="row">
         <select id="speedCap">
@@ -199,6 +207,10 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
       <div class="ctl" data-m="rotate"><label>교대마다 스텝</label><input type="number" name="rotate_steps" value="500000" step="50000"></div>
       <div class="ctl" data-m="rotate"><label>반복 횟수</label><input type="number" name="cycles" value="10"></div>
       <div class="ctl"><label>동시 환경 수</label><input type="number" name="n_envs" min="1" max="64"></div>
+      <div class="ctl"><label>학습 장치</label><select name="device"><option value="auto">자동 (혼합 CUDA 우선)</option><option value="hybrid">혼합 (CPU 추론 + GPU 갱신)</option><option value="cuda">GPU (추론·갱신 모두 CUDA)</option><option value="cpu">CPU</option></select></div>
+      <div class="ctl"><label>PPO 환경당 수집 수 (빈칸 = 기본 / 저장된 값)</label><input type="number" name="n_steps" min="1" placeholder="1024"></div>
+      <div class="ctl"><label>PPO 갱신 배치 (빈칸 = 기본 / 저장된 값)</label><input type="number" name="batch_size" min="2" placeholder="2048"></div>
+      <div class="ctl"><label>PPO 갱신 반복 (빈칸 = 기본 / 저장된 값)</label><input type="number" name="n_epochs" min="1" placeholder="8"></div>
       <div class="ctl"><label>시작 단계</label><select name="start_stage"></select></div>
       <div class="ctl"><label>배속 제한 (0 = 무제한)</label><input type="number" name="speed_cap" value="0" min="0"></div>
       <div class="ctl"><label>리플레이 기록 간격</label><input type="number" name="record_every" value="200" min="0"></div>
@@ -417,6 +429,11 @@ function render() {
   if (!$("log")._user) $("log").scrollTop = 1e9;
   const rj = S.run_json || {};
   $("runInfo").innerHTML = rj.args ? `세션 ${rj.sessions}회 · 시작 ${esc(rj.started)} · git ${esc((rj.git_commit || "").slice(0, 8) || "-")} · Godot ${esc(rj.godot || "-")} · torch ${esc(rj.torch)} · SB3 ${esc(rj.sb3)} · 관측 ${rj.obs_size} / 행동 ${rj.act_size}<br>게임: <code>${esc(rj.args.godot)}</code>` : "-";
+  renderHardware();
+  if (!$("trainDevice")._dirty) {
+    const requested = st.runtime?.requested_device || INFO.settings.device || "auto";
+    $("trainDevice").value = requested.startsWith("cuda") ? "cuda" : requested;
+  }
   drawCharts();
 }
 function renderTanks() {
@@ -482,7 +499,7 @@ async function loadRuns(select) {
 }
 function switchRun(run) {
   RUN = run; EPS = []; SB3 = {}; S = null; $("tankSel")._set = false;
-  ["nEnvs", "recEvery", "reviewProb"].forEach(id => $(id)._dirty = false);
+  ["nEnvs", "recEvery", "reviewProb", "trainDevice"].forEach(id => $(id)._dirty = false);
   if (!run) { $("kpis").innerHTML = `<div class="kpi" style="grid-column:1/-1"><div class="empty">아직 학습 실행이 없습니다. 오른쪽 위 "새 학습 / 이어서"로 시작하세요.</div></div>`; return; }
   poll();
 }
@@ -496,7 +513,7 @@ function wire() {
   $("btnStop").onclick = () => { if (confirm("정책을 저장하고 학습을 멈출까요? (나중에 같은 실행 이름으로 이어서 할 수 있습니다)")) ctl({cmd: "stop"}, "저장 후 중지 요청 — 현재 결정까지 마치고 저장합니다"); };
   $("btnCkpt").onclick = () => ctl({cmd: "checkpoint"}, "체크포인트 저장 요청");
   $("speedCap").onchange = e => S?.alive ? ctl({cmd: "set", speed_cap: +e.target.value}, "배속 제한 변경") : toast("학습이 돌고 있을 때 바뀝니다");
-  ["nEnvs", "recEvery", "reviewProb"].forEach(id => $(id).oninput = () => $(id)._dirty = true);
+  ["nEnvs", "recEvery", "reviewProb", "trainDevice"].forEach(id => $(id).oninput = () => $(id)._dirty = true);
   $("btnRec").onclick = () => { $("recEvery")._dirty = false; ctl({cmd: "set", record_every: +$("recEvery").value}, "리플레이 기록 간격 변경"); };
   $("btnReview").onclick = () => { $("reviewProb")._dirty = false; ctl({cmd: "set", review_prob: +$("reviewProb").value}, "복습 확률 변경"); };
   $("btnStage").onclick = () => { const s = $("stageSel").value; if (confirm(`커리큘럼 단계를 "${STAGE_LABEL[s]}"(으)로 바꿀까요? 승급 기록에 '수동 변경'으로 남습니다.`)) ctl({cmd: "set_stage", stage: s}, "단계 변경 요청"); };
@@ -505,6 +522,12 @@ function wire() {
     const msg = S?.alive ? `환경 수를 ${n}개로 바꿉니다. 정책을 저장하고 학습을 멈춘 뒤 같은 설정으로 이어서 다시 시작합니다(수십 초).` : `저장된 정책에서 환경 ${n}개로 이어서 학습을 시작할까요?`;
     if (!confirm(msg)) return;
     try { await api("/api/restart", {run: RUN, n_envs: n}); $("nEnvs")._dirty = false; toast("다시 시작 중… 작업 칸에서 진행을 볼 수 있습니다", 4000); } catch (e) { toast("실패: " + e.message, 5000); }
+  };
+  $("btnDevice").onclick = async () => {
+    const device = $("trainDevice").value;
+    if (!confirm(`학습 장치를 ${device}(으)로 바꾸고 저장된 정책에서 이어서 시작할까요? 실행 중이면 먼저 저장하고 중지합니다.`)) return;
+    try { await api("/api/restart", {run: RUN, device}); $("trainDevice")._dirty = false; toast("학습 장치 변경 후 다시 시작 중…", 4000); }
+    catch (e) { toast("실패: " + e.message, 6000); }
   };
   ["tankSel", "xSel", "winSel"].forEach(id => $(id).onchange = drawCharts);
   $("onlyRec").onchange = renderEpisodes;
@@ -524,10 +547,12 @@ function wire() {
   $("btnGo").onclick = async (e) => {
     e.preventDefault();
     const a = {godot: f.godot.value, project: f.project.value, python: f.python.value, run: f.run.value.trim(), n_envs: +f.n_envs.value, start_stage: f.start_stage.value,
-      speed_cap: +f.speed_cap.value, record_every: +f.record_every.value, save_every: +f.save_every.value, resume: f.resume.checked, extra: f.extra.value};
+      speed_cap: +f.speed_cap.value, record_every: +f.record_every.value, save_every: +f.save_every.value, resume: f.resume.checked, extra: f.extra.value,
+      device: f.device.value, n_steps: f.n_steps.value ? +f.n_steps.value : null,
+      batch_size: f.batch_size.value ? +f.batch_size.value : null, n_epochs: f.n_epochs.value ? +f.n_epochs.value : null};
     if (f.mode.value === "rotate") Object.assign(a, {rotate: f.rotate.value, rotate_steps: +f.rotate_steps.value, cycles: +f.cycles.value});
     else Object.assign(a, {tank: f.tank.value, timesteps: +f.timesteps.value});
-    try { const r = await api("/api/start", a); $("dlg").close(); toast("학습 시작: " + r.run, 3000); setTimeout(() => loadRuns(r.run), 1500); }
+    try { const r = await api("/api/start", a); INFO.settings.device = a.device; $("dlg").close(); toast("학습 시작: " + r.run, 3000); setTimeout(() => loadRuns(r.run), 1500); }
     catch (err) { toast("시작 실패: " + err.message, 6000); }
   };
 }
@@ -535,6 +560,8 @@ function openStart() {
   const f = $("startForm"), s = INFO.settings;
   f.godot.value = s.godot || ""; f.project.value = s.project || ""; f.python.value = s.python || ""; f.python.placeholder = INFO.deps?.python ? `(자동: ${INFO.deps.python})` : "(자동)";
   const a = S?.run_json?.args;
+  f.device.value = s.device || "auto";
+  for (const key of ["n_steps", "batch_size", "n_epochs"]) f[key].value = a?.[key] ?? "";
   if (a && !S.alive) {   // 지금 보고 있는 실행을 이어서 하기 좋게 채운다
     f.run.value = RUN; f.resume.checked = true; f.n_envs.value = a.n_envs; f.mode.value = a.rotate ? "rotate" : "single";
     if (a.rotate) { f.rotate.value = a.rotate; f.rotate_steps.value = a.rotate_steps; f.cycles.value = a.cycles; } else f.tank.value = a.tank;
@@ -544,13 +571,23 @@ function openStart() {
   }
   f.start_stage.value = "";
   f.mode.onchange();
-  $("cpuHint").textContent = `이 PC 의 논리 코어: ${INFO.cpu_count}개. 환경 수는 코어 수 − 1~2 정도가 보통 가장 빠릅니다(Godot 1개 = 코어 1개, 나머지는 PPO 갱신). 실행 이름을 비우면 날짜·시각으로 정해집니다.`;
+  $("cpuHint").textContent = `논리 코어 ${INFO.cpu_count}개. 환경 수를 바꾸며 초당 결정 수를 비교하세요. GPU를 선택해도 시뮬레이션은 CPU에서 실행됩니다. 실행 이름을 비우면 날짜·시각으로 정해집니다.`;
   $("dlg").showModal();
 }
 
 // ------------------------------------------------------------------ 패키지 확인·설치
 let depsTimer = null;
+function renderHardware() {
+  const hw = INFO.deps?.runtime || {}, rt = S?.status?.runtime || S?.run_json?.runtime || {};
+  const ready = hw.cuda_available ? `CUDA 준비 완료 · ${esc(hw.gpus?.map(g => g.name).join(", "))}`
+    : "CUDA 사용 불가 · GPU 설치는 training/python/setup_gpu.bat 실행 후 다시 확인";
+  const current = rt.device ? `<br>${S?.alive ? "현재 학습" : "마지막 실행"}: <b>추론 ${esc(rt.inference_device || rt.device)} / 갱신 ${esc(rt.update_device || rt.device)}</b> · ${esc(rt.gpu_name || "CPU")} · batch ${rt.batch_size} · 수집 ${rt.rollout_size} · torch 스레드 ${rt.torch_threads}` : "";
+  const memory = S?.alive && S.status?.gpu_memory?.allocated_mib != null ? `<br>학습 프로세스 PyTorch 할당: ${S.status.gpu_memory.allocated_mib} MiB (예약 ${S.status.gpu_memory.reserved_mib} MiB)` : "";
+  const counters = (S?.gpu_status?.gpus || []).map(g => `<br>GPU ${esc(g.index)} 전체 사용률 ${esc(g.utilization)}% · VRAM ${esc(g.used_mib)} / ${esc(g.total_mib)} MiB · ${esc(g.power_w)} W`).join("");
+  $("hardwareInfo").innerHTML = `${ready}<br>PyTorch ${esc(hw.torch || "확인 중")} · CUDA ${esc(hw.cuda_version || "없음")}${current}${memory}${counters}`;
+}
 function renderDeps(d) {
+  renderHardware();
   const box = $("depsBox"), inst = d.install, running = inst && inst.state === "running";
   if (d.state === "ok" && !running) { if (!box.hidden && inst && inst.state === "done") toast("필수 패키지 설치 완료 — 이제 학습을 시작할 수 있습니다", 4000); box.hidden = true; return false; }
   box.hidden = false;
@@ -560,7 +597,7 @@ function renderDeps(d) {
   else if (d.state === "missing") {
     $("depsTitle").textContent = "학습에 필요한 Python 패키지가 없습니다";
     $("depsBody").innerHTML = `학습용 Python: ${py}<br>없는 패키지: <b>${esc(d.missing.join(", "))}</b><br>` +
-      `"필수 패키지 설치"를 누르면 이 Python 에 <code>pip install -r requirements.txt</code>(numpy, gymnasium, stable-baselines3, torch CPU판)를 실행합니다. ` +
+      `"필수 패키지 설치"는 일반 패키지를 설치합니다. GPU 학습 환경은 <code>setup_gpu.bat</code>로 준비하세요. ` +
       (d.venv ? "" : `가상환경(.venv)을 따로 쓰고 싶으면 README 의 설치 절차대로 만든 뒤 대시보드를 다시 열면 자동으로 그쪽을 씁니다.`);
   } else { $("depsTitle").textContent = "학습용 Python 을 실행하지 못했습니다"; $("depsBody").innerHTML = `${py}<br><pre class="log">${esc(d.detail || "")}</pre>새 학습 창의 "학습용 Python" 칸에 올바른 python.exe 경로를 넣어 주세요.`; }
   if (inst && inst.state === "error") $("depsTitle").textContent = "설치 실패 — 아래 로그를 확인하세요";

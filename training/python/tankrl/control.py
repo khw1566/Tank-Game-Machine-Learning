@@ -194,6 +194,9 @@ class TrainController:
         if env is not None:
             st["n_envs"] = env.num_envs
             st["learner_policy"] = env.learner_version
+        if self.model is not None:
+            from .runtime import gpu_memory
+            st["gpu_memory"] = gpu_memory(str(getattr(self.model, "training_device", self.model.device)))
         if cur is not None:
             p = cur.stage.get("promote") or {}
             st["curriculum"] = {"stage_idx": cur.stage_idx, "stage": cur.stage["id"],

@@ -34,6 +34,7 @@ from tankrl.control import TrainController
 from tankrl.curriculum import STAGE_IDS, STAGES, Curriculum
 from tankrl.godot_env import GodotVecEnv
 from tankrl.opponents import OpponentPool
+from tankrl.runtime import model_runtime, resolve_device
 
 
 def parse():
@@ -55,8 +56,12 @@ def parse():
     ap.add_argument("--record-every", type=int, default=200, help="N 에피소드마다 전체 리플레이·보고서 기록(0 = 끔)")
     ap.add_argument("--review-prob", type=float, default=0.1, help="이전 단계 복습 확률")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--device", default="cpu")
-    ap.add_argument("--n-steps", type=int, default=1024, help="PPO: 환경당 수집 스텝")
+    ap.add_argument("--device", default="auto", help="auto = 혼합 CUDA 우선, hybrid, cpu, cuda 또는 cuda:0")
+    ap.add_argument("--n-steps", type=int, default=None,
+                    help="PPO 환경당 수집 스텝(새 정책 1024, 재개 시 생략하면 기존 값)")
+    ap.add_argument("--batch-size", type=int, default=None,
+                    help="PPO 갱신 배치(새 정책 최대 2048, 재개 시 생략하면 기존 값)")
+    ap.add_argument("--n-epochs", type=int, default=None, help="PPO 갱신 반복(새 정책 8)")
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--ent-coef", type=float, default=0.005)
     ap.add_argument("--sde-freq", type=int, default=20, help="gSDE 탐색 잡음을 몇 결정마다 다시 뽑을지(20 = 2초)")
@@ -77,7 +82,7 @@ def git_commit(project: str | None) -> str:
         return ""
 
 
-def write_manifest(run_dir: Path, args, env: GodotVecEnv) -> None:
+def write_manifest(run_dir: Path, args, env: GodotVecEnv, runtime: dict) -> None:
     import stable_baselines3
     import torch
     path = run_dir / "run.json"
@@ -88,7 +93,8 @@ def write_manifest(run_dir: Path, args, env: GodotVecEnv) -> None:
                  "args": vars(args), "git_commit": git_commit(args.project),
                  "python": sys.version.split()[0], "platform": platform.platform(),
                  "torch": torch.__version__, "stable_baselines3": stable_baselines3.__version__,
-                 "godot": env.procs[0].hello.get("engine", ""), "godot_cmd": env.procs[0].cmd})
+                 "godot": env.procs[0].hello.get("engine", ""), "godot_cmd": env.procs[0].cmd,
+                 "runtime": runtime})
     path.write_text(json.dumps({"format": "tankgame-train-run", "version": 1, "sessions": runs,
                                 "stages": STAGES, "obs_labels": env.obs_labels,
                                 "action_labels": env.action_labels,
@@ -98,8 +104,33 @@ def write_manifest(run_dir: Path, args, env: GodotVecEnv) -> None:
                                ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: TrainController) -> None:
+def build_model(args, env, checkpoint: Path | None = None):
+    """Apply explicit rollout settings on resume too; never change unspecified saved settings."""
     from stable_baselines3 import PPO
+    from stable_baselines3.common.buffers import RolloutBuffer
+    from tankrl.rollout_buffer import CudaRolloutBuffer
+    from tankrl.hybrid_ppo import HybridPPO
+
+    device = args.resolved_device
+    algorithm = HybridPPO if device.startswith("cuda") and args.device in ("auto", "hybrid") else PPO
+    buffer_class = CudaRolloutBuffer if device.startswith("cuda") else RolloutBuffer
+    overrides = {k: getattr(args, k) for k in ("n_steps", "batch_size", "n_epochs")
+                 if getattr(args, k) is not None}
+    if checkpoint is not None:
+        return algorithm.load(str(checkpoint), env=env, device=device,
+                              rollout_buffer_class=buffer_class, **overrides)
+    n_steps = args.n_steps or 1024
+    return algorithm("MlpPolicy", env, n_steps=n_steps,
+               batch_size=args.batch_size or min(2048, n_steps * env.num_envs),
+               learning_rate=args.lr, gamma=0.99, gae_lambda=0.95,
+               ent_coef=args.ent_coef, clip_range=0.2, n_epochs=args.n_epochs or 8,
+               policy_kwargs={"net_arch": [256, 256], "log_std_init": -0.5},
+               # gSDE noise must persist long enough for the tank gearbox to respond.
+               use_sde=True, sde_sample_freq=args.sde_freq, seed=args.seed,
+               device=device, rollout_buffer_class=buffer_class, verbose=0)
+
+
+def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: TrainController) -> None:
     from stable_baselines3.common.callbacks import BaseCallback
     from stable_baselines3.common.logger import configure
 
@@ -115,24 +146,29 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     ctl.curriculum = cur
     ctl.info.update({"tank": tank, "target_timesteps": None})
     ctl.write_status(None, force=True, phase="starting")
-    pool = OpponentPool(pool_dir, exclude=tank, device=args.device)
+    inference_device = "cpu" if args.device in ("auto", "hybrid") else args.resolved_device
+    pool = OpponentPool(pool_dir, exclude=tank, device=inference_device)
     env = GodotVecEnv(args.n_envs, args.godot, args.project, run_dir, tank, cur, opponents=pool,
                       seed=args.seed * 1000 + sum(map(ord, tank)), record_every=ctl.record_every,
                       quiet=not args.verbose_godot, run_name=run_dir.name)
     ctl.env = env
-    write_manifest(run_dir, args, env)
     latest = tdir / "latest.zip"
-    if latest.exists() and (args.resume or args.rotate):
-        model = PPO.load(str(latest), env=env, device=args.device)
-        print(f"[train] {tank}: 이어서 학습 ({latest}, {model.num_timesteps} 스텝, 단계 {cur.stage['id']})")
-    else:
-        model = PPO("MlpPolicy", env, n_steps=args.n_steps, batch_size=min(2048, args.n_steps * args.n_envs),
-                    learning_rate=args.lr, gamma=0.99, gae_lambda=0.95, ent_coef=args.ent_coef, clip_range=0.2,
-                    n_epochs=8, policy_kwargs={"net_arch": [256, 256], "log_std_init": -0.5},
-                    # gSDE: 탐색 잡음을 몇 결정 동안 유지(매 0.1초 무작위로 궤도 방향이 바뀌면 변속기 때문에 전차가 아예 못 움직인다)
-                    use_sde=True, sde_sample_freq=args.sde_freq, seed=args.seed, device=args.device,
-                    verbose=0)
-        print(f"[train] {tank}: 새 정책, 단계 {cur.stage['id']}")
+    resume = latest.exists() and (args.resume or args.rotate)
+    try:
+        model = build_model(args, env, latest if resume else None)
+        runtime = model_runtime(model, args.device)
+        ctl.info["runtime"] = runtime
+        write_manifest(run_dir, args, env, runtime)
+    except BaseException:
+        env.close()
+        ctl.env = None
+        raise
+    print(f"[train] {tank}: {'이어서 학습' if resume else '새 정책'}, "
+          f"{model.num_timesteps} 스텝, 단계 {cur.stage['id']}", flush=True)
+    print(f"[device] {runtime['device']} / {runtime['gpu_name'] or 'CPU'} / "
+          f"torch {runtime['torch']} / batch {model.batch_size} / "
+          f"rollout {runtime['rollout_size']} / {runtime['rollout_buffer']} / "
+          f"추론 {runtime['inference_device']} / 갱신 {runtime['update_device']}", flush=True)
     fmt = ["csv", "stdout"]
     try:
         import tensorboard  # noqa: F401
@@ -206,18 +242,29 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     try:
         model.learn(total_timesteps=steps, callback=Cb(), reset_num_timesteps=False, progress_bar=False)
     finally:
-        save(snapshot=True)
-        env.close()
-        ctl.env = ctl.model = ctl.curriculum = None
+        try:
+            save(snapshot=True)
+        finally:
+            env.close()
+            ctl.env = ctl.model = ctl.curriculum = None
 
 
 def main():
     args = parse()
+    args.device = args.device.strip().lower()
+    for name in ("n_envs", "save_every", "timesteps", "rotate_steps", "n_steps", "batch_size", "n_epochs"):
+        value = getattr(args, name)
+        if value is not None and value <= 0:
+            raise ValueError(f"{name}는 1 이상이어야 합니다")
+    if args.batch_size == 1:
+        raise ValueError("PPO batch_size는 2 이상이어야 합니다")
+    # Check the actual CUDA runtime before starting any simulator processes.
+    args.resolved_device = resolve_device(args.device)
+    set_torch_threads(args)
     run = args.run or dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = (Path(args.runs_dir) / run).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     pool_dir = Path(args.pool_dir).resolve() if args.pool_dir else (Path(args.runs_dir) / "pool").resolve()
-    set_torch_threads(args)
     ctl = TrainController(run_dir, record_every=args.record_every, review_prob=args.review_prob,
                           speed_cap=args.speed_cap)
     try:
@@ -240,7 +287,10 @@ def main():
 def set_torch_threads(args) -> None:
     import os
     import torch
-    n = args.torch_threads or max(1, (os.cpu_count() or 2) - args.n_envs)
+    if args.torch_threads < 0:
+        raise ValueError("torch_threads는 0 이상이어야 합니다")
+    n = args.torch_threads or (1 if args.resolved_device.startswith("cuda")
+                             else max(1, (os.cpu_count() or 2) - args.n_envs))
     torch.set_num_threads(n)
 
 

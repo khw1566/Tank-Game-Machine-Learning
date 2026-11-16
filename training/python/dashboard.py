@@ -32,6 +32,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from tankrl.curriculum import STAGE_IDS, STAGES  # noqa: E402
+from tankrl.runtime import select_device  # noqa: E402
 
 TANKS = ["tiger1", "sherman75", "t34_76"]
 # 브라우저로 보내는 에피소드 열(짧게): progress.csv 의 열 이름
@@ -46,9 +47,11 @@ SB3_KEYS = ["time/total_timesteps", "rollout/ep_rew_mean", "rollout/ep_len_mean"
 
 
 REQUIRED = ["numpy", "gymnasium", "stable_baselines3", "torch"]
-DEPS_CHECK = ("import importlib.util, sys; mods = %r; "
+DEPS_CHECK = ("import importlib.util, sys, json; mods = %r; "
               "miss = [m for m in mods if importlib.util.find_spec(m) is None]; "
-              "print('MISSING=' + ','.join(miss)); print('PY=' + sys.version.split()[0])") % REQUIRED
+              "print('MISSING=' + ','.join(miss)); print('PY=' + sys.version.split()[0]); "
+              "\nif not miss:\n from tankrl.runtime import hardware_info\n"
+              " print('RUNTIME=' + json.dumps(hardware_info()))") % REQUIRED
 
 
 def venv_python() -> Path | None:
@@ -183,6 +186,7 @@ class RunWatch:
         s = (rj.get("sessions") or [{}])[-1]
         return {"sessions": len(rj.get("sessions", [])), "args": s.get("args", {}), "git_commit": s.get("git_commit"),
                 "godot": s.get("godot"), "torch": s.get("torch"), "sb3": s.get("stable_baselines3"),
+                "runtime": s.get("runtime", {}),
                 "started": s.get("started"), "obs_size": len(rj.get("obs_labels", [])),
                 "act_size": len(rj.get("action_labels", []))}
 
@@ -233,7 +237,10 @@ class Dashboard:
         self.jobs: list[dict] = []                         # 재현·보고서 등 백그라운드 작업
         self.lock = threading.Lock()
         self.settings_path = self.runs_dir / "dashboard_settings.json"
-        self.settings = {"godot": default_godot(), "project": "", "python": ""} | read_json(self.settings_path)
+        self.settings = {"godot": default_godot(), "project": "", "python": "", "device": "auto"} | read_json(self.settings_path)
+        self._gpu_status = {"gpus": []}
+        self._gpu_next_check = 0.0
+        self._gpu_lock = threading.Lock()
         self.deps: dict = {"state": "unknown"}
         self.install_job: dict | None = None
         threading.Thread(target=self.check_deps, daemon=True).start()
@@ -300,14 +307,15 @@ class Dashboard:
         self.deps = {"state": "checking", "python": py}
         try:
             r = subprocess.run([py, "-c", DEPS_CHECK], capture_output=True, text=True, timeout=120,
-                               encoding="utf-8", errors="replace")
+                               encoding="utf-8", errors="replace", cwd=str(HERE),
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             out = dict(ln.split("=", 1) for ln in r.stdout.splitlines() if "=" in ln)
             missing = [m for m in out.get("MISSING", "").split(",") if m]
             if r.returncode != 0 or "MISSING" not in out:
                 self.deps = {"state": "error", "python": py, "detail": (r.stdout + r.stderr)[-800:]}
             else:
                 self.deps = {"state": "ok" if not missing else "missing", "python": py, "missing": missing,
-                             "version": out.get("PY", "")}
+                             "version": out.get("PY", ""), "runtime": json.loads(out.get("RUNTIME", "{}"))}
         except Exception as e:
             self.deps = {"state": "error", "python": py, "detail": str(e)}
         self.deps["venv"] = str(venv_python() or "")
@@ -322,6 +330,29 @@ class Dashboard:
             log = self.runs_dir / "pip_install.log"
             d["install"]["log"] = tail_text(log, 3000) if log.exists() else ""
         return d
+
+    def gpu_status(self) -> dict:
+        """System-wide counters, cached for five seconds; not per-process utilization."""
+        if time.monotonic() < self._gpu_next_check or not self._gpu_lock.acquire(blocking=False):
+            return self._gpu_status
+        try:
+            self._gpu_next_check = time.monotonic() + 5
+            r = subprocess.run(["nvidia-smi", "--query-gpu=index,name,utilization.gpu,memory.used,memory.total,power.draw",
+                                "--format=csv,noheader,nounits"], capture_output=True, text=True,
+                               timeout=3, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if r.returncode:
+                raise RuntimeError(r.stderr.strip())
+            gpus = []
+            for row in csv.reader(io.StringIO(r.stdout)):
+                if len(row) == 6:
+                    values = [v.strip() for v in row]
+                    gpus.append(dict(zip(("index", "name", "utilization", "used_mib", "total_mib", "power_w"), values)))
+            self._gpu_status = {"gpus": gpus, "updated": time.time()}
+        except (OSError, subprocess.SubprocessError, RuntimeError) as e:
+            self._gpu_status = {"gpus": [], "error": str(e)}
+        finally:
+            self._gpu_lock.release()
+        return self._gpu_status
 
     def install_deps(self) -> dict:
         if self.install_job and self.install_job["state"] == "running":
@@ -370,9 +401,13 @@ class Dashboard:
             cmd += ["--resume"]
         for key, flag in [("record_every", "--record-every"), ("save_every", "--save-every"),
                           ("review_prob", "--review-prob"), ("speed_cap", "--speed-cap"), ("seed", "--seed"),
-                          ("torch_threads", "--torch-threads")]:
+                           ("torch_threads", "--torch-threads"), ("n_steps", "--n-steps"),
+                           ("batch_size", "--batch-size"), ("n_epochs", "--n-epochs"),
+                           ("lr", "--lr"), ("ent_coef", "--ent-coef"), ("sde_freq", "--sde-freq"),
+                           ("pool_dir", "--pool-dir")]:
             if a.get(key) not in (None, ""):
                 cmd += [flag, str(a[key])]
+        cmd += ["--device", a.get("device") or self.settings.get("device", "auto")]
         if a.get("extra"):
             cmd += shlex.split(a["extra"], posix=sys.platform != "win32")
         return cmd
@@ -397,14 +432,22 @@ class Dashboard:
                 raise ValueError(f"Python 실행 파일이 없습니다: {py}")
             self.save_settings(python=str(abs_path(py)) if py else "")
             self.check_deps()
-        if self.deps.get("state") in ("unknown", "checking"):
+        if self.deps.get("state") in ("unknown", "checking") or self.deps.get("python") != self.train_python():
             self.check_deps()
         if self.deps.get("state") != "ok":
             miss = ", ".join(self.deps.get("missing", [])) or self.deps.get("detail", "")[-200:]
             raise ValueError(f"학습용 Python 에 필요한 패키지가 없습니다({miss}). 화면 위의 '필수 패키지 설치'를 먼저 눌러 주세요")
-        self.save_settings(godot=a["godot"], project=a.get("project", ""))
-        d.mkdir(parents=True, exist_ok=True)
         cmd = self.build_cmd(a)
+        # Respect --device passed via legacy extra arguments too (argparse uses the last value).
+        requested = "auto"
+        for i, value in enumerate(cmd):
+            if value == "--device" and i + 1 < len(cmd):
+                requested = cmd[i + 1]
+            elif value.startswith("--device="):
+                requested = value.split("=", 1)[1]
+        select_device(requested, self.deps.get("runtime", {"cuda_available": False}))
+        self.save_settings(godot=a["godot"], project=a.get("project", ""), device=requested)
+        d.mkdir(parents=True, exist_ok=True)
         log = open(d / "train_log.txt", "a", encoding="utf-8")
         log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} 시작: {subprocess.list2cmdline(cmd)}\n")
         log.flush()
@@ -424,8 +467,8 @@ class Dashboard:
             f.write(json.dumps(msg | {"t": round(time.time(), 2)}, ensure_ascii=False) + "\n")
         return {"ok": True}
 
-    def restart(self, run: str, overrides: dict) -> dict:
-        """저장 후 중지 → 같은 설정 + overrides(예: n_envs) 로 --resume 다시 시작. 환경 수는 실행 중에 못 바꾸므로."""
+    def restart_args(self, run: str, overrides: dict) -> dict:
+        """Preserve device and PPO settings across environment-count changes."""
         d = self.run_dir(run)
         rj = read_json(d / "run.json")
         if not rj.get("sessions"):
@@ -435,7 +478,11 @@ class Dashboard:
              "n_envs": args.get("n_envs"), "record_every": args.get("record_every"),
              "save_every": args.get("save_every"), "review_prob": args.get("review_prob"),
              "speed_cap": args.get("speed_cap", 0), "seed": args.get("seed"),
-             "torch_threads": args.get("torch_threads", 0), "resume": True}
+             "torch_threads": args.get("torch_threads", 0), "resume": True,
+             "device": args.get("device", "auto")}
+        for key in ("n_steps", "batch_size", "n_epochs", "lr", "ent_coef", "sde_freq", "pool_dir"):
+            if args.get(key) is not None:
+                a[key] = args[key]
         st = read_json(d / "status.json")
         if args.get("rotate"):
             a |= {"rotate": args["rotate"], "rotate_steps": args.get("rotate_steps"), "cycles": args.get("cycles")}
@@ -449,6 +496,12 @@ class Dashboard:
             if k in st:
                 a[k] = st[k]
         a |= {k: v for k, v in overrides.items() if v not in (None, "")}
+        return a
+
+    def restart(self, run: str, overrides: dict) -> dict:
+        """저장 후 중지 → 같은 설정 + overrides 로 --resume 다시 시작."""
+        d = self.run_dir(run)
+        a = self.restart_args(run, overrides)
 
         def job():
             if self.alive(run, read_json(d / "status.json")):
@@ -584,6 +637,7 @@ def make_handler(dash: Dashboard):
                     st["alive"] = dash.alive(q["run"], st["status"])
                     st["owned"] = q["run"] in dash.procs
                     st["jobs"] = dash.jobs[-10:]
+                    st["gpu_status"] = dash.gpu_status()
                     return self.send_json(st)
                 if u.path.startswith("/files/"):
                     p = dash.safe_path(str(dash.runs_dir / urllib.parse.unquote(u.path[len("/files/"):])))
