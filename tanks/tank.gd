@@ -453,34 +453,16 @@ func fire() -> Dictionary:
 		r.merge(result, false)
 		r["target_name"] = target.name
 		r["target_team"] = target.team
-		r["hit_pos"] = TankSpec._v(hit.position)
 		r["flight_time_s"] = snappedf(hit.time, 0.01)
+		r["hit_pos"] = TankSpec._v(hit.world_pos)
 		result = r
 	else:
 		result["blocked_by"] = hit.blocked_by
-		result["impact"] = TankSpec._v(hit.position)
-		result["hit_pos"] = result["impact"]
+		result["hit_pos"] = TankSpec._v(hit.position)
 	# 조준 오차는 발사 반동으로 다시 커진다(연속 사격 시 재조준 필요)
 	aim_error_mrad = maxf(aim_error_mrad, shell.dispersion_mrad * damage.dispersion_factor() * 2.0)
 	shot_fired.emit(self, result)
 	return result
-
-
-## 리플레이용: 물리 없이 기록된 자세를 그대로 적용(외형만 움직이는 꼭두각시)
-func apply_replay_pose(xform: Transform3D, p_turret_yaw: float, p_gun_pitch: float, p_knocked_out: bool) -> void:
-	set_physics_process(false)
-	collision_layer = 0
-	collision_mask = 0
-	global_transform = xform
-	turret_yaw = p_turret_yaw
-	gun_pitch = p_gun_pitch
-	_sync_turret()
-	if p_knocked_out != _was_knocked_out:
-		_was_knocked_out = p_knocked_out
-		for m in _materials:
-			var sm := m as StandardMaterial3D
-			var base: Color = sm.get_meta("base", sm.albedo_color)
-			sm.albedo_color = base.darkened(0.6) if p_knocked_out else base
 
 
 ## 포물선 탄도 적분. 반환: {} (최대 사거리까지 아무것도 안 맞음),
@@ -520,7 +502,7 @@ func _trace_shell(from: Vector3, vel: Vector3) -> Dictionary:
 			var tr := HitGeometry.trace(tk.spec, tk.turret_yaw, lo, ld, tk.gun_pitch)
 			if tr.hit and float(tr.t) <= best_t:
 				best_t = tr.t
-				best = {"tank": tk, "local_origin": lo, "local_dir": ld, "position": p + d * best_t}
+				best = {"tank": tk, "local_origin": lo, "local_dir": ld, "world_pos": p + d * float(tr.t)}
 		if not best.is_empty():
 			if best.has("tank"):
 				best["distance"] = traveled + best_t
@@ -533,6 +515,24 @@ func _trace_shell(from: Vector3, vel: Vector3) -> Dictionary:
 		if p.y < -200.0:
 			break
 	return {}
+
+
+## 리플레이용: 물리 없이 기록된 자세를 그대로 적용(외형만 움직이는 꼭두각시)
+func apply_replay_pose(xform: Transform3D, p_turret_yaw: float, p_gun_pitch: float, p_knocked_out: bool) -> void:
+	set_physics_process(false)
+	_initialized = true
+	collision_layer = 0
+	collision_mask = 0
+	global_transform = xform
+	turret_yaw = p_turret_yaw
+	gun_pitch = p_gun_pitch
+	_sync_turret()
+	if p_knocked_out != _was_knocked_out:
+		_was_knocked_out = p_knocked_out
+		for m in _materials:
+			var sm := m as StandardMaterial3D
+			var base: Color = sm.get_meta("base", sm.albedo_color)
+			sm.albedo_color = base.darkened(0.6) if p_knocked_out else base
 
 
 func _on_knocked_out() -> void:
