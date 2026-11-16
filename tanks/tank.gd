@@ -129,6 +129,7 @@ func _add_box(parent: Node3D, size: Vector3, pos: Vector3, color: Color) -> void
 func _mat(color: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
+	m.set_meta("base", color)
 	_materials.append(m)
 	return m
 
@@ -255,11 +256,31 @@ func fire() -> Dictionary:
 		var r := DamageModel.resolve_shot(target.damage, target.turret_yaw, lo, ld, dist, shell, rng)
 		r.merge(result, false)
 		r["target_name"] = target.name
+		r["target_team"] = target.team
+		r["hit_pos"] = TankSpec._v(hit.position)
 		result = r
 	else:
 		result["blocked_by"] = (hit.collider as Node).name if hit.collider is Node else "?"
+		result["hit_pos"] = TankSpec._v(hit.position)
 	shot_fired.emit(self, result)
 	return result
+
+
+## 리플레이용: 물리 없이 기록된 자세를 그대로 적용(외형만 움직이는 꼭두각시)
+func apply_replay_pose(xform: Transform3D, p_turret_yaw: float, p_gun_pitch: float, p_knocked_out: bool) -> void:
+	set_physics_process(false)
+	collision_layer = 0
+	collision_mask = 0
+	global_transform = xform
+	turret_yaw = p_turret_yaw
+	gun_pitch = p_gun_pitch
+	_sync_turret_shape()
+	if p_knocked_out != _was_knocked_out:
+		_was_knocked_out = p_knocked_out
+		for m in _materials:
+			var sm := m as StandardMaterial3D
+			var base: Color = sm.get_meta("base", sm.albedo_color)
+			sm.albedo_color = base.darkened(0.6) if p_knocked_out else base
 
 
 func _on_knocked_out() -> void:

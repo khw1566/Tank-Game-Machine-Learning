@@ -14,8 +14,9 @@
 | `controls/` | 공용 조작 입력(`TankControlInput`, 액션 벡터 6개), 키보드 조작, 통합 스모크 테스트 |
 | `map/` | 구릉지 + 숲 군락 + 바위 생성기(`HillMap`, 시드로 재현) |
 | `tanks/lab/` | 장갑 시험장(시각화 + 관통 시험) |
+| `recording/` | 경기 기록·점수(보상)·보고서·리플레이 뷰어·관찰 오버레이·규칙 AI → [recording/README.md](recording/README.md) |
 | `build/` | Windows 실행 파일 출력 위치 |
-| `main.tscn` / `main.gd` | 임시 메인 씬: 티거 1 vs 셔먼 3 + T-34 2, 사격 로그 기록 |
+| `main.tscn` / `main.gd` | 메인 씬: 티거 1 vs 셔먼 3 + T-34 2, 경기 기록·보고서 자동 생성 |
 
 ## 조작 (모든 전차 공통)
 
@@ -31,6 +32,13 @@
 | 1 / 2 / 3 | 탄종 선택(철갑 / 고속철갑·고체철갑 / 고폭) | (`tank.select_ammo(i)`) |
 | Tab | 조종 전차 전환 | - |
 | F1 | 장갑 시험장 열기 | - |
+| F2 / M | 관찰 오버레이(미니맵 동선·탄착·점수 그래프) 켜기·끄기 / 지도 크게 | - |
+| H / P | 3D 탄착 표시 / 이동 경로 선 켜기·끄기 | - |
+| F3 | 리플레이 뷰어(지난 경기 다시 보기) | - |
+| F4 | 경기 종료 + 보고서 생성 | - |
+| F5 | 새 경기 | - |
+| F6 | 기록 폴더 열기 | - |
+| F7 | AI 전환: 꺼짐 → 다른 전차 AI → 전원 AI(관전) | - |
 
 AI 는 `tank.control = TankControlInput.from_array([...])` 로 같은 입력을 넣는다.
 
@@ -56,10 +64,13 @@ AI 는 `tank.control = TankControlInput.from_array([...])` 로 같은 입력을 
 godot --path .                                                     # 게임 실행(키보드 조작)
 godot --headless --path . -s res://tanks/tests/run_tank_tests.gd   # 장갑·피해 모델 검증
 godot --headless --path . -s res://controls/tests/run_sim_smoke.gd # 주행·선회·사격 통합 테스트
+godot --headless --fixed-fps 30 --path . -s res://recording/tests/run_record_tests.gd  # 기록·리플레이·보고서 검증
+godot --headless --fixed-fps 30 --path . -- --episodes=10           # AI 끼리 10판 연속(빠르게) 기록
 ```
 
-사격·전투불능 기록: `user://logs/combat_<시각>.jsonl`
-(Windows: `%APPDATA%\Godot\app_userdata\Tank Game Machine Learning\logs\`)
+경기 기록·보고서: `user://logs/replays/ep####_<시각>/` (events.jsonl, report.html, CSV),
+에피소드 요약: `user://logs/episodes.csv`
+(Windows: `%APPDATA%\Godot\app_userdata\Tank Game Machine Learning\logs\`, 게임에서 F6)
 
 ## 충돌 레이어
 
@@ -69,4 +80,4 @@ godot --headless --path . -s res://controls/tests/run_sim_smoke.gd # 주행·선
 
 - 시야·탐지(수관/지형 차폐, `spotting_multiplier`) → AI 관측 벡터
 - 자기대전 학습 환경(에피소드 리셋, 보상, 고속 스텝)
-- AI 입력·판단 기록(보고서용)
+- 학습 AI 연결: `MatchRecorder.log_decision()` 로 관측·행동·판단 기록, `RewardModel` 로 보상 계산(이미 준비됨)

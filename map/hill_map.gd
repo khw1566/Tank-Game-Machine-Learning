@@ -24,8 +24,17 @@ var visuals_enabled := DisplayServer.get_name() != "headless"
 var obstacles: Array = [] # [{"type": "tree"/"rock", "pos": Vector3, "radius": float}]
 
 
+## 리플레이에서 불러온 맵 기록(비어 있으면 시드로 생성)
+var _record := {}
+## 지형 높이 격자((n+1)×(n+1), 행 = z)
+var _heights := PackedFloat32Array()
+
+
 func _ready() -> void:
-	generate()
+	if _record.is_empty():
+		generate()
+	else:
+		_build_from_record()
 
 
 func generate() -> void:
@@ -43,7 +52,24 @@ func generate() -> void:
 
 
 func height_at(x: float, z: float) -> float:
+	if not _record.is_empty():
+		return _grid_height(x, z)
 	return noise.get_noise_2d(x, z) * height_amplitude
+
+
+## 기록된 격자에서 쌍선형 보간
+func _grid_height(x: float, z: float) -> float:
+	var n := int(size_m / cell_m)
+	var fx := clampf((x + size_m * 0.5) / cell_m, 0.0, n - 0.0001)
+	var fz := clampf((z + size_m * 0.5) / cell_m, 0.0, n - 0.0001)
+	var ix := int(fx)
+	var iz := int(fz)
+	var tx := fx - ix
+	var tz := fz - iz
+	var w := n + 1
+	var a := lerpf(_heights[iz * w + ix], _heights[iz * w + ix + 1], tx)
+	var b := lerpf(_heights[(iz + 1) * w + ix], _heights[(iz + 1) * w + ix + 1], tx)
+	return lerpf(a, b, tz)
 
 
 func normal_at(x: float, z: float) -> Vector3:
@@ -61,6 +87,7 @@ func _build_terrain() -> void:
 	for iz in n + 1:
 		for ix in n + 1:
 			heights[iz * (n + 1) + ix] = height_at(-half + ix * cell_m, -half + iz * cell_m)
+	_heights = heights
 
 	if visuals_enabled:
 		_build_terrain_mesh(n, half, heights)
@@ -139,15 +166,20 @@ func _try_tree(p: Vector2, rng: RandomNumberGenerator) -> void:
 
 func _add_tree(p: Vector2, rng: RandomNumberGenerator) -> void:
 	var h := rng.randf_range(7.0, 12.0)
-	var ground := height_at(p.x, p.y)
+	var trunk_r := rng.randf_range(0.25, 0.45)
+	var crown_r := rng.randf_range(2.0, 3.5)
+	_place_tree(Vector3(p.x, height_at(p.x, p.y), p.y), h, trunk_r, crown_r)
+
+
+## 나무 1그루를 정확한 치수로 배치(생성기와 리플레이 재구성이 같이 사용)
+func _place_tree(pos: Vector3, h: float, trunk_r: float, crown_r: float) -> void:
 	var root := StaticBody3D.new()
 	root.name = "Tree%d" % obstacles.size()
-	root.position = Vector3(p.x, ground, p.y)
+	root.position = pos
 	root.collision_layer = 1
 	root.collision_mask = 0
 	add_child(root)
 	# 줄기: 포탄·전차 차단
-	var trunk_r := rng.randf_range(0.25, 0.45)
 	var trunk_shape := CollisionShape3D.new()
 	var cyl := CylinderShape3D.new()
 	cyl.radius = trunk_r
@@ -155,7 +187,6 @@ func _add_tree(p: Vector2, rng: RandomNumberGenerator) -> void:
 	trunk_shape.shape = cyl
 	trunk_shape.position.y = h * 0.25
 	root.add_child(trunk_shape)
-	var crown_r := rng.randf_range(2.0, 3.5)
 	var crown_y := h * 0.75
 	if visuals_enabled:
 		_add_tree_visuals(root, h, trunk_r, crown_r, crown_y)
@@ -171,7 +202,7 @@ func _add_tree(p: Vector2, rng: RandomNumberGenerator) -> void:
 	fs.position.y = crown_y
 	foliage.add_child(fs)
 	root.add_child(foliage)
-	obstacles.append({"type": "tree", "pos": root.position, "radius": crown_r})
+	obstacles.append({"type": "tree", "pos": pos, "radius": crown_r, "h": h, "trunk_r": trunk_r})
 
 
 func _add_tree_visuals(root: Node3D, h: float, trunk_r: float, crown_r: float, crown_y: float) -> void:
@@ -199,10 +230,14 @@ func _add_tree_visuals(root: Node3D, h: float, trunk_r: float, crown_r: float, c
 func _add_rock(p: Vector2, rng: RandomNumberGenerator) -> void:
 	var s := Vector3(rng.randf_range(2.0, 5.0), rng.randf_range(1.5, 3.0), rng.randf_range(2.0, 5.0))
 	var ground := height_at(p.x, p.y)
+	_place_rock(Vector3(p.x, ground + s.y * 0.35, p.y), s, rng.randf() * TAU)
+
+
+func _place_rock(pos: Vector3, s: Vector3, rot_y: float) -> void:
 	var body := StaticBody3D.new()
 	body.name = "Rock%d" % obstacles.size()
-	body.position = Vector3(p.x, ground + s.y * 0.35, p.y)
-	body.rotation.y = rng.randf() * TAU
+	body.position = pos
+	body.rotation.y = rot_y
 	body.collision_layer = 1
 	body.collision_mask = 0
 	add_child(body)
@@ -218,7 +253,59 @@ func _add_rock(p: Vector2, rng: RandomNumberGenerator) -> void:
 		mi.mesh = bm
 		mi.material_override = _color_mat(Color(0.5, 0.5, 0.48))
 		body.add_child(mi)
-	obstacles.append({"type": "rock", "pos": body.position, "radius": maxf(s.x, s.z) * 0.5})
+	obstacles.append({"type": "rock", "pos": pos, "radius": maxf(s.x, s.z) * 0.5, "size": s, "rot_y": rot_y})
+
+
+## 리플레이 기록용: 지형 높이 격자와 장애물의 정확한 치수.
+## 생성 알고리즘이 나중에 바뀌어도 이 기록만으로 같은 맵을 다시 만든다.
+func to_record() -> Dictionary:
+	var obs := []
+	for o in obstacles:
+		var e := {"type": o.type, "pos": _r3(o.pos), "radius": snappedf(o.radius, 0.001)}
+		if o.type == "tree":
+			e["h"] = snappedf(o.h, 0.001)
+			e["trunk_r"] = snappedf(o.trunk_r, 0.001)
+		else:
+			e["size"] = _r3(o.size)
+			e["rot_y"] = snappedf(o.rot_y, 0.0001)
+		obs.append(e)
+	var hs := []
+	for v in _heights:
+		hs.append(snappedf(v, 0.001))
+	return {"generator": "HillMap", "seed": map_seed, "size_m": size_m, "cell_m": cell_m,
+		"height_amplitude": height_amplitude, "noise_frequency": noise_frequency,
+		"spawn_points": spawn_points.map(func(v): return _r3(v)), "heights": hs, "obstacles": obs}
+
+
+## 기록에서 맵 재구성(리플레이 뷰어용). generate() 대신 호출하고 add_child 전에 불러도 된다.
+func load_record(rec: Dictionary) -> void:
+	_record = rec
+	if is_inside_tree():
+		_build_from_record()
+
+
+func _build_from_record() -> void:
+	for ch in get_children():
+		ch.queue_free()
+	obstacles.clear()
+	map_seed = int(_record.get("seed", map_seed))
+	size_m = float(_record.size_m)
+	cell_m = float(_record.cell_m)
+	_heights = PackedFloat32Array(_record.heights)
+	var n := int(size_m / cell_m)
+	if visuals_enabled:
+		_build_terrain_mesh(n, size_m * 0.5, _heights)
+	_build_terrain_collision(n, _heights)
+	for o in _record.obstacles:
+		var p := Vector3(o.pos[0], o.pos[1], o.pos[2])
+		if o.type == "tree":
+			_place_tree(p, o.h, o.trunk_r, o.radius)
+		else:
+			_place_rock(p, Vector3(o.size[0], o.size[1], o.size[2]), o.rot_y)
+
+
+static func _r3(v: Vector3) -> Array:
+	return [snappedf(v.x, 0.001), snappedf(v.y, 0.001), snappedf(v.z, 0.001)]
 
 
 var _mat_cache := {}
