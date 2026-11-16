@@ -5,7 +5,9 @@ extends Node3D
 ## 끝나면(전멸·시간초과·F4) 보고서 report.html 을 만든다. F3 = 리플레이 뷰어.
 ##
 ## 헤드리스 일괄 실행(전원 AI, 끝나면 다음 에피소드):
-##   godot --headless --path . -- --episodes=10 [--seed=1] [--time-limit=600] [--log-obs=60]
+##   godot --headless --path . -- --episodes=10 [--seed=1] [--time-limit=600] [--log-obs=60] [--spawn-distance=500]
+##
+## 강화학습(커리큘럼·Python 연결)은 training/ 참고:  godot --headless --fixed-fps 30 --path . -- --train --port=11008
 ##
 ## 사람과 AI 는 같은 정보만 받는다(TankAgent = 시점 + 관측). 공정 시야(K, 기본 켬)에서는
 ## 사람 화면에도 탐지된 적만 그려지고, HUD 에 정확한 거리가 나오지 않는다. 전원 AI 관전 중에는 꺼진다.
@@ -22,6 +24,8 @@ static var cli_seed := -1
 static var cli_time_limit := -1.0
 ## 관측 벡터 전체를 몇 틱마다 기록할지(0 = 요약만). 요약(보인 적·들린 소리)은 판단 기록마다 남는다.
 static var cli_log_obs_every := 60
+## 양 팀 출발점 사이 거리(m). 0 이하 = 맵 기본(900m)
+static var cli_spawn_distance := -1.0
 
 @export var map_seed := 1
 @export var allied_lineup: Array[String] = ["sherman75", "sherman75", "sherman75", "t34_76", "t34_76"]
@@ -58,6 +62,10 @@ var _headless := DisplayServer.get_name() == "headless"
 
 
 func _ready() -> void:
+	if "--train" in OS.get_cmdline_user_args() or "--reproduce" in " ".join(OS.get_cmdline_user_args()):
+		# 학습/재현 모드: 학습 환경 씬으로 넘긴다(내보낸 exe 에서도 같은 인자로 동작)
+		get_tree().change_scene_to_file.call_deferred("res://training/training_env.tscn")
+		return
 	_parse_cli()
 	if cli_seed >= 0:
 		map_seed = cli_seed
@@ -65,6 +73,8 @@ func _ready() -> void:
 		time_limit_s = cli_time_limit
 	map = HillMap.new()
 	map.map_seed = map_seed
+	if cli_spawn_distance > 0.0:
+		map.spawn_points = [Vector3(0, 0, cli_spawn_distance * 0.5), Vector3(0, 0, -cli_spawn_distance * 0.5)]
 	add_child(map)
 	_spawn("tiger1", 0, map.spawn_points[0], 0)
 	var n := allied_lineup.size()
@@ -104,6 +114,8 @@ func _parse_cli() -> void:
 			cli_seed = int(a.get_slice("=", 1))
 		elif a.begins_with("--time-limit="):
 			cli_time_limit = float(a.get_slice("=", 1))
+		elif a.begins_with("--spawn-distance="):
+			cli_spawn_distance = float(a.get_slice("=", 1))
 		elif a.begins_with("--log-obs="):
 			cli_log_obs_every = int(a.get_slice("=", 1))
 		elif a == "--ai":

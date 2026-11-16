@@ -362,6 +362,16 @@ func _is_free(p: Vector2, r: float) -> bool:
 	return true
 
 
+## 학습·시나리오용: 반지름 r 안에 장애물(바위·나무·건물·숲 등)이 없고 맵 안이면 true (출발 구역 여부는 무시)
+func is_clear(p: Vector2, r: float) -> bool:
+	if not _in_bounds(p, r + 20.0):
+		return false
+	for o in _occupied:
+		if p.distance_to(o[0]) < o[1] + r:
+			return false
+	return true
+
+
 func _body(kind: String) -> StaticBody3D:
 	if not _bodies.has(kind):
 		var b := StaticBody3D.new()

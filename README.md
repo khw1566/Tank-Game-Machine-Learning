@@ -15,6 +15,7 @@
 | `map/` | 전술 지형 생성기(`HillMap`, 시드로 재현), 시야·탐지 판정(`LineOfSight`), 거리 격자(`RangeGrid`) → 아래 "맵과 시야" |
 | `tanks/lab/` | 장갑 시험장(시각화 + 관통 시험) |
 | `recording/` | 경기 기록·점수(보상)·보고서·리플레이 뷰어·관찰 오버레이·규칙 AI → [recording/README.md](recording/README.md) |
+| `training/` | 강화학습: 헤드리스 학습 환경(`training_env.tscn`), 단계별 보상, Python PPO·커리큘럼·자기대전·학습 보고서·지난 판 재현 → [training/README.md](training/README.md) |
 | `build/` | Windows 실행 파일 출력 위치 |
 | `main.tscn` / `main.gd` | 메인 씬: 티거 1 vs 셔먼 3 + T-34 2, 경기 기록·보고서 자동 생성 |
 
@@ -88,6 +89,8 @@ godot --headless --path . -s res://controls/tests/run_perception_tests.gd # 시�
 godot --headless --path . -s res://map/tests/run_map_tests.gd      # 맵 재현성·차단물별 시야 판정·시선 통계
 godot --headless --fixed-fps 30 --path . -s res://recording/tests/run_record_tests.gd  # 기록·리플레이·보고서 검증
 godot --headless --fixed-fps 30 --path . -- --episodes=10           # AI 끼리 10판 연속(빠르게) 기록
+godot --path . -- --spawn-distance=500                               # 양 팀 출발 거리 500m(기본 900m)
+python training/python/train.py --godot <godot> --project . --tank tiger1   # 강화학습(커리큘럼) → training/README.md
 ```
 
 경기 기록·보고서: `user://logs/replays/ep####_<시각>/` (events.jsonl, report.html, CSV),

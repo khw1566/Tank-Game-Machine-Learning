@@ -1,0 +1,291 @@
+"""헤드리스 Godot 여러 개를 Stable-Baselines3 VecEnv 하나로 묶는다.
+
+- Godot 프로세스 1개 = VecEnv 슬롯 1개 = 학습 전차 1대. 같은 경기 안의 다른 외부 조종 전차
+  (같은 종류 아군 = 현재 정책 복사, 다른 종류 = 저장된 상대 정책)는 여기서 추론해 함께 보낸다.
+- 행동을 모두 보낸 뒤 결과를 받으므로 Godot 프로세스들이 병렬로 돈다.
+- 에피소드가 끝나면 커리큘럼에 결과를 알리고 곧바로 다음 설정으로 reset(자동 리셋).
+- 모든 에피소드는 Godot 이 재현 파일(설정·시드·행동)로 저장하고, 여기서는 progress.csv 한 줄을 남긴다.
+"""
+from __future__ import annotations
+
+import csv
+import json
+import os
+import random
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import gymnasium as gym
+import numpy as np
+from stable_baselines3.common.vec_env.base_vec_env import VecEnv
+
+from . import protocol
+from .curriculum import STAGE_IDS, Curriculum, lineup, make_config, tank_names
+
+PROGRESS_FIELDS = ["wall_time", "global_step", "env", "uid", "tank", "stage", "stage_idx", "current_stage",
+                   "success", "reason", "winner", "return", "decisions", "duration_s", "spawn_distance_m",
+                   "map_seed", "seed", "hits", "pens", "kills", "shots", "learner_policy", "opponents",
+                   "episode_file", "replay_dir", "final_hash"]
+
+
+def godot_command(godot: str, project: str | None, port: int, env_id: int, log_dir: str,
+                  extra: list[str] | None = None) -> list[str]:
+    """godot = Godot 편집기 실행 파일(+ project 경로) 또는 내보낸 TankGame.exe(project 없이)."""
+    cmd = [godot, "--headless", "--fixed-fps", "30"]
+    if project:
+        cmd += ["--path", project]
+    cmd += ["--", "--train", f"--port={port}", f"--env-id={env_id}", f"--log-dir={log_dir}"]
+    return cmd + (extra or [])
+
+
+class GodotProcess:
+    def __init__(self, godot: str, project: str | None, env_id: int, log_dir: str, timeout: float = 120.0,
+                 quiet: bool = True):
+        self.env_id = env_id
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        srv.settimeout(timeout)
+        port = srv.getsockname()[1]
+        self.cmd = godot_command(godot, project, port, env_id, log_dir)
+        out = subprocess.DEVNULL if quiet else None
+        self.proc = subprocess.Popen(self.cmd, stdout=out, stderr=out)
+        try:
+            self.sock, _ = srv.accept()
+        except socket.timeout as e:
+            self.proc.kill()
+            raise RuntimeError(f"Godot env {env_id} did not connect: {' '.join(self.cmd)}") from e
+        finally:
+            srv.close()
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.sock.settimeout(None)
+        self.hello, _ = protocol.recv(self.sock)
+        self.obs_size = int(self.hello["obs_size"])
+        self.act_size = int(self.hello["act_size"])
+
+    def send(self, header: dict, payload: bytes = b"") -> None:
+        protocol.send(self.sock, header, payload)
+
+    def recv_obs(self):
+        h, p = protocol.recv(self.sock)
+        if h.get("type") != "obs":
+            raise RuntimeError(f"env {self.env_id}: unexpected message {h}")
+        n = len(h["agents"])
+        return h, protocol.f32(p, n, self.obs_size)
+
+    def close(self) -> None:
+        try:
+            self.send({"type": "close"})
+        except OSError:
+            pass
+        try:
+            self.proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+        self.sock.close()
+
+
+class GodotVecEnv(VecEnv):
+    def __init__(self, n_envs: int, godot: str, project: str | None, run_dir: str | Path,
+                 learner: str, curriculum: Curriculum, opponents=None, seed: int = 0,
+                 record_every: int = 200, map_repeat: int = 20, quiet: bool = True,
+                 reward_overrides: dict | None = None, run_name: str = ""):
+        self.run_dir = Path(run_dir).resolve()
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.learner = learner
+        self.curriculum = curriculum
+        self.opponents = opponents
+        self.record_every = record_every
+        self.map_repeat = map_repeat
+        self.reward_overrides = reward_overrides
+        self.run_name = run_name or self.run_dir.name
+        self.rng = random.Random(seed)
+        self.policy_fn = None          # 같은 종류 아군(copy) 추론: fn(obs[n, D]) -> actions[n, A]
+        self.learner_version = ""
+        self.global_step = 0
+        self.episode_count = 0
+        self.procs = [GodotProcess(godot, project, i, str(self.run_dir), quiet=quiet) for i in range(n_envs)]
+        p0 = self.procs[0]
+        self.obs_labels = p0.hello.get("obs_labels", [])
+        self.action_labels = p0.hello.get("action_labels", [])
+        obs_space = gym.spaces.Box(-np.inf, np.inf, shape=(p0.obs_size,), dtype=np.float32)
+        act_space = gym.spaces.Box(-1.0, 1.0, shape=(p0.act_size,), dtype=np.float32)
+        super().__init__(n_envs, obs_space, act_space)
+        self._maps = [None] * n_envs           # (stage_id, map_seed, 남은 횟수)
+        self._ctx = [None] * n_envs            # 에피소드별 {roles, names, cfg, ...}
+        self._last = [None] * n_envs           # 마지막 전체 관측 [n_ext, D]
+        self._actions = None
+        self._ret = np.zeros(n_envs)
+        self._progress_path = self.run_dir / "progress.csv"
+        new = not self._progress_path.exists()
+        self._progress_f = open(self._progress_path, "a", newline="", encoding="utf-8")
+        self._progress = csv.DictWriter(self._progress_f, fieldnames=PROGRESS_FIELDS)
+        if new:
+            self._progress.writeheader()
+        self._curr_log = open(self.run_dir / "curriculum_log.jsonl", "a", encoding="utf-8")
+
+    # ------------------------------------------------------------ 설정
+
+    def _map_seed(self, i: int, stage: dict) -> int:
+        cur = self._maps[i]
+        if cur is None or cur[0] != stage["id"] or cur[2] <= 0:
+            cur = [stage["id"], self.rng.choice(stage["map"]["seeds"]), self.map_repeat]
+        cur[2] -= 1
+        self._maps[i] = cur
+        return cur[1]
+
+    def _new_config(self, i: int) -> dict:
+        stage = self.curriculum.pick_stage()
+        have = set(self.opponents.available()) if self.opponents else set()
+        lu = lineup(stage, self.learner, self.rng, have)
+        names = tank_names(lu)
+        self.episode_count += 1
+        uid = f"{self.run_name}_{self.learner}_{self.episode_count:07d}_{stage['id']}"
+        policies, opp = {}, {}
+        for d, n in zip(lu, names):
+            if d["role"] in ("learner", "copy"):
+                policies[n] = self.learner_version
+            elif d["role"] == "opponent":
+                opp[n] = self.opponents.pick(d["type"], self.rng)
+                policies[n] = self.opponents.describe(opp[n])
+        seed = self.rng.randrange(1, 2**31 - 1)
+        record = self.record_every > 0 and self.episode_count % self.record_every == 0
+        meta = {"run": self.run_name, "learner_tank": self.learner, "policies": policies,
+                "roles": {n: d["role"] for d, n in zip(lu, names)}, "global_step": self.global_step,
+                "stage_idx": STAGE_IDS.index(stage["id"]), "current_stage": self.curriculum.stage["id"]}
+        cfg = make_config(stage, self.learner, lu, seed, self._map_seed(i, stage), uid, record, meta,
+                          self.reward_overrides)
+        ext = [k for k, d in enumerate(lu) if d["ctrl"] == "external"]
+        roles = [lu[k]["role"] for k in ext]
+        self._ctx[i] = {"cfg": cfg, "stage": stage, "roles": roles, "ext_names": [names[k] for k in ext],
+                        "opp_versions": [opp.get(names[k], "") for k in ext],
+                        "learner_k": roles.index("learner")}
+        return cfg
+
+    # ------------------------------------------------------------ VecEnv
+
+    def reset(self):
+        for i, p in enumerate(self.procs):
+            p.send({"type": "reset", "config": self._new_config(i)})
+        obs = np.zeros((self.num_envs, self.observation_space.shape[0]), dtype=np.float32)
+        for i, p in enumerate(self.procs):
+            _, o = p.recv_obs()
+            self._last[i] = o
+            obs[i] = o[self._ctx[i]["learner_k"]]
+        self._ret[:] = 0
+        return obs
+
+    def step_async(self, actions):
+        self._actions = np.asarray(actions, dtype=np.float32)
+
+    def _all_actions(self, i: int, learner_action: np.ndarray) -> np.ndarray:
+        ctx = self._ctx[i]
+        o = self._last[i]
+        acts = np.zeros((len(ctx["roles"]), self.action_space.shape[0]), dtype=np.float32)
+        copies = [k for k, r in enumerate(ctx["roles"]) if r == "copy"]
+        if copies and self.policy_fn is not None:
+            acts[copies] = self.policy_fn(o[copies])
+        for k, r in enumerate(ctx["roles"]):
+            if r == "learner":
+                acts[k] = learner_action
+            elif r == "opponent":
+                acts[k] = self.opponents.act(ctx["opp_versions"][k], o[k])
+        return np.clip(acts, -1.0, 1.0)
+
+    def step_wait(self):
+        n = self.num_envs
+        for i, p in enumerate(self.procs):
+            p.send({"type": "step"}, self._all_actions(i, self._actions[i]).astype("<f4").tobytes())
+        obs = np.zeros((n, self.observation_space.shape[0]), dtype=np.float32)
+        rews = np.zeros(n, dtype=np.float32)
+        dones = np.zeros(n, dtype=bool)
+        infos = [{} for _ in range(n)]
+        finished = []
+        for i, p in enumerate(self.procs):
+            h, o = p.recv_obs()
+            k = self._ctx[i]["learner_k"]
+            self._last[i] = o
+            obs[i] = o[k]
+            rews[i] = h["agents"][k]["reward"]
+            self._ret[i] += rews[i]
+            if h["done"]:
+                dones[i] = True
+                ep = h.get("episode", {})
+                infos[i] = {"terminal_observation": o[k].copy(), "episode": {"r": float(self._ret[i]),
+                            "l": int(ep.get("decisions", 0)), "t": time.time()},
+                            "stage": self._ctx[i]["stage"]["id"], "success": bool(ep.get("success", False)),
+                            "TimeLimit.truncated": ep.get("reason") == "time_limit"}
+                self._log_episode(i, ep)
+                finished.append(i)
+        self.global_step += n
+        # 자동 리셋(병렬): 끝난 프로세스에 새 설정을 보내고 첫 관측을 받는다
+        for i in finished:
+            self.procs[i].send({"type": "reset", "config": self._new_config(i)})
+        for i in finished:
+            _, o = self.procs[i].recv_obs()
+            self._last[i] = o
+            obs[i] = o[self._ctx[i]["learner_k"]]
+            self._ret[i] = 0
+        return obs, rews, dones, infos
+
+    def _log_episode(self, i: int, ep: dict) -> None:
+        ctx = self._ctx[i]
+        cfg = ctx["cfg"]
+        stage_id = ctx["stage"]["id"]
+        me = ctx["ext_names"][ctx["learner_k"]]
+        tinfo = next((t for t in ep.get("tanks", []) if t["name"] == me), {})
+        row = {"wall_time": round(time.time(), 2), "global_step": self.global_step, "env": i, "uid": cfg["uid"],
+               "tank": self.learner, "stage": stage_id, "stage_idx": STAGE_IDS.index(stage_id),
+               "current_stage": self.curriculum.stage["id"], "success": int(bool(ep.get("success"))),
+               "reason": ep.get("reason", ""), "winner": ep.get("winner", -1),
+               "return": round(float(self._ret[i]), 4), "decisions": ep.get("decisions", 0),
+               "duration_s": ep.get("duration_s", 0), "spawn_distance_m": ep.get("spawn_distance_m", 0),
+               "map_seed": cfg["map"]["seed"], "seed": cfg["seed"], "hits": tinfo.get("hits", 0),
+               "pens": tinfo.get("pens", 0), "kills": tinfo.get("kills", 0), "shots": tinfo.get("shots", 0),
+               "learner_policy": self.learner_version,
+               "opponents": ";".join(self.opponents.describe(v) for v in ctx["opp_versions"] if v),
+               "episode_file": ep.get("episode_file", ""), "replay_dir": ep.get("replay_dir", ""),
+               "final_hash": ep.get("final_hash", "")}
+        self._progress.writerow(row)
+        self._progress_f.flush()
+        promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step)
+        if promo:
+            promo["wall_time"] = round(time.time(), 2)
+            promo["learner_policy"] = self.learner_version
+            self._curr_log.write(json.dumps(promo, ensure_ascii=False) + "\n")
+            self._curr_log.flush()
+            print(f"[curriculum] {promo['tank']}: {promo['from']} → {promo['to']} "
+                  f"(성공률 {promo['success_rate']:.2f}, {promo['episodes']} 에피소드, {promo['reason']})", flush=True)
+
+    def close(self):
+        for p in self.procs:
+            p.close()
+        self._progress_f.close()
+        self._curr_log.close()
+
+    # VecEnv 의 나머지 인터페이스(이 환경에서는 거의 쓰지 않음)
+    def get_attr(self, attr_name, indices=None):
+        return [getattr(self, attr_name)] * len(self._idx(indices))
+
+    def set_attr(self, attr_name, value, indices=None):
+        setattr(self, attr_name, value)
+
+    def env_method(self, method_name, *args, indices=None, **kwargs):
+        return [getattr(self, method_name)(*args, **kwargs) for _ in self._idx(indices)]
+
+    def env_is_wrapped(self, wrapper_class, indices=None):
+        return [False] * len(self._idx(indices))
+
+    def seed(self, seed=None):
+        if seed is not None:
+            self.rng.seed(seed)
+        return [seed] * self.num_envs
+
+    def _idx(self, indices):
+        if indices is None:
+            return range(self.num_envs)
+        return [indices] if isinstance(indices, int) else indices

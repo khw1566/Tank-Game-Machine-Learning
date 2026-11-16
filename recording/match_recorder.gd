@@ -46,6 +46,8 @@ const STATUS_DESTROYED := 3    # 파괴(화재·탄약 유폭)
 @export var write_files := true
 @export var write_report := true
 @export var log_root := "user://logs"
+## 전멸·시간초과로 스스로 끝낼지. 학습 환경은 단계별 종료 조건을 직접 판단하므로 끈다.
+@export var auto_end := true
 ## 오버레이용 동선 기억 간격(프레임 수)
 @export var path_every := 5
 
@@ -132,6 +134,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _check_end() -> void:
+	if not auto_end:
+		return
 	var alive := [0, 0]
 	for t in tanks:
 		if t.damage.is_combat_effective():
