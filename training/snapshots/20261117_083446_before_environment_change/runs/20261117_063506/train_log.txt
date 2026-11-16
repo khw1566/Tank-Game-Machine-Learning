@@ -1,0 +1,8 @@
+
+===== 2026-11-17 06:35:06 시작: C:\Users\work\AppData\Local\Programs\Python\Python314\python.exe -u "C:\Users\work\Desktop\Tank Game Machine Learning\training\python\train.py" --godot "C:\Users\work\Desktop\Tank Game Machine Learning\build\TankGame.exe" --run 20261117_063506 --runs-dir "C:\Users\work\Desktop\Tank Game Machine Learning\training\python\runs" --n-envs 16 --tank tiger1 --timesteps 3000000 --start-stage drive_terrain --record-every 200 --save-every 100000 --speed-cap 0
+Traceback (most recent call last):
+  File "C:\Users\work\Desktop\Tank Game Machine Learning\training\python\train.py", line 35, in <module>
+    from tankrl.godot_env import GodotVecEnv
+  File "C:\Users\work\Desktop\Tank Game Machine Learning\training\python\tankrl\godot_env.py", line 21, in <module>
+    import gymnasium as gym
+ModuleNotFoundError: No module named 'gymnasium'

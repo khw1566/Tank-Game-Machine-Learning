@@ -1,0 +1,2 @@
+curriculum/success_rate,time/total_timesteps,time/fps,rollout/ep_rew_mean,time/iterations,time/time_elapsed,curriculum/stage_idx,success/drive,rollout/ep_len_mean
+0.5833333333333334,1241880,484,4.104995786295294,1,16,0,0.5833333333333334,486.18

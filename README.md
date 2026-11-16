@@ -16,6 +16,7 @@
 | `tanks/lab/` | 장갑 시험장(시각화 + 관통 시험) |
 | `recording/` | 경기 기록·점수(보상)·보고서·리플레이 뷰어·관찰 오버레이·규칙 AI → [recording/README.md](recording/README.md) |
 | `training/` | 강화학습: 헤드리스 학습 환경(`training_env.tscn`), 단계별 보상, Python PPO·커리큘럼·자기대전·학습 보고서·지난 판 재현 → [training/README.md](training/README.md) |
+| `training/snapshots/` | 환경 변경 전 모델·학습 데이터·경기 기록 보존본. 다운로드는 `git lfs pull` → [복원·검증 안내](training/snapshots/README.md) |
 | `build/` | Windows 실행 파일 출력 위치 |
 | `main.tscn` / `main.gd` | 메인 씬: 티거 1 vs 셔먼 3 + T-34 2, 경기 기록·보고서 자동 생성 |
 

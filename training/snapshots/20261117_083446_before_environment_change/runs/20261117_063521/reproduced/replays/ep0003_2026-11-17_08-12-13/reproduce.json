@@ -1,0 +1,33 @@
+{
+  "expected_hash": "447cda11d65280717c04ad6b513810ca",
+  "final_hash": "4f73a497a797506ed89c758f77008aa9",
+  "ok": false,
+  "result": {
+    "decisions": 900,
+    "done": true,
+    "duration_s": 90,
+    "final_hash": "4f73a497a797506ed89c758f77008aa9",
+    "reason": "time_limit",
+    "replay_dir": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\20261117_063521\\reproduced/replays/ep0003_2026-11-17_08-12-13",
+    "seed": 95569255,
+    "spawn_distance_m": 0,
+    "stage": "drive_terrain",
+    "success": false,
+    "tanks": [
+      {
+        "hits": 0,
+        "kills": 0,
+        "name": "tiger1_0",
+        "pens": 0,
+        "return": -0.1842,
+        "shots": 8,
+        "status": "operational",
+        "tank": "tiger1",
+        "team": 0
+      }
+    ],
+    "ticks": 2700,
+    "uid": "20261117_063521_tiger1_0002759_drive_terrain",
+    "winner": -1
+  }
+}

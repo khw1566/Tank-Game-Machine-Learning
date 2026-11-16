@@ -1,0 +1,1 @@
+{"tank": "tiger1", "from": "drive", "to": "drive_terrain", "episodes": 2389, "success_rate": 0.8, "reason": "threshold", "global_step": 1275672, "wall_time": 1794870493.99, "learner_policy": "20261117_063521/tiger1/step_001275672"}

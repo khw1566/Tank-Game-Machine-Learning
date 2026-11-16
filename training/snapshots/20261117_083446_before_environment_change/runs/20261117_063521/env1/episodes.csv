@@ -1,0 +1,4 @@
+episode,date,duration_s,reason,winner,score_team0,score_team1,alive_team0,alive_team1,kills_team0,kills_team1,dir
+1,2026-11-17T07:22:21,49.77,training_arrived,0,9.851,0.000,1,0,0,0,ep0001_2026-11-17_07-22-12
+2,2026-11-17T07:29:31,26.67,training_arrived,0,9.920,0.000,1,0,0,0,ep0002_2026-11-17_07-29-26
+3,2026-11-17T08:17:46,89.17,training_arrived,0,9.733,0.000,1,0,0,0,ep0003_2026-11-17_08-17-31

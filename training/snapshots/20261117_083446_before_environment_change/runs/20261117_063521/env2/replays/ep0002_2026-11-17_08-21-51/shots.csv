@@ -1,0 +1,7 @@
+t_s,shooter,shooter_team,target,target_team,shell,hit,result,zone,distance_m,impact_angle_deg,plate_mm,effective_mm,pen_mean_mm,pen_roll_mm,pen_probability,from_x,from_z,hit_x,hit_y,hit_z,events,damage
+0.000,tiger1_0,0,-,-1,PzGr.39 (APCBC-HE),false,blocked,,,,,,,,,290.66,48.75,268.36,4.53,44.01,,
+7.067,tiger1_0,0,-,-1,PzGr.39 (APCBC-HE),false,blocked,,,,,,,,,290.52,50.25,282.51,2.39,50.40,,
+15.767,tiger1_0,0,-,-1,PzGr.39 (APCBC-HE),false,blocked,,,,,,,,,290.42,52.82,282.27,1.73,56.38,,
+23.067,tiger1_0,0,-,-1,PzGr.39 (APCBC-HE),false,blocked,,,,,,,,,290.97,58.56,285.67,1.08,67.39,,
+33.467,tiger1_0,0,-,-1,PzGr.39 (APCBC-HE),false,blocked,,,,,,,,,298.82,75.35,294.76,0.78,88.67,,
+49.267,tiger1_0,0,-,-1,PzGr.39 (APCBC-HE),false,miss,,,,,,,,,398.99,143.49,nan,nan,nan,,

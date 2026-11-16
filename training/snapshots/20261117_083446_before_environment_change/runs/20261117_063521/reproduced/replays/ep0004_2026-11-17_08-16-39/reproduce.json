@@ -1,0 +1,14 @@
+{
+  "expected_hash": "d40b566e9ca936c4d88bc8ac92df75be",
+  "final_hash": "eacbac8246f22af418491a0138075f6e",
+  "ok": false,
+  "result": {
+    "done": true,
+    "final_hash": "eacbac8246f22af418491a0138075f6e",
+    "reason": "record_end",
+    "replay_dir": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\20261117_063521\\reproduced/replays/ep0004_2026-11-17_08-16-39",
+    "success": false,
+    "ticks": 1551,
+    "winner": -1
+  }
+}

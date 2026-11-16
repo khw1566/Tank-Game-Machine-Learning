@@ -1,0 +1,28 @@
+Godot Engine v4.3.stable.official.77dcf97d8 - https://godotengine.org
+
+penGL API 3.3.0 NVIDIA 610.88 - Compatibility - Using Device: NVIDIA - NVIDIA GeForce RTX 4070 SUPER
+
+tiger1_0 → t34_76_4: hull_front_upper 관통 (유효 99.1mm / 관통 133.4mm) penetration,filler_detonation
+tiger1_0 → t34_76_4: hull_side_upper 관통 (유효 56.7mm / 관통 140.9mm) penetration,filler_detonation,knocked_out:crew_casualties
+t34_76_4 전투불능: crew_casualties
+tiger1_0 → sherman75_3: turret_side 관통 (유효 65.7mm / 관통 141.6mm) penetration,filler_detonation,ammo_detonation,knocked_out:ammo_detonation
+sherman75_3 전투불능: ammo_detonation
+tiger1_0 → sherman75_2: hull_side_upper 관통 (유효 53.7mm / 관통 136.4mm) penetration,filler_detonation,ammo_detonation,knocked_out:ammo_detonation
+sherman75_2 전투불능: ammo_detonation
+tiger1_0 → sherman75_1: hull_side_upper 관통 (유효 51.5mm / 관통 123.2mm) penetration,filler_detonation
+tiger1_0 → sherman75_1: turret_side 관통 (유효 69.3mm / 관통 136.3mm) penetration,filler_detonation
+tiger1_0 → sherman75_1: hull_side_upper 관통 (유효 51.2mm / 관통 127.4mm) penetration,filler_detonation
+tiger1_0 → sherman75_1: hull_side_upper 관통 (유효 51.4mm / 관통 140.5mm) penetration,filler_detonation,knocked_out:firepower_and_mobility_lost
+sherman75_1 전투불능: firepower_and_mobility_lost
+tiger1_0 → t34_76_5: hull_side_lower 관통 (유효 49.1mm / 관통 122.1mm) track_hit,penetration,filler_detonation
+t34_76_5 → tiger1_0: hull_side_lower 관통 (유효 69.3mm / 관통 77.9mm) penetration,filler_detonation
+t34_76_5 → tiger1_0: hull_side_upper 불관통 (유효 92.5mm / 관통 72.2mm) non_penetration
+t34_76_5 → tiger1_0: hull_side_upper 불관통 (유효 92.4mm / 관통 75.2mm) non_penetration
+t34_76_5 → tiger1_0: hull_side_upper 불관통 (유효 92.4mm / 관통 73.7mm) non_penetration
+t34_76_5 → tiger1_0: hull_top 불관통 (유효 144mm / 관통 78.5mm) non_penetration
+t34_76_5 → tiger1_0: hull_side_upper 불관통 (유효 92.6mm / 관통 73.8mm) non_penetration
+에피소드 5 종료(manual): 무승부  점수 [39.392, -40.002]  보고서: C:/Users/work/AppData/Roaming/Godot/app_userdata/Tank Game Machine Learning/logs/replays/ep0005_2026-11-17_08-23-59/report.html
+USER WARNING: 1 RID of type "CanvasItem" was leaked.
+   at: _free_rids (servers/rendering/renderer_canvas_cull.cpp:2483)
+USER WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+   at: cleanup (core/object/object.cpp:2284)

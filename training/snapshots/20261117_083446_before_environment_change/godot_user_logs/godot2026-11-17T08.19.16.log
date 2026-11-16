@@ -1,0 +1,5 @@
+Godot Engine v4.3.stable.official.77dcf97d8 - https://godotengine.org
+
+reproduce: 20261117_063521_tiger1_0002896_drive_terrain  stage=drive_terrain seed=1728293618  external=["tiger1_0"]  decisions=900
+reproduce: MISMATCH — 다름  ticks=2700  result=time_limit  final_hash a498452bb494b1e5630014da271c980a (ab6651ad19908535c7d85cdbf1b61d92)
+reproduce: replay=C:\Users\work\Desktop\Tank Game Machine Learning\training\python\runs\terrain_diagnostics_20261117\20261117_063521_tiger1_0002896_drive_terrain/replays/ep0001_2026-11-17_08-19-14  report=C:\Users\work\Desktop\Tank Game Machine Learning\training\python\runs\terrain_diagnostics_20261117\20261117_063521_tiger1_0002896_drive_terrain/replays/ep0001_2026-11-17_08-19-14/report.html

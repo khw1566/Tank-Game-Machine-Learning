@@ -1,0 +1,10 @@
+{
+  "tank": "tiger1",
+  "stage_idx": 0,
+  "stage": "drive",
+  "episodes_in_stage": 2301,
+  "history": [],
+  "recent_success": {
+    "drive": 0.5833333333333334
+  }
+}

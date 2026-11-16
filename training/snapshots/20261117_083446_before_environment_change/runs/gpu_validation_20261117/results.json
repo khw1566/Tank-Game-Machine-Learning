@@ -1,0 +1,69 @@
+[
+  {
+    "repeat": 1,
+    "runtime": {
+      "requested_device": "cpu",
+      "device": "cpu",
+      "gpu_name": null,
+      "torch": "2.15.0+cu132",
+      "cuda_version": "13.2",
+      "torch_threads": 4,
+      "n_steps": 1024,
+      "batch_size": 2048,
+      "n_epochs": 8,
+      "rollout_size": 8192,
+      "rollout_buffer": "RolloutBuffer"
+    },
+    "n_envs": 8,
+    "steps": 16384,
+    "wall_s": 11.4463,
+    "steady_steps_per_s": 1457.59,
+    "collect_s": [
+      4.557940600003349,
+      5.337929499997699
+    ],
+    "update_s": [
+      0.6748014999975567,
+      0.6697806000011042
+    ],
+    "median_collect_s": 4.947935050000524,
+    "median_update_s": 0.6722910499993304,
+    "gpu_memory": {},
+    "finite_parameters": true
+  },
+  {
+    "repeat": 1,
+    "runtime": {
+      "requested_device": "cuda",
+      "device": "cuda:0",
+      "gpu_name": "NVIDIA GeForce RTX 4070 SUPER",
+      "torch": "2.15.0+cu132",
+      "cuda_version": "13.2",
+      "torch_threads": 1,
+      "n_steps": 1024,
+      "batch_size": 2048,
+      "n_epochs": 8,
+      "rollout_size": 8192,
+      "rollout_buffer": "CudaRolloutBuffer"
+    },
+    "n_envs": 8,
+    "steps": 16384,
+    "wall_s": 14.7995,
+    "steady_steps_per_s": 1122.38,
+    "collect_s": [
+      6.759440499998163,
+      6.893920700000308
+    ],
+    "update_s": [
+      0.6488738999978523,
+      0.29531000000133645
+    ],
+    "median_collect_s": 6.826680599999236,
+    "median_update_s": 0.47209194999959436,
+    "gpu_memory": {
+      "allocated_mib": 20.2,
+      "reserved_mib": 70.0
+    },
+    "finite_parameters": true
+  }
+]
