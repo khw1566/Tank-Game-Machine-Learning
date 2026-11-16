@@ -4,7 +4,7 @@ extends RefCounted
 ##
 ## 사용법:
 ##   var result := DamageModel.resolve_shot(target_state, turret_yaw, local_origin, local_dir,
-##                                          distance_m, shooter_gun, rng)
+##                                          distance_m, shooter_gun, rng, gun_pitch)
 ##   - local_origin/local_dir: 표적 전차 로컬 좌표의 탄 궤적(Transform3D.affine_inverse() 로 변환)
 ##   - rng: RandomNumberGenerator (시드 고정 시 완전 재현 가능)
 ## 반환값은 JSON 으로 직렬화 가능한 Dictionary(보고서/로그용). target_state 는 그 자리에서 갱신된다.
@@ -16,6 +16,14 @@ const BAIL_PER_CASUALTY := 0.15
 const BAIL_IMMOBILE := 0.15
 ## 비관통 하부측면/하부전면 명중 시 궤도 손상 확률
 const TRACK_HIT_CHANCE := 0.35
+## 궤도(외부 모듈)에 직접 맞았을 때 궤도 손상 확률(철갑 / 고폭)
+const TRACK_DIRECT_CHANCE := 0.75
+const TRACK_DIRECT_CHANCE_HE := 0.9
+## 포신 명중 시 바로 파괴(사격 불가)될 확률. 아니면 손상(분산 2배).
+const BARREL_DESTROY_CHANCE := 0.4
+## 포방패 비관통 시 고저장치(gun_mount) / 주퇴기 손상 확률
+const MANTLET_MOUNT_CHANCE := 0.12
+const MANTLET_RECOIL_CHANCE := 0.05
 ## 파편(스폴) 원뿔 반경(m) = 기본 + 진행거리 × 원뿔계수 + 잔여관통 mm × 계수
 ## 파편은 신관 폭발과 무관하게 반대편 벽까지 날아간다.
 const SPALL_BASE_R := 0.25
@@ -26,43 +34,68 @@ const BLAST_R_COEF := 1.1
 
 
 static func resolve_shot(state: TankDamageState, turret_yaw: float, local_origin: Vector3,
-		local_dir: Vector3, distance_m: float, gun: GunSpec, rng: RandomNumberGenerator) -> Dictionary:
+		local_dir: Vector3, distance_m: float, gun: GunSpec, rng: RandomNumberGenerator,
+		gun_pitch := 0.0) -> Dictionary:
 	var spec := state.spec
 	var result := {
 		"target": spec.id, "gun": gun.id, "shell": gun.shell_name, "shell_type": gun.shell_type, "distance_m": snappedf(distance_m, 0.1),
-		"hit": false, "zone": "", "plate_mm": 0.0, "slope_deg": 0.0,
+		"hit": false, "part": "", "zone": "", "plate_mm": 0.0, "slope_deg": 0.0,
 		"impact_angle_deg": 0.0, "effective_mm": 0.0, "pen_mean_mm": 0.0,
 		"pen_roll_mm": 0.0, "pen_probability": 0.0, "ricochet": false,
 		"penetrated": false, "entry_local": [], "damage": [], "events": [],
 		"status_before": state.status_label(), "status_after": "",
 	}
-	var tr := HitGeometry.trace(spec, turret_yaw, local_origin, local_dir)
+	var dir := local_dir.normalized()
+	var tr := HitGeometry.trace(spec, turret_yaw, local_origin, dir, gun_pitch)
 	if not tr.hit:
 		result.status_after = state.status_label()
 		return result
-
-	var zone: String = tr.zone
-	var pl := spec.plate(zone)
-	var t: float = pl.t
-	var angle: float = tr.impact_angle_deg
 	var pen_mean := gun.penetration_mm(distance_m)
-	var eff := Ballistics.effective_thickness_mm(gun, t, angle)
-	var entry: Vector3 = tr.entry
-	result.hit = true
-	result.zone = zone
-	result.plate_mm = t
-	result.slope_deg = pl.slope
-	result.impact_angle_deg = snappedf(angle, 0.1)
-	result.effective_mm = snappedf(eff, 0.1)
-	result.pen_mean_mm = snappedf(pen_mean, 0.1)
-	result.pen_probability = snappedf(Ballistics.penetration_probability(gun, distance_m, t, angle), 0.001)
-	result.entry_local = TankSpec._v(entry)
 	state.hits_taken += 1
+	result.hit = true
 
 	if state.is_destroyed():
+		_fill_hit(result, spec, tr, gun, pen_mean, distance_m)
 		result.events.append("hit_wreck")
 		result.status_after = state.status_label()
 		return result
+
+	# 0-a) 궤도(외부 모듈): 궤도 손상 후 관통력이 깎인 채 차체로 계속 진행
+	if tr.zone == "track":
+		var side := "track_left" if tr.part == "track_left" else "track_right"
+		result["track_hit"] = side
+		result.events.append("track_hit")
+		if rng.randf() < (TRACK_DIRECT_CHANCE_HE if gun.is_he() else TRACK_DIRECT_CHANCE):
+			_damage_module(state, side, 0.5 if gun.is_he() else 0.35, rng, result, "track_hit")
+		if gun.is_he():
+			_fill_hit(result, spec, tr, gun, pen_mean, distance_m)
+			_finish(state, result)
+			return result
+		pen_mean = maxf(pen_mean - spec.track_armor_mm, 0.0)
+		result["track_absorbed_mm"] = spec.track_armor_mm
+		# 차체 측면판은 궤도 바로 안쪽(같은 폭)에 있으므로 궤도 진입점 바로 앞에서 궤도를 빼고 다시 추적
+		var o2: Vector3 = tr.entry - dir * 0.02
+		var tr2 := HitGeometry.trace(spec, turret_yaw, o2, dir, gun_pitch, ["track_left", "track_right"])
+		if not tr2.hit:
+			_fill_hit(result, spec, tr, gun, pen_mean, distance_m)
+			_finish(state, result)
+			return result
+		tr = tr2
+
+	# 0-b) 포신: 장갑 판정 없이 포신 손상/파괴
+	if tr.zone == "gun_barrel":
+		_fill_hit(result, spec, tr, gun, pen_mean, distance_m)
+		result.events.append("barrel_hit")
+		_damage_module(state, "gun_barrel", BARREL_DESTROY_CHANCE, rng, result, "barrel_hit")
+		_finish(state, result)
+		return result
+
+	_fill_hit(result, spec, tr, gun, pen_mean, distance_m)
+	var zone: String = tr.zone
+	var t: float = spec.plate(zone).t
+	var angle: float = tr.impact_angle_deg
+	var eff := Ballistics.effective_thickness_mm(gun, t, angle)
+	var entry: Vector3 = tr.entry
 
 	# 1) 도탄
 	if rng.randf() < Ballistics.ricochet_chance(gun, t, angle):
@@ -85,10 +118,8 @@ static func resolve_shot(state: TankDamageState, turret_yaw: float, local_origin
 	result.penetrated = true
 	state.penetrations_taken += 1
 	result.events.append("penetration")
-	var dir := local_dir.normalized()
 	var residual := pen_roll - eff
-	var path_len: float = tr.path_len
-	var casualties := _internal_damage(state, turret_yaw, entry, dir, path_len, residual, gun, rng, result)
+	var casualties := _internal_damage(state, turret_yaw, entry, dir, residual, gun, rng, result)
 
 	# 4) 승무원 탈출(사기) 판정
 	if not state.is_destroyed():
@@ -100,6 +131,28 @@ static func resolve_shot(state: TankDamageState, turret_yaw: float, local_origin
 			result.events.append("crew_bailed_out")
 	_finish(state, result)
 	return result
+
+
+## 명중 부위 정보를 결과에 채움
+static func _fill_hit(result: Dictionary, spec: TankSpec, tr: Dictionary, gun: GunSpec, pen_mean: float, distance_m: float) -> void:
+	var t: float = spec.plate(tr.zone).t
+	var angle: float = tr.impact_angle_deg
+	result.part = tr.part
+	result.zone = tr.zone
+	result.plate_mm = t
+	result.slope_deg = snappedf(tr.slope_deg, 0.1)
+	result.impact_angle_deg = snappedf(angle, 0.1)
+	result.effective_mm = snappedf(Ballistics.effective_thickness_mm(gun, t, angle), 0.1) if t > 0.0 else 0.0
+	result.pen_mean_mm = snappedf(pen_mean, 0.1)
+	if t > 0.0:
+		var pen := Ballistics.penetration_probability(gun, distance_m, t, angle)
+		if pen_mean < gun.penetration_mm(distance_m):
+			# 궤도로 관통력이 깎였으면 그만큼 반영
+			var eff := Ballistics.effective_thickness_mm(gun, t, angle)
+			var sigma := maxf(pen_mean * gun.penetration_sigma, 0.001)
+			pen = Ballistics.normal_cdf((pen_mean - eff) / sigma) * (1.0 - Ballistics.ricochet_chance(gun, t, angle))
+		result.pen_probability = snappedf(pen, 0.001)
+	result.entry_local = TankSpec._v(tr.entry)
 
 
 static func _finish(state: TankDamageState, result: Dictionary) -> void:
@@ -119,10 +172,19 @@ static func _non_pen_effects(state: TankDamageState, zone: String, entry: Vector
 		if rng.randf() < (0.6 if he else TRACK_HIT_CHANCE):
 			var key := "track_left" if entry.x < 0.0 else "track_right"
 			_damage_module(state, key, 0.6, rng, result, "track_hit")
-	elif zone == "turret_front" and rng.randf() < (0.15 if he else 0.05):
-		_damage_module(state, "gun_breech", 0.0, rng, result, "mantlet_shock")
-	elif zone.begins_with("turret") and rng.randf() < (0.10 if he else 0.05):
-		_damage_module(state, "turret_ring", 0.0, rng, result, "turret_ring_jam")
+	elif zone == "mantlet":
+		# 포방패 충격: 고저장치 고착, 주퇴기 손상
+		if rng.randf() < (MANTLET_MOUNT_CHANCE * 1.5 if he else MANTLET_MOUNT_CHANCE):
+			_damage_module(state, "gun_mount", 0.0, rng, result, "mantlet_shock")
+		elif rng.randf() < MANTLET_RECOIL_CHANCE:
+			_damage_module(state, "recoil", 0.0, rng, result, "mantlet_shock")
+	elif zone.begins_with("turret"):
+		if rng.randf() < (0.10 if he else 0.05):
+			_damage_module(state, "turret_ring", 0.0, rng, result, "turret_ring_jam")
+		elif rng.randf() < (0.08 if he else 0.04):
+			_damage_module(state, "traverse_drive", 0.0, rng, result, "traverse_shock")
+		elif zone == "turret_front" and rng.randf() < (0.10 if he else 0.03):
+			_damage_module(state, "sight", 0.0, rng, result, "sight_shock")
 	if he:
 		var p_spall := clampf(gun.filler_g / (maxf(plate_mm, 1.0) * 60.0), 0.0, 0.3)
 		if rng.randf() < p_spall:
@@ -138,13 +200,10 @@ static func _non_pen_effects(state: TankDamageState, zone: String, entry: Vector
 
 ## 관통 후 내부 피해. 반환: 이번 탄으로 생긴 사상자 수.
 static func _internal_damage(state: TankDamageState, turret_yaw: float, entry: Vector3, dir: Vector3,
-		path_len: float, residual: float, gun: GunSpec, rng: RandomNumberGenerator, result: Dictionary) -> int:
+		residual: float, gun: GunSpec, rng: RandomNumberGenerator, result: Dictionary) -> int:
 	var spec := state.spec
-	# 포탑 관통이면 포탑 바닥 아래(차체)까지 이어지는 경로를 허용
-	var max_len := path_len
-	var hh := HitGeometry.ray_box(entry - dir * 0.001, dir, spec.hull_min(), spec.hull_max())
-	if not hh.is_empty():
-		max_len = maxf(max_len, float(hh.exit_t) - 0.001)
+	# 포탑·포방패 관통이면 포탑 바닥 아래(차체)까지 이어지는 경로를 허용
+	var max_len := maxf(spec.shape().interior_length(turret_yaw, entry, dir), 0.3)
 	var has_filler := gun.filler_g > 0.0
 	var wall := entry + dir * max_len
 	var burst := entry + dir * minf(gun.fuse_delay_m, max_len * 0.95)

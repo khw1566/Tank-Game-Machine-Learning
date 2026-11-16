@@ -37,36 +37,45 @@ func ray_from_bearing(bearing_deg: float, aim: Vector3) -> Array:
 
 
 func aim_point(spec: TankSpec, where: String) -> Vector3:
+	var hh := spec.hull_roof_y - spec.hull_bottom_y
 	match where:
 		"turret":
-			return spec.turret_origin() + Vector3(0, spec.turret_size.y * 0.5, 0)
+			# 포방패 위쪽 포탑면(포방패를 피해 포탑 장갑 자체를 겨냥)
+			return spec.turret_origin() + Vector3(0, spec.turret_height * 0.93, 0)
+		"mantlet":
+			return spec.turret_origin() + Vector3(spec.mantlet_size.x * 0.3, spec.gun_height, 0) # 포신을 피해 옆으로
 		"hull_low":
-			return Vector3(0, spec.hull_bottom_y + spec.hull_size.y * 0.2, 0)
-	return Vector3(0, spec.hull_bottom_y + spec.hull_size.y * 0.75, 0) # hull_high
+			return Vector3(0, spec.hull_bottom_y + hh * 0.2, 0)
+	return Vector3(0, spec.hull_bottom_y + hh * 0.75, 0) # hull_high
 
 
+## 관통확률(궤도를 지나면 궤도가 막는 만큼 관통력 감소 반영). DamageModel 과 같은 규칙.
 func pen_prob(target: TankSpec, gun: GunSpec, dist: float, bearing: float, where: String) -> Dictionary:
 	var r := ray_from_bearing(bearing, aim_point(target, where))
-	var tr := HitGeometry.trace(target, 0.0, r[0], r[1])
-	if not tr.hit:
-		return {"zone": "-", "angle": 0.0, "eff": 0.0, "p": 0.0}
-	var pl := target.plate(tr.zone)
-	return {"zone": tr.zone, "angle": tr.impact_angle_deg,
-		"eff": Ballistics.effective_thickness_mm(gun, pl.t, tr.impact_angle_deg),
-		"p": Ballistics.penetration_probability(gun, dist, pl.t, tr.impact_angle_deg)}
+	var rng := RandomNumberGenerator.new()
+	var res := DamageModel.resolve_shot(TankDamageState.new(target), 0.0, r[0], r[1], dist, gun, rng)
+	if not res.hit:
+		return {"zone": "-", "angle": 0.0, "eff": 0.0, "p": 0.0, "ricochet": 0.0, "track": false}
+	return {"zone": res.zone, "angle": res.impact_angle_deg, "eff": res.effective_mm, "p": res.pen_probability,
+		"ricochet": Ballistics.ricochet_chance(gun, res.plate_mm, res.impact_angle_deg) if res.plate_mm > 0 else 0.0,
+		"track": res.has("track_hit")}
 
 
 func _print_specs() -> void:
 	print("\n# 전차 제원 요약")
 	for s in TankDatabase.all_specs():
-		print("- %s: %.1ft, %dhp, 노상 %dkm/h, 포 %s, 재장전 %.1fs, 선회 %.0f°/s, 승무원 %d" % [
-			s.display_name, s.mass_t, s.engine_hp, s.max_speed_road_kmh, s.gun.display_name,
-			s.gun.reload_s, s.turret_traverse_deg_s, s.crew.size()])
+		var sh: TankShape = s.shape()
+		print("- %s: %.1ft %dhp(%.1fhp/t) | 전진 %d / 후진 %d km/h, 전후진 전환 %.1fs | 포 %s 재장전 %.1fs | 포탑 %.0f°/s | 포 %+.0f°~%+.0f° | 안정장치 %s | 전고 %.2fm, 정면 %.1fm², 측면 %.1fm²" % [
+			s.display_name, s.mass_t, s.engine_hp, s.power_to_weight(), s.max_forward_kmh, s.max_reverse_kmh,
+			s.direction_change_s, s.gun.display_name, s.gun.reload_s, s.turret_traverse_deg_s,
+			s.gun_depression_deg, s.gun_elevation_max_deg, "있음" if s.stabilizer_vertical else "없음",
+			s.total_height(), sh.projected_area(Vector3.FORWARD), sh.projected_area(Vector3.RIGHT)])
 		var parts := []
 		for z in TankSpec.ZONES:
-			var p: Dictionary = s.armor[z]
-			parts.append("%s %d@%d°" % [z, p.t, p.slope])
+			parts.append("%s %d" % [z, s.plate(z).t])
 		print("    ", ", ".join(parts))
+		for t in s.traits:
+			print("    * ", t)
 
 
 func _print_penetration_tables() -> void:
@@ -128,21 +137,49 @@ func _unit_tests() -> void:
 
 	# 구역 판정
 	check(pen_prob(tiger, sherman.gun, 500, 0, "hull_high").zone == "hull_front_upper", "정면 상단 조준 → hull_front_upper")
-	check(pen_prob(tiger, sherman.gun, 500, 90, "hull_low").zone == "hull_side_lower", "측면 하단 조준 → hull_side_lower")
+	var side_low := pen_prob(tiger, sherman.gun, 500, 90, "hull_low")
+	check(side_low.zone == "hull_side_lower" and side_low.track, "측면 하단 조준 → 궤도를 지나 hull_side_lower")
+	check(pen_prob(tiger, sherman.gun, 500, 0, "mantlet").zone == "mantlet", "포 높이 정면 → 포방패")
 	check(pen_prob(tiger, sherman.gun, 500, 180, "hull_high").zone == "hull_rear", "후방 → hull_rear")
 	check(pen_prob(tiger, sherman.gun, 500, 0, "turret").zone == "turret_front", "포탑 정면")
 	var r_turret := ray_from_bearing(0, aim_point(tiger, "turret"))
 	var tr_rot := HitGeometry.trace(tiger, PI * 0.5, r_turret[0], r_turret[1])
 	check(tr_rot.zone == "turret_side", "포탑을 90° 돌리면 정면 사격이 포탑 측면에 맞음")
+	# 포신: 포 앞에서 포신 축을 따라 약간 비켜 오는 사격
+	var bz: Vector3 = tiger.turret_origin() + tiger.shape().trunnion + Vector3(0, 0, -2.5)
+	var tr_b := HitGeometry.trace(tiger, 0.0, bz + Vector3(5, 0, 0), Vector3.LEFT)
+	check(tr_b.zone == "gun_barrel", "포신 옆구리 사격 → gun_barrel (%s)" % tr_b.get("zone", "-"))
+	var st_b := TankDamageState.new(tiger)
+	var rb := RandomNumberGenerator.new()
+	rb.seed = 7
+	DamageModel.resolve_shot(st_b, 0.0, bz + Vector3(5, 0, 0), Vector3.LEFT, 500, sherman.gun, rb)
+	check(st_b.modules.gun_barrel != TankDamageState.MOD_OK, "포신 명중 → 포신 손상/파괴 (%s)" % st_b.modules.gun_barrel)
+
+	# 형상 특성: 낮고 경사진 T-34 가 피탄면적 최소, 셔먼 차체가 가장 높음
+	var fa := {}
+	for sp in [tiger, sherman, t34]:
+		fa[sp.id] = sp.shape().projected_area(Vector3.FORWARD)
+	check(fa.t34_76 < fa.sherman75 and fa.sherman75 < fa.tiger1, "정면 피탄면적 T-34 %.1f < 셔먼 %.1f < 티거 %.1f m²" % [fa.t34_76, fa.sherman75, fa.tiger1])
+	check(t34.total_height() < sherman.total_height() and sherman.hull_roof_y > t34.hull_roof_y + 0.25, "셔먼 차체 지붕 %.2fm > T-34 %.2fm" % [sherman.hull_roof_y, t34.hull_roof_y])
+	# 도탄: 같은 88mm 로 30° 비스듬히 쏘면 T-34 전면이 셔먼 전면보다 도탄 가능성이 큼
+	var ric_t34 := pen_prob(t34, tiger.gun, 1000, 30, "hull_high")
+	var ric_sh := pen_prob(sherman, tiger.gun, 1000, 30, "hull_high")
+	check(ric_t34.ricochet > ric_sh.ricochet, "88mm 30° 사격 도탄확률: T-34 %.0f%% > 셔먼 %.0f%%" % [ric_t34.ricochet * 100, ric_sh.ricochet * 100])
+	var ric_t34_75 := pen_prob(t34, sherman.gun, 500, 30, "hull_high")
+	check(ric_t34_75.ricochet > 0.2, "75mm 로 T-34 전면을 30° 에서 쏘면 도탄 20%% 이상 (%.0f%%)" % [ric_t34_75.ricochet * 100])
+	check(pen_prob(tiger, sherman.gun, 500, 0, "hull_high").ricochet == 0.0, "티거 수직 전면판은 정면에서 도탄 없음(두께로 막음)")
 
 	# 역사적 기대치
 	check(pen_prob(tiger, sherman.gun, 500, 0, "hull_high").p < 0.01, "셔먼 75mm는 500m에서 티거 정면 관통 불가")
 	check(pen_prob(tiger, t34.gun, 100, 0, "hull_high").p < 0.01, "T-34 76mm는 100m에서도 티거 정면 관통 불가")
-	check(pen_prob(sherman, tiger.gun, 2000, 0, "hull_high").p > 0.95, "88mm는 2000m에서 셔먼 정면 관통")
-	check(pen_prob(t34, tiger.gun, 2000, 0, "hull_high").p > 0.95, "88mm는 2000m에서 T-34 정면 관통")
-	check(pen_prob(tiger, sherman.gun, 300, 90, "hull_low").p > 0.9, "셔먼은 300m에서 티거 하부측면(60mm) 관통")
-	check(pen_prob(tiger, t34.gun, 300, 90, "hull_low").p > 0.9, "T-34는 300m에서 티거 하부측면 관통")
-	check(pen_prob(tiger, sherman.gun, 300, 180, "hull_high").p > 0.3, "셔먼은 300m에서 티거 후면(80mm) 관통 가능")
+	var p_sh: float = pen_prob(sherman, tiger.gun, 2000, 0, "hull_high").p
+	var p_t34: float = pen_prob(t34, tiger.gun, 2000, 0, "hull_high").p
+	check(p_sh > 0.9, "88mm는 2000m에서 셔먼 정면 관통 (%.0f%%, 나머지는 도탄)" % [p_sh * 100])
+	check(p_t34 > 0.75 and p_t34 < p_sh, "88mm는 2000m에서 T-34 정면도 대부분 관통하지만 경사 때문에 셔먼보다 도탄이 잦음 (%.0f%%)" % [p_t34 * 100])
+	check(pen_prob(tiger, sherman.gun, 300, 90, "hull_low").p > 0.7, "셔먼은 300m에서 궤도 너머 티거 하부측면(60mm) 관통 (%.0f%%)" % [pen_prob(tiger, sherman.gun, 300, 90, "hull_low").p * 100])
+	check(pen_prob(tiger, t34.gun, 100, 90, "hull_low").p > pen_prob(tiger, t34.gun, 500, 90, "hull_low").p, "T-34 는 가까울수록 티거 하부측면 관통이 쉬움")
+	check(pen_prob(tiger, sherman.gun, 500, 90, "hull_high").p < pen_prob(tiger, sherman.gun, 500, 90, "hull_low").p, "티거 측면은 상부(80mm)보다 궤도 너머 하부(60mm)가 약점")
+	check(pen_prob(tiger, sherman.gun, 100, 180, "hull_high").p > 0.1, "셔먼은 100m에서 티거 후면(80mm) 관통 가능 (%.0f%%)" % [pen_prob(tiger, sherman.gun, 100, 180, "hull_high").p * 100])
 	# 티타임(비스듬히 대면) 효과: 정면 각 30~45°에서 측면 상부도 버팀
 	var side_at_45 := pen_prob(tiger, sherman.gun, 300, 45, "hull_high")
 	check(side_at_45.p < 0.05, "티거가 45° 비틀면 300m 셔먼탄은 상부측면/전면 모두 거의 불관통 (%s, %.0f%%)" % [side_at_45.zone, side_at_45.p * 100])
@@ -190,6 +227,31 @@ func _unit_tests() -> void:
 	mst.update_knockout()
 	check(not mst.is_knocked_out(), "궤도 절단만으로는 전투불능 아님")
 
+	# 공통 모듈 효과
+	var gm := TankDamageState.new(sherman)
+	check(gm.stabilizer_working(), "셔먼 안정장치 정상 동작")
+	gm.modules.gun_mount = TankDamageState.MOD_DESTROYED
+	check(gm.elevation_rate_deg_s() == 0.0 and not gm.stabilizer_working(), "고저장치(gun_mount) 파괴 → 포 고저 고착 + 안정장치 정지")
+	var rc := TankDamageState.new(t34)
+	var r0 := rc.reload_time_s()
+	rc.modules.recoil = TankDamageState.MOD_DAMAGED
+	check(rc.reload_time_s() > r0 * 1.4, "주퇴기 손상 → 재장전 1.5배")
+	rc.modules.recoil = TankDamageState.MOD_DESTROYED
+	check(not rc.can_fire(), "주퇴기 파괴 → 사격 불가")
+	var sg := TankDamageState.new(tiger)
+	sg.modules.sight = TankDamageState.MOD_DAMAGED
+	check(sg.dispersion_factor() > 1.5 and sg.aim_time_factor() > 1.4, "조준경 손상 → 분산·조준시간 증가")
+	var tdv := TankDamageState.new(sherman)
+	var trav0 := tdv.traverse_rate_deg_s()
+	tdv.modules.traverse_drive = TankDamageState.MOD_DESTROYED
+	check(absf(tdv.traverse_rate_deg_s() - trav0 * 0.15) < 0.01 and tdv.can_traverse(), "선회장치 파괴 → 수동 선회(15%)")
+	for sp in [tiger, sherman, t34]:
+		var ids := TankDamageState.new(sp).modules.keys()
+		var ok := true
+		for need in ["track_left", "track_right", "gun_barrel", "gun_mount", "recoil", "gun_breech", "sight", "traverse_drive", "turret_ring"]:
+			ok = ok and need in ids
+		check(ok, "%s: 공통 모듈(궤도·포신·고저장치·주퇴기·포미·조준경·선회장치·선회링) 모두 있음" % sp.id)
+
 	# 재현성
 	var a := _shoot_once(tiger, sherman.gun, 300, 90, 12345)
 	var b := _shoot_once(tiger, sherman.gun, 300, 90, 12345)
@@ -228,8 +290,7 @@ func _monte_carlo() -> void:
 		for i in trials:
 			var st := TankDamageState.new(target)
 			for shot in 10:
-				var aim := aim_point(target, "hull_high") * Vector3(1, 0, 1) + Vector3(
-					rng.randf_range(-1.2, 1.2), rng.randf_range(target.hull_bottom_y, target.total_height()), 0)
+				var aim := Vector3(rng.randf_range(-1.2, 1.2), rng.randf_range(0.2, target.total_height()), 0)
 				var r := ray_from_bearing(bearing, aim)
 				var res := DamageModel.resolve_shot(st, 0.0, r[0], r[1], dist, gun, rng)
 				if not res.hit:
