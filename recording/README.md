@@ -15,7 +15,7 @@
 | `replay_data.gd` | `ReplayData`: 기록 읽기 + 임의 시각 자세 보간(뷰어·보고서 공용) |
 | `report_builder.gd` | `ReportBuilder`: 보고서 HTML(그림 포함 한 파일)과 CSV 생성 |
 | `replay_viewer.tscn/.gd` | 리플레이 뷰어 |
-| `scripted_ai.gd` | `ScriptedAI`: 기준선 규칙 AI(티거 비스듬한 대면 유지, 연합군 측면 접근). 관전·시험용 |
+| `scripted_ai.gd` | `ScriptedAI`: 기준선 규칙 AI(티거 비스듬한 대면 유지, 연합군 측면 접근). `TankPerception`(보이고 들리는 것)만 입력, 조작 6 + 시점 5 출력. 관전·시험용 |
 | `ui/` | `MinimapView`(위에서 본 지도), `ScoreGraph`(점수 그래프), `WorldMarkers`(3D 탄착·궤적·경로·이름표) |
 | `tools/make_report.gd` | 기록에서 보고서 다시 만들기(`-- --all` 이면 전체) |
 | `tools/capture.gd` | 화면 캡처(문서용 그림) |
@@ -36,11 +36,11 @@
 | type | 내용 |
 |---|---|
 | `header` | `episode`, `physics_hz`(30), `sample_every`(3 → 10 Hz), `frame_fields`, `action_labels`, `reward_weights`, `map`(heights·obstacles·seed·size), `tanks`(id·이름·제원 id·팀·치수·rng_seed·초기 상태) |
-| `frame` | `tick`, `t`(초), `s` = 전차별 배열(`frame_fields` 순서), `score` = [독일, 연합군] 누적 점수, `r` = 전차별 누적 점수 |
+| `frame` | `tick`, `t`(초), `s` = 전차별 배열(`frame_fields` 순서; 끝의 `view_mode, view_yaw, view_pitch, view_fov` = 그 전차의 시점, 버전 2), `score` = [독일, 연합군] 누적 점수, `r` = 전차별 누적 점수 |
 | `shot` | `shooter`, `target`(id, −1 = 없음), `r` = 판정 전체(발사점 `from`, 방향 `dir`, 탄착점 `hit_pos`, 구역, 입사각, 유효장갑, 관통력 굴림, 관통 확률, 피해 목록, 사건) |
 | `reward` | `tank`, `team`, `value`, `reason`(예: `hit+penetration+knockout`, `took_penetration`, `miss`, `win`) |
 | `knockout` | `tank`, `cause`, `state`(전체 상태) |
-| `decision` | `tank`, `obs`(관측 벡터), `action`(6), `info`(AI 판단 근거: 모드, 표적, 거리, 시야 등) |
+| `decision` | `tank`, `obs`(관측 벡터 `TankPerception`, `--log-obs` 주기마다·그 외 빈 배열), `action`(AI 11 / 사람 6), `info`(`controller` human/scripted_ai, 판단 근거, `perception` = 보인 적·들린 소리 요약) |
 | `end` | `reason`(elimination / time_limit / manual), `winner`(−1 무승부), `summary`, `final` |
 
 `frame_fields`: x, y, z, qx, qy, qz, qw, turret_yaw, gun_pitch, track_l, track_r, status(0 정상 / 1 손상 / 2 전투불능 / 3 파괴), ammo_index, reload, a_left, a_right, a_brake, a_traverse, a_elev, a_fire

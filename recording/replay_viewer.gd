@@ -5,6 +5,7 @@ extends Node3D
 ## 물리를 다시 돌리지 않으므로 그래픽(모델·재질·카메라)을 바꿔도 같은 경기가 똑같이 재구성된다.
 ##
 ## 시점: 1 자유 카메라  2 추적(3인칭)  3 포수 시점  4 위에서 보기  5 궤도(선택 전차 주위)
+##       6 탑승 시점(기록): 그 전차의 조종자(사람/AI)가 실제로 보던 시점(3인칭·포수·전차장, 확대 포함)
 ## 실행: 게임에서 F3, 또는 godot --path . res://recording/replay_viewer.tscn -- --replay=<events.jsonl>
 
 const CAM_FREE := 0
@@ -12,7 +13,8 @@ const CAM_CHASE := 1
 const CAM_GUNNER := 2
 const CAM_TOP := 3
 const CAM_ORBIT := 4
-const CAM_LABELS := ["자유 카메라", "추적", "포수 시점", "위에서 보기", "궤도"]
+const CAM_CREW := 5
+const CAM_LABELS := ["자유 카메라", "추적", "포수 시점", "위에서 보기", "궤도", "탑승 시점(기록)"]
 const SPEEDS := [0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
 const PATH_STRIDE := 5
 
@@ -39,6 +41,7 @@ var orbit_dist := 25.0
 var top_height := 600.0
 var gunner_fov := 25.0          # 포수 조준경 시야각(휠로 확대/축소)
 var _looking := false
+var _crew_view := TankView.new()
 var _hits_until := -1          # 탄착 표시가 반영된 마지막 사격 인덱스
 var _last_t := -1.0
 var _full_paths: Array = []    # 전차별 PackedVector3Array(지면 위)
@@ -96,7 +99,7 @@ func _setup_ui() -> void:
 	add_child(ui)
 	info = _label(Vector2(10, 10), 14)
 	help = _label(Vector2(10, 0), 13)
-	help.text = "Space 재생/정지   ←/→ 5초 (Shift 30초)   , . 한 프레임   -/+ 속도   Home/End 처음/끝\n1 자유  2 추적  3 포수  4 위에서  5 궤도   Tab 다음 전차   우클릭 드래그 = 시점 회전, 휠 = 거리·속도·조준경 배율, 자유 카메라 WASD·Q/E\nH 탄착  P 경로  O 파일 목록  R 보고서 열기  F2 화면 표시 숨김  Esc 게임으로"
+	help.text = "Space 재생/정지   ←/→ 5초 (Shift 30초)   , . 한 프레임   -/+ 속도   Home/End 처음/끝\n1 자유  2 추적  3 포수  4 위에서  5 궤도  6 탑승 시점(기록)   Tab 다음 전차   우클릭 드래그 = 시점 회전, 휠 = 거리·속도·조준경 배율, 자유 카메라 WASD·Q/E\nH 탄착  P 경로  O 파일 목록  R 보고서 열기  F2 화면 표시 숨김  Esc 게임으로"
 	minimap = MinimapView.new()
 	ui.add_child(minimap)
 	score_graph = ScoreGraph.new()
@@ -314,6 +317,10 @@ func _update_camera(delta: float) -> void:
 			var c := tk.global_position
 			camera.global_position = c + Vector3(0, top_height, 0.001)
 			camera.look_at(c, Vector3.FORWARD)
+		CAM_CREW:
+			_crew_view.apply_state(data.pose(selected, t).view, tk)
+			camera.global_transform = _crew_view.eye_transform(tk, map)
+			camera.fov = _crew_view.fov()
 		CAM_ORBIT:
 			var c2 := tk.global_position + Vector3.UP * 2.0
 			var off := Basis.from_euler(Vector3(orbit_pitch, orbit_yaw, 0)) * Vector3(0, 0, orbit_dist)
@@ -332,7 +339,7 @@ func _update_ui() -> void:
 	var fr: Dictionary = data.frames[data.frame_index(t)]
 	var r: Array = fr.get("r", [])
 	var a: Array = ps.action
-	var lines := ["리플레이 ep%d  %s   시점: %s (1~5)" % [int(data.header.get("episode", 0)), data.path.get_base_dir().get_file(), CAM_LABELS[cam_mode]],
+	var lines := ["리플레이 ep%d  %s   시점: %s (1~6)" % [int(data.header.get("episode", 0)), data.path.get_base_dir().get_file(), CAM_LABELS[cam_mode]],
 		"선택 [Tab]: %s (%s, %s)  상태 %s  속도 %.1f m/s  재장전 %.1fs  점수 %.2f" % [td.name, td.display_name,
 			ReportBuilder.TEAM_LABELS[int(td.team)], ["정상", "손상", "전투불능", "파괴"][clampi(ps.status, 0, 3)], ps.speed,
 			float(ps.reload), float(r[selected]) if selected < r.size() else 0.0],
@@ -340,7 +347,20 @@ func _update_ui() -> void:
 		"팀 점수: 독일 %.2f   연합군 %.2f" % [float(fr.score[0]), float(fr.score[1])], ""]
 	var dec := _decision_at(selected, t)
 	if not dec.is_empty():
-		lines.insert(3, "AI 판단: %s" % JSON.stringify(dec.get("info", {})))
+		var inf: Dictionary = dec.get("info", {}).duplicate()
+		var pc: Dictionary = inf.get("perception", {})
+		inf.erase("perception")
+		lines.insert(3, "판단: %s" % JSON.stringify(inf))
+		if not pc.is_empty():
+			var seen := []
+			for c in pc.get("seen", []):
+				seen.append("%s%s %s %+.0f° %dpx" % ["●" if c.get("now", false) else "○", "적" if c.get("enemy", false) else "아군",
+					c.get("type", "?"), float(c.get("bearing_deg", 0)), int(c.get("px", 0))])
+			var heard := []
+			for h in pc.get("heard", []):
+				heard.append("%s %+.0f°" % [h.get("kind", ""), float(h.get("bearing_deg", 0))])
+			lines.insert(4, "관측(%s): 보임 %s  소리 %s" % [pc.get("view", ""), " ".join(seen) if not seen.is_empty() else "-",
+				" ".join(heard) if not heard.is_empty() else "-"])
 	for e in _recent_events(10.0):
 		lines.append(e)
 	info.text = "\n".join(lines)
@@ -464,7 +484,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			speed_i = mini(speed_i + 1, SPEEDS.size() - 1)
 		KEY_TAB:
 			selected = (selected + (puppets.size() - 1 if shift else 1)) % puppets.size()
-		KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
+		KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6:
 			var m: int = event.physical_keycode - KEY_1
 			if m == CAM_FREE and cam_mode != CAM_FREE:
 				free_pos = camera.global_position

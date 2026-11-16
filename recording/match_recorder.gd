@@ -14,7 +14,9 @@ extends Node
 ##   shot      사격 1발 전체 판정(DamageModel 결과 + 발사 위치·방향·탄착점) + 공격자/표적 id
 ##   reward    점수 사건(시간 경과 점수는 frame.score 에만 누적)
 ##   knockout  전차 전투불능(원인 + 그 순간 전체 상태)
-##   decision  AI 관측·행동·판단 정보(log_decision 으로 기록)
+##   decision  관측·행동·판단 정보(log_decision 으로 기록). 사람 조종도 controller = "human" 으로 남는다(모방 학습용).
+##             info.perception = 그 순간 보인 적(방위·화면 크기·식별)·들린 소리 요약, obs = 관측 벡터 전체(주기적으로)
+## frame 의 view_* = 그 전차의 시점(TankView.state_array) → 리플레이에서 "탑승 시점"으로 그 화면을 다시 만든다.
 ##   end       종료 사유, 승리 팀, 요약
 ##
 ## 위치·자세는 물리 결과를 그대로 저장하므로 다시 시뮬레이션하지 않고도 언제든 똑같이 재구성된다.
@@ -25,11 +27,12 @@ signal shot_recorded(e: Dictionary)
 signal episode_ended(summary: Dictionary)
 
 const FORMAT := "tankgame-replay"
-const FORMAT_VERSION := 1
+const FORMAT_VERSION := 2
 ## frame.s 의 전차별 배열 항목(순서 고정, 새 항목은 뒤에만 추가)
 const FRAME_FIELDS := ["x", "y", "z", "qx", "qy", "qz", "qw", "turret_yaw", "gun_pitch",
 	"track_l", "track_r", "status", "ammo_index", "reload",
-	"a_left", "a_right", "a_brake", "a_traverse", "a_elev", "a_fire"]
+	"a_left", "a_right", "a_brake", "a_traverse", "a_elev", "a_fire",
+	"view_mode", "view_yaw", "view_pitch", "view_fov"]
 ## status 코드
 const STATUS_OK := 0
 const STATUS_DAMAGED := 1      # 기동불능 또는 화력상실(아직 전투가능 판정)
@@ -48,6 +51,8 @@ const STATUS_DESTROYED := 3    # 파괴(화재·탄약 유폭)
 
 var map: HillMap
 var tanks: Array = []
+## 전차 이름 -> TankView (없으면 3인칭 기본값으로 기록)
+var views := {}
 var rewards := RewardModel.new()
 var meta := {}
 var tick := 0
@@ -176,7 +181,7 @@ func summary_dict() -> Dictionary:
 ## AI 관측·행동·판단 기록. obs/action 은 숫자 배열, info 는 자유 형식(가치 추정, 목표, 설명 등).
 func log_decision(t: Tank, obs, action, info := {}) -> void:
 	_write({"type": "decision", "tick": tick, "t": snappedf(sim_time(), 0.001), "tank": tank_id(t),
-		"obs": Array(obs).map(func(v): return snappedf(v, 0.0001)),
+		"obs": Array(obs).map(func(v): return snappedf(v, 0.001)),
 		"action": Array(action).map(func(v): return snappedf(v, 0.0001)), "info": info})
 
 
@@ -198,6 +203,7 @@ func _header() -> Dictionary:
 		"created": Time.get_datetime_string_from_system(), "engine": Engine.get_version_info().string,
 		"physics_hz": Engine.physics_ticks_per_second, "sample_every": sample_every,
 		"frame_fields": FRAME_FIELDS, "action_labels": TankControlInput.ACTION_LABELS,
+		"agent_action_labels": TankAgent.action_labels(), "observation_labels": TankPerception.labels(),
 		"teams": ["Germany", "Allies"], "reward_weights": rewards.weights, "time_limit_s": time_limit_s,
 		"meta": meta, "map": map.to_record() if map else {}, "tanks": tl}
 
@@ -215,6 +221,9 @@ func _write_frame() -> void:
 			status_code(t.damage), t.ammo_index, snappedf(t.reload_timer, 0.01),
 			snappedf(a[0], 0.001), snappedf(a[1], 0.001), snappedf(a[2], 0.001),
 			snappedf(a[3], 0.001), snappedf(a[4], 0.001), a[5]])
+		var v: TankView = views.get(t.name)
+		var vs: Array = v.state_array(t) if v else [0, 0.0, 0.0, TankView.THIRD_FOV]
+		s[-1].append_array([vs[0], snappedf(vs[1], 0.001), snappedf(vs[2], 0.001), snappedf(vs[3], 0.01)])
 		var p: Vector3 = tr.origin
 		_stats[t.name].dist += Vector2(p.x, p.z).distance_to(Vector2(_last_pos[t.name].x, _last_pos[t.name].z))
 		_last_pos[t.name] = p

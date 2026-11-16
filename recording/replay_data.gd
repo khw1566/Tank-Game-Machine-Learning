@@ -101,7 +101,7 @@ func field(row: Array, name: String, default = 0.0):
 	return row[i] if i >= 0 and i < row.size() else default
 
 
-## 시각 t 의 전차 id 자세: {"xform", "turret_yaw", "gun_pitch", "status", "speed", "action"}
+## 시각 t 의 전차 id 자세: {"xform", "turret_yaw", "gun_pitch", "status", "speed", "action", "view"}
 func pose(id: int, t: float) -> Dictionary:
 	var i := frame_index(t)
 	var a: Array = frames[i].s[id]
@@ -124,7 +124,10 @@ func pose(id: int, t: float) -> Dictionary:
 		"speed": (field(a, "track_l") + field(a, "track_r")) * 0.5,
 		"reload": field(a, "reload"),
 		"action": [field(a, "a_left"), field(a, "a_right"), field(a, "a_brake"),
-			field(a, "a_traverse"), field(a, "a_elev"), field(a, "a_fire")]}
+			field(a, "a_traverse"), field(a, "a_elev"), field(a, "a_fire")],
+		# 시점 [mode, yaw(차체 기준), pitch, fov] — 버전 1 기록에는 없어서 3인칭 기본값
+		"view": [int(field(a, "view_mode", 0)), lerp_angle(field(a, "view_yaw", 0.0), field(b, "view_yaw", 0.0), w),
+			lerpf(field(a, "view_pitch", 0.0), field(b, "view_pitch", 0.0), w), field(a, "view_fov", TankView.THIRD_FOV)]}
 
 
 ## 시각 t 의 팀 점수 [team0, team1]
