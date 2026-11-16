@@ -275,19 +275,40 @@
       "stabilizer_bloom_factor": 0.35,
       "stabilizer_efficiency": 0.85,
       "stabilizer_vertical": true,
+      "traverse_slope_penalty": 1.5,
       "turret_traverse_deg_s": 24
     },
     "id": "sherman75",
     "mass_t": 30.3,
     "mobility": {
-      "accel_mps2": 1.4,
       "brake_mps2": 6,
-      "climb_penalty": 1.45,
-      "direction_change_s": 1.2,
-      "max_forward_kmh": 26,
-      "max_reverse_kmh": 12,
+      "direction_change_s": 1.5,
+      "engine_response_s": 0.8,
+      "forward_gears_kmh": [
+        3.7,
+        9.1,
+        15.8,
+        25.4,
+        38.6
+      ],
+      "ground_pressure_kgcm2": 0.96,
+      "max_forward_kmh": 38.6,
+      "max_reverse_kmh": 5,
       "neutral_steer": false,
-      "steer_efficiency": 0.18
+      "obstacle_step_m": 0.61,
+      "offroad_top_kmh": 25.4,
+      "reverse_gears_kmh": [
+        5
+      ],
+      "rolling_resistance": 0.069,
+      "shift_time_overrides": {
+
+      },
+      "shift_time_s": 1,
+      "start_gear": 2,
+      "steer_efficiency": 0.18,
+      "top_kmh_on_10deg": 3.7,
+      "top_kmh_on_5deg": 9.1
     },
     "modules": [
       {
@@ -462,10 +483,17 @@
       "turret_side_slope_deg": 10,
       "turret_width": 1.8
     },
+    "suspension": {
+      "damping": 0.3,
+      "freq_hz": 1.3,
+      "pitch_deg_per_mps2": 0.3,
+      "roll_deg_per_mps2": 0.3
+    },
     "traits": [
       "높은 차체(지붕 1.95m) + 포 내림 −10° → 능선 뒤에 차체를 숨기고 포탑만 내미는 헐다운이 가장 쉬움",
       "수직 1축 안정장치: 차체가 출렁여도 포 고저각 유지, 기동 중 조준 흔들림 35% 로 감소 → 기동간 사격",
       "포탑 선회 24°/s: 측면으로 빠르게 돌며 쏘는 기동전에 유리",
+      "5+1단: 야지 4단 25.4km/h, 후진 1단 5.0km/h 뿐 → 물러날 때 가장 느림. 넘는 장애물 0.61m(가장 낮음)",
       "75mm 는 티거 정면 불가 → 헐다운으로 버티며 다른 전차가 측면을 잡게 하거나 근접 측면 공격"
     ]
   },
@@ -734,19 +762,40 @@
       "stabilizer_bloom_factor": 1,
       "stabilizer_efficiency": 0,
       "stabilizer_vertical": false,
+      "traverse_slope_penalty": 2.5,
       "turret_traverse_deg_s": 20
     },
     "id": "t34_76",
     "mass_t": 28.5,
     "mobility": {
-      "accel_mps2": 1.9,
       "brake_mps2": 6,
-      "climb_penalty": 1.1,
-      "direction_change_s": 2.5,
-      "max_forward_kmh": 34,
-      "max_reverse_kmh": 5,
+      "direction_change_s": 3,
+      "engine_response_s": 0.9,
+      "forward_gears_kmh": [
+        7.8,
+        16.4,
+        27.1,
+        51.1
+      ],
+      "ground_pressure_kgcm2": 0.62,
+      "max_forward_kmh": 51.1,
+      "max_reverse_kmh": 7.3,
       "neutral_steer": false,
-      "steer_efficiency": 0.12
+      "obstacle_step_m": 0.73,
+      "offroad_top_kmh": 27.1,
+      "reverse_gears_kmh": [
+        7.3
+      ],
+      "rolling_resistance": 0.0605,
+      "shift_time_overrides": {
+        "2>3": 3,
+        "3>2": 2.5
+      },
+      "shift_time_s": 2,
+      "start_gear": 2,
+      "steer_efficiency": 0.12,
+      "top_kmh_on_10deg": 7.8,
+      "top_kmh_on_5deg": 16.4
     },
     "modules": [
       {
@@ -910,10 +959,18 @@
       "turret_side_slope_deg": 20,
       "turret_width": 1.9
     },
+    "suspension": {
+      "damping": 0.2,
+      "freq_hz": 0.9,
+      "pitch_deg_per_mps2": 0.45,
+      "roll_deg_per_mps2": 0.35
+    },
     "traits": [
       "낮은 차체(지붕 1.65m, 전고 2.37m) + 경사장갑 → 피탄면적 최소, 비스듬히 맞으면 도탄 가능성 큼",
-      "전진 34km/h·가속 1.9m/s² → 빠르게 우회해 티거 측면으로 파고드는 기동",
-      "후진 5km/h, 전후진 전환 2.5s → 한 번 들어가면 빠지기 어려움(후퇴는 차체를 돌려서)",
+      "출력중량비 17.5hp/t·넓은 궤도 → 출발(0→10km/h)·오르막·야지 최고속도(3단 27km/h) 모두 최고 → 빠르게 우회해 측면으로",
+      "4단 비동기 변속기: 2→3단 3s 동안 동력 단절(속도 손실 최대), 4단(51km/h)은 도로 전용",
+      "후진 1단 7.3km/h 지만 전후진 전환 3.0s 로 가장 느림 → 한 번 들어가면 빠지기 어려움(후퇴는 차체를 돌려서)",
+      "크리스티 현가: 급정거·장애물 후 차체가 크게, 오래 출렁임 → 기동 직후 사격이 부정확",
       "포 내림 −5° → 능선 위 헐다운에서 아래쪽 적을 못 겨눔. 정지 사격도 조준이 느림(3.0s)"
     ]
   },
@@ -1193,19 +1250,46 @@
       "stabilizer_bloom_factor": 1,
       "stabilizer_efficiency": 0,
       "stabilizer_vertical": false,
+      "traverse_slope_penalty": 2.5,
       "turret_traverse_deg_s": 6
     },
     "id": "tiger1",
     "mass_t": 57,
     "mobility": {
-      "accel_mps2": 0.9,
       "brake_mps2": 5,
-      "climb_penalty": 1.7,
       "direction_change_s": 0.8,
-      "max_forward_kmh": 20,
-      "max_reverse_kmh": 9,
+      "engine_response_s": 1.2,
+      "forward_gears_kmh": [
+        2.8,
+        4.3,
+        6.2,
+        9.2,
+        14.1,
+        20.9,
+        30.5,
+        45.4
+      ],
+      "ground_pressure_kgcm2": 1.05,
+      "max_forward_kmh": 45.4,
+      "max_reverse_kmh": 9.2,
       "neutral_steer": true,
-      "steer_efficiency": 0.22
+      "obstacle_step_m": 0.79,
+      "offroad_top_kmh": 20.9,
+      "reverse_gears_kmh": [
+        2.8,
+        4.3,
+        6.2,
+        9.2
+      ],
+      "rolling_resistance": 0.0713,
+      "shift_time_overrides": {
+
+      },
+      "shift_time_s": 0.6,
+      "start_gear": 2,
+      "steer_efficiency": 0.22,
+      "top_kmh_on_10deg": 6.2,
+      "top_kmh_on_5deg": 9.2
     },
     "modules": [
       {
@@ -1380,11 +1464,19 @@
       "turret_side_slope_deg": 0,
       "turret_width": 2.3
     },
+    "suspension": {
+      "damping": 0.5,
+      "freq_hz": 0.8,
+      "pitch_deg_per_mps2": 0.25,
+      "roll_deg_per_mps2": 0.25
+    },
     "traits": [
       "정면 장갑 100~120mm: 연합군 75/76mm 는 정면을 어떤 거리에서도 못 뚫음 → 정면을 적에게 두고 30~45° 비스듬히",
       "88mm: 포구초속 773m/s(평탄한 탄도), 분산 0.30mrad, 조준 1.8s → 1000m 이상 원거리 정지 사격이 강점",
       "포탑 선회 6°/s(360°에 60초): 측면으로 돌아오는 적에 대응이 늦음 → 차체를 돌려 대응해야 함",
-      "최고 20km/h, 가속 0.9m/s², 오르막에서 크게 느려짐. 대신 제자리 선회 가능, 전후진 전환 0.8s"
+      "8+4단 프리셀렉터: 도로 45km/h 지만 야지는 6단 20.9km/h 가 한계, 오르막에서 크게 느려짐(11.4hp/t)",
+      "변속 0.6s·후진 4단 9.2km/h·전후진 전환 0.8s·제자리 선회 → 후진·자세 전환은 셋 중 가장 좋음",
+      "0.79m 장애물까지 넘음. 무겁고 감쇠 좋은 토션바 현가 → 출렁임이 빨리 가라앉음"
     ]
   }
 }

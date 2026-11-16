@@ -54,7 +54,7 @@ func _physics_process(_delta: float) -> bool:
 				sherman.control = TankControlInput.from_array([1, 1, 0, 0, 0, 0])
 			if frame == 15 + 150:
 				var moved := sherman.global_position - start_pos
-				check(moved.z > 15.0 and absf(moved.x) < 1.0, "양쪽 궤도 전진 5초 → +Z로 %.1fm 이동 (속도 %.1f m/s)" % [moved.z, sherman.track_speed_left])
+				check(moved.z > 5.0 and absf(moved.x) < 1.0, "양쪽 궤도 전진 5초(변속기로 서서히 가속) → +Z로 %.1fm 이동 (속도 %.1f m/s)" % [moved.z, sherman.track_speed_left])
 				start_yaw = sherman.rotation.y
 				phase = "turn"
 				frame = 0

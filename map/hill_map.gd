@@ -10,6 +10,9 @@ extends Node3D
 ##  - 돌담(wall): 1.4m. 차체는 가리고 포탑만 드러남(hull-down 자리).
 ##  - 건물: 마을 1곳(교차로 주변) + 외딴 농가. 포탄·시야 모두 차단.
 ##  - 바위 무더기, 외딴 나무.
+##  - 낮은 장애물: 돌(0.3~0.75m)·쓰러진 통나무(0.45~0.6m). 전차가 넘을 수 있는 높이(obstacle_step_m)면 타고 넘으며
+##    차체가 피치/롤로 기운다(포를 다시 맞춰야 함). 전차마다 넘는 한계가 달라 같은 돌이 셔먼(0.61m)에겐 벽일 수 있다.
+##  - 잔굴곡(micro relief): 30m 안팎 파장의 ±0.6m 기복 → 주행 중 차체가 계속 조금씩 출렁인다.
 ##
 ## 충돌 레이어:  1 = 지형·바위·나무줄기·건물·흙둑·돌담(포탄·시야 차단),  4 = 수관·덤불·숲 관목층(시야만 차단)
 ## 시야 판정은 LineOfSight(map/line_of_sight.gd) 가 한다: 레이어 1·2 는 물리 레이캐스트,
@@ -47,12 +50,18 @@ const LAYER_FOLIAGE := 4
 @export var farm_count := 3
 @export var lone_trees := 35
 @export var rock_count := 60
+## 낮은 돌·쓰러진 통나무 수(전차가 타고 넘는 장애물)
+@export var stone_count := 90
+@export var log_count := 30
+## 잔굴곡 진폭(m, height_amplitude 15 기준). 0 이면 없음
+@export var micro_relief_m := 0.6
 ## 스폰 지역(맵 양 끝)은 X ±spawn_clear_half_width, Z ±spawn_clear_radius 를 비워 둔다
 @export var spawn_clear_radius := 60.0
 @export var spawn_clear_half_width := 110.0
 @export var spawn_points: Array[Vector3] = [Vector3(0, 0, 450), Vector3(0, 0, -450)]
 
 var noise := FastNoiseLite.new()
+var _rough := FastNoiseLite.new()
 ## 헤드리스(학습)에서는 메시 생략(충돌체만 생성)
 var visuals_enabled := DisplayServer.get_name() != "headless"
 ## 보고서·리플레이용 장애물 목록: {"type", "pos": Vector3, "radius", ...}
@@ -106,6 +115,10 @@ func generate() -> void:
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	noise.frequency = noise_frequency
 	noise.fractal_octaves = 3
+	_rough.seed = map_seed + 101
+	_rough.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_rough.frequency = 0.03
+	_rough.fractal_octaves = 2
 	var rng := RandomNumberGenerator.new()
 	rng.seed = map_seed * 7919 + 13
 	_plan_ridges(rng)
@@ -132,6 +145,7 @@ func height_at(x: float, z: float) -> float:
 		return 0.0
 	var h := noise.get_noise_2d(x, z) * height_amplitude * 0.6
 	var k := height_amplitude / 15.0
+	h += _rough.get_noise_2d(x, z) * micro_relief_m * k
 	for r in ridges:
 		var cz: float = r.z0 + r.amp * sin(x * r.freq + r.phase)
 		var d: float = z - cz
@@ -315,6 +329,17 @@ func _scatter(rng: RandomNumberGenerator) -> void:
 			if _is_free(p, 3.0):
 				_add_rock(p, rng)
 			placed += 1
+	# 낮은 장애물은 별도 난수열(기존 배치의 시드 재현성을 그대로 유지)
+	var srng := RandomNumberGenerator.new()
+	srng.seed = map_seed * 104729 + 71
+	for i in stone_count:
+		var p := Vector2(srng.randf_range(-half, half), srng.randf_range(-half, half))
+		if _is_free(p, 1.5):
+			_add_stone(p, srng)
+	for i in log_count:
+		var p := Vector2(srng.randf_range(-half, half), srng.randf_range(-half, half))
+		if _is_free(p, 4.0):
+			_add_log(p, srng)
 
 
 func _in_spawn_zone(p: Vector2, margin := 0.0) -> bool:
@@ -663,6 +688,40 @@ func _add_rock(p: Vector2, rng: RandomNumberGenerator) -> void:
 	obstacles.append({"type": "rock", "pos": center, "radius": maxf(s.x, s.z) * 0.5})
 	# 외형 배치도 항상 계산(헤드리스 학습에서도 같은 난수 순서 + 리플레이 기록용)
 	_visual("box", Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(s), center), Color(0.5, 0.5, 0.48).darkened(rng.randf() * 0.2))
+
+
+## 낮은 돌: 높이 0.3~0.75m → 전차마다 넘을 수 있는지가 다르다(티거 0.79 / T-34 0.73 / 셔먼 0.61)
+func _add_stone(p: Vector2, rng: RandomNumberGenerator) -> void:
+	add_stone(p, Vector3(rng.randf_range(0.8, 2.2), rng.randf_range(0.3, 0.75), rng.randf_range(0.8, 2.2)), rng.randf() * TAU,
+		Color(0.52, 0.5, 0.47).darkened(rng.randf() * 0.2))
+
+
+## 쓰러진 통나무: 지름 0.45~0.6m, 길이 4~9m → 모두 넘을 수 있지만 비스듬히 넘으면 크게 기운다
+func _add_log(p: Vector2, rng: RandomNumberGenerator) -> void:
+	var d := rng.randf_range(0.45, 0.6)
+	add_log(p, rng.randf_range(4.0, 9.0), d, rng.randf() * TAU)
+
+
+## 테스트·시나리오용: 지면 위 높이 size.y 의 낮은 돌(상자)
+func add_stone(p: Vector2, size: Vector3, yaw := 0.0, col := Color(0.52, 0.5, 0.47)) -> void:
+	var g := height_at(p.x, p.y)
+	# 지면 경사에 묻히도록 아래로 0.3m 더 내려 둔다(윗면 = 지면 + size.y)
+	var center := Vector3(p.x, g + (size.y - 0.3) * 0.5, p.y)
+	var full := Vector3(size.x, size.y + 0.3, size.z)
+	_add_box_shape("stone", center, full, yaw)
+	obstacles.append({"type": "stone", "pos": Vector3(p.x, g, p.y), "radius": maxf(size.x, size.z) * 0.5, "height": size.y})
+	_visual("box", Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(full), center), col)
+
+
+## 테스트·시나리오용: 길이 length, 지름 d 의 쓰러진 통나무(상자 근사), 방향 yaw(라디안, 2D 각도)
+func add_log(p: Vector2, length: float, d: float, yaw := 0.0) -> void:
+	var g := height_at(p.x, p.y)
+	var center := Vector3(p.x, g + (d - 0.2) * 0.5, p.y)
+	var size := Vector3(length, d + 0.2, d)
+	_add_box_shape("log", center, size, -yaw)
+	obstacles.append({"type": "log", "pos": Vector3(p.x, g, p.y), "radius": length * 0.5, "height": d,
+		"a": _v3(p + Vector2(cos(yaw), sin(yaw)) * length * 0.5), "b": _v3(p - Vector2(cos(yaw), sin(yaw)) * length * 0.5)})
+	_visual("box", Transform3D(_yaw_basis(yaw, size), center), Color(0.4, 0.3, 0.2))
 
 
 ## 테스트·시나리오용 공개 헬퍼(features_enabled=false 인 빈 맵에 하나씩 놓기)
