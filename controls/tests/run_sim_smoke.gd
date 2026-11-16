@@ -23,8 +23,8 @@ func _initialize() -> void:
 	map.lone_trees = 0
 	map.rock_count = 0
 	root.add_child(map)
-	tiger = _make("tiger1", 0, Vector3(0, 0.3, 0), 0.0)
-	sherman = _make("sherman75", 1, Vector3(40, 0.3, -400), PI)
+	tiger = _make("tiger1", 0, Vector3(0, 0.0, 0), 0.0)
+	sherman = _make("sherman75", 1, Vector3(40, 0.0, -400), PI)
 	tiger.shot_fired.connect(_on_shot)
 
 
@@ -81,17 +81,16 @@ func _physics_process(_delta: float) -> bool:
 	return false
 
 
-## 간단한 비례 조준기(스크립트 AI 기준선). 반환: 액션 벡터
+## 간단한 비례 조준기(스크립트 AI 기준선). Tank.aim_solution() 이 탄도 낙차까지 보정한 목표 각을 준다.
+## 조준 오차(aim_error_mrad)가 충분히 줄어든 뒤에만 쏜다. 반환: 액션 벡터
 static func _aim_action(me: Tank, target: Tank) -> Array:
-	var aim := target.global_position + Vector3.UP * (target.spec.hull_bottom_y + target.spec.hull_size.y * 0.6)
-	var ld := me.global_transform.basis.inverse() * (aim - me.muzzle_position())
-	var want_yaw := atan2(-ld.x, -ld.z)
-	var want_pitch := atan2(ld.y, Vector2(ld.x, ld.z).length())
-	var e_yaw := wrapf(want_yaw - me.turret_yaw, -PI, PI)
-	var e_pitch := want_pitch - me.gun_pitch
+	var aim := target.global_position + target.global_transform.basis.y * (target.spec.hull_bottom_y + (target.spec.hull_roof_y - target.spec.hull_bottom_y) * 0.6)
+	var sol := me.aim_solution(aim)
+	var e_yaw := wrapf(float(sol.turret_yaw) - me.turret_yaw, -PI, PI)
+	var e_pitch := float(sol.gun_pitch) - me.gun_pitch
 	var trav := clampf(-e_yaw * 20.0, -1.0, 1.0)
 	var elev := clampf(e_pitch * 40.0, -1.0, 1.0)
-	var on_target := absf(e_yaw) < 0.002 and absf(e_pitch) < 0.002
+	var on_target := absf(e_yaw) < 0.002 and absf(e_pitch) < 0.002 and me.aim_error_mrad < me.current_shell().dispersion_mrad * 1.5
 	return [0, 0, 1, trav, elev, 1.0 if on_target else 0.0]
 
 

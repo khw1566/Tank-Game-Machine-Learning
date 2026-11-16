@@ -21,6 +21,7 @@ var rng := RandomNumberGenerator.new()
 
 var target_root: Node3D
 var turret_node: Node3D
+var gun_node: Node3D
 var internals_root: Node3D
 var markers_root: Node3D
 var faces: Array = [] # [{"zone", "mesh", "mat", "label", "parent", "normal"}]
@@ -116,49 +117,39 @@ func _load_target(id: String) -> void:
 	target_root.add_child(internals_root)
 	markers_root = Node3D.new()
 	target_root.add_child(markers_root)
+	gun_node = Node3D.new()
+	gun_node.position = spec.shape().trunnion
+	turret_node.add_child(gun_node)
 	_build_faces()
 	_build_internals()
-	_build_barrel()
 	turret_node.rotation.y = deg_to_rad(turret_slider.value)
-	_update_result("표적: [b]%s[/b]\n좌클릭으로 사격하세요. 카메라 방향이 사격 방향입니다." % spec.display_name)
+	_update_result("표적: [b]%s[/b]  (전고 %.2fm · 정면 피탄면적 %.1fm² · 포 %+.0f°~%+.0f°)\n%s\n좌클릭으로 사격하세요. 카메라 방향이 사격 방향입니다." % [
+		spec.display_name, spec.total_height(), spec.shape().projected_area(Vector3.FORWARD, 0.0, 0.1),
+		spec.gun_depression_deg, spec.gun_elevation_max_deg, "\n".join(spec.traits.map(func(x): return "• " + x))])
 	_refresh_all()
 
 
 func _build_faces() -> void:
-	var a := spec.hull_min()
-	var b := spec.hull_max()
-	var fy := spec.front_lower_split_y
-	var sy := spec.side_lower_split_y
-	var H := target_root
-	# 정면(-Z)
-	_face(H, "hull_front_lower", Vector3(a.x, a.y, a.z), Vector3(b.x, a.y, a.z), Vector3(b.x, fy, a.z), Vector3(a.x, fy, a.z), Vector3.FORWARD)
-	_face(H, "hull_front_upper", Vector3(a.x, fy, a.z), Vector3(b.x, fy, a.z), Vector3(b.x, b.y, a.z), Vector3(a.x, b.y, a.z), Vector3.FORWARD)
-	# 후면(+Z)
-	_face(H, "hull_rear", Vector3(a.x, a.y, b.z), Vector3(b.x, a.y, b.z), Vector3(b.x, b.y, b.z), Vector3(a.x, b.y, b.z), Vector3.BACK)
-	# 측면(±X)
-	for sx in [a.x, b.x]:
-		var n := Vector3.LEFT if sx < 0 else Vector3.RIGHT
-		_face(H, "hull_side_lower", Vector3(sx, a.y, a.z), Vector3(sx, a.y, b.z), Vector3(sx, sy, b.z), Vector3(sx, sy, a.z), n)
-		_face(H, "hull_side_upper", Vector3(sx, sy, a.z), Vector3(sx, sy, b.z), Vector3(sx, b.y, b.z), Vector3(sx, b.y, a.z), n)
-	_face(H, "hull_top", Vector3(a.x, b.y, a.z), Vector3(b.x, b.y, a.z), Vector3(b.x, b.y, b.z), Vector3(a.x, b.y, b.z), Vector3.UP)
-	# 포탑
-	var ta := spec.turret_min()
-	var tb := spec.turret_max()
-	var T := turret_node
-	_face(T, "turret_front", Vector3(ta.x, ta.y, ta.z), Vector3(tb.x, ta.y, ta.z), Vector3(tb.x, tb.y, ta.z), Vector3(ta.x, tb.y, ta.z), Vector3.FORWARD)
-	_face(T, "turret_rear", Vector3(ta.x, ta.y, tb.z), Vector3(tb.x, ta.y, tb.z), Vector3(tb.x, tb.y, tb.z), Vector3(ta.x, tb.y, tb.z), Vector3.BACK)
-	for sx in [ta.x, tb.x]:
-		var n := Vector3.LEFT if sx < 0 else Vector3.RIGHT
-		_face(T, "turret_side", Vector3(sx, ta.y, ta.z), Vector3(sx, ta.y, tb.z), Vector3(sx, tb.y, tb.z), Vector3(sx, tb.y, ta.z), n)
-	_face(T, "turret_top", Vector3(ta.x, tb.y, ta.z), Vector3(tb.x, tb.y, ta.z), Vector3(tb.x, tb.y, tb.z), Vector3(ta.x, tb.y, tb.z), Vector3.UP)
+	# TankShape 의 부품(차체·궤도·포탑·포방패·포신) 면을 그대로 그린다. 경사면은 실제로 기울어져 있다.
+	var sh := spec.shape()
+	for part in sh.parts:
+		var parent: Node3D = target_root
+		match part.frame:
+			"turret":
+				parent = turret_node
+			"gun":
+				parent = gun_node
+		for f in part.faces:
+			_face(parent, f.zone, f.points, f.normal)
 
 
-func _face(parent: Node3D, zone: String, p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, normal: Vector3) -> void:
+func _face(parent: Node3D, zone: String, pts: PackedVector3Array, normal: Vector3) -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for p in [p0, p1, p2, p0, p2, p3]:
-		st.set_normal(normal)
-		st.add_vertex(p)
+	for k in range(1, pts.size() - 1):
+		for p in [pts[0], pts[k], pts[k + 1]]:
+			st.set_normal(normal)
+			st.add_vertex(p)
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
 	var mat := StandardMaterial3D.new()
@@ -169,8 +160,8 @@ func _face(parent: Node3D, zone: String, p0: Vector3, p1: Vector3, p2: Vector3, 
 	var edge := MeshInstance3D.new()
 	var im := ImmediateMesh.new()
 	im.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
-	for p in [p0, p1, p2, p3, p0]:
-		im.surface_add_vertex(p + normal * 0.003)
+	for k in pts.size() + 1:
+		im.surface_add_vertex(pts[k % pts.size()] + normal * 0.003)
 	im.surface_end()
 	edge.mesh = im
 	var em := StandardMaterial3D.new()
@@ -179,14 +170,20 @@ func _face(parent: Node3D, zone: String, p0: Vector3, p1: Vector3, p2: Vector3, 
 	edge.material_override = em
 	parent.add_child(edge)
 	var label := Label3D.new()
-	label.position = (p0 + p1 + p2 + p3) * 0.25 + normal * 0.02
+	var c := Vector3.ZERO
+	for p in pts:
+		c += p
+	label.position = c / pts.size() + normal * 0.02
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.font_size = 40
 	label.pixel_size = 0.004
 	label.outline_size = 10
 	label.no_depth_test = true
 	parent.add_child(label)
-	faces.append({"zone": zone, "mesh": mi, "mat": mat, "label": label, "parent": parent, "normal": normal})
+	if zone == "gun_barrel" or zone == "track":
+		label.font_size = 24
+	faces.append({"zone": zone, "mesh": mi, "mat": mat, "label": label, "parent": parent, "normal": normal,
+		"slope": rad_to_deg(asin(clampf(normal.y, -1.0, 1.0)))})
 
 
 func _build_internals() -> void:
@@ -218,6 +215,7 @@ func _internal_sphere(sm: SphereMesh, pos: Vector3, r: float, in_turret: bool, k
 		# 포탑과 같이 돌도록 포탑 노드 아래 별도 그룹에 둔다
 		var holder := Node3D.new()
 		holder.position = pos
+		holder.visible = show_internals
 		turret_node.add_child(holder)
 		holder.add_child(mi)
 		holder.add_child(lbl)
@@ -229,22 +227,6 @@ func _internal_sphere(sm: SphereMesh, pos: Vector3, r: float, in_turret: bool, k
 		holder.add_child(mi)
 		holder.add_child(lbl)
 		internal_nodes.append({"kind": kind, "index": index, "id": id, "mat": mat, "holder": holder})
-
-
-func _build_barrel() -> void:
-	var barrel := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	var blen := spec.gun.caliber_mm * 0.001 * 50.0
-	cm.top_radius = spec.gun.caliber_mm * 0.001
-	cm.bottom_radius = cm.top_radius * 1.3
-	cm.height = blen
-	barrel.mesh = cm
-	barrel.rotation.x = -PI * 0.5
-	barrel.position = Vector3(0, spec.turret_size.y * 0.45, -spec.turret_size.z * 0.5 - blen * 0.5)
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.3, 0.3, 0.3)
-	barrel.material_override = m
-	turret_node.add_child(barrel)
 
 
 # ---------------------------------------------------------------- UI
@@ -322,6 +304,9 @@ func _build_ui() -> void:
 	cb.toggled.connect(func(on):
 		show_internals = on
 		internals_root.visible = on
+		for n in internal_nodes:
+			if (n.holder as Node3D).get_parent() == turret_node:
+				(n.holder as Node3D).visible = on
 		_refresh_all())
 	v.add_child(cb)
 	legend_label = Label.new()
@@ -449,9 +434,7 @@ func _refresh_all() -> void:
 
 
 func _plate_global_normal(f: Dictionary) -> Vector3:
-	var pl := spec.plate(f.zone)
-	var n := HitGeometry.sloped_normal(f.normal, pl.slope)
-	return ((f.parent as Node3D).global_transform.basis * n).normalized()
+	return ((f.parent as Node3D).global_transform.basis * (f.normal as Vector3)).normalized()
 
 
 func _impact_angle_from_camera(f: Dictionary) -> float:
@@ -463,16 +446,22 @@ func _impact_angle_from_camera(f: Dictionary) -> float:
 
 func _update_faces() -> void:
 	for f in faces:
-		var pl := spec.plate(f.zone)
-		var t: float = pl.t
+		var t: float = spec.plate(f.zone).t
 		var col: Color
 		var txt := ""
 		var angle := _impact_angle_from_camera(f)
 		var facing := angle < 89.5
-		match mode:
+		var special: bool = f.zone == "track" or f.zone == "gun_barrel"
+		match mode if not special else 0:
 			0:
 				col = _scale_color(t, 10.0, 150.0)
-				txt = "%dmm\n@%d°" % [t, pl.slope]
+				txt = "%dmm\n@%d°" % [t, f.slope]
+				if f.zone == "track":
+					col = Color(0.3, 0.3, 0.3)
+					txt = "궤도\n-%dmm" % spec.track_armor_mm
+				elif f.zone == "gun_barrel":
+					col = Color(0.5, 0.5, 0.5)
+					txt = ""
 			1:
 				var eff := Ballistics.effective_thickness_mm(shell, t, angle)
 				col = _scale_color(eff, 10.0, 250.0)
@@ -566,6 +555,13 @@ func _hover() -> void:
 	var mp := get_viewport().get_mouse_position()
 	var r := _local_ray(mp)
 	var tr := HitGeometry.trace(spec, turret_node.rotation.y, r[0], r[1])
+	var via_track := ""
+	if tr.hit and tr.zone == "track":
+		via_track = " (궤도 통과 −%dmm)" % spec.track_armor_mm
+		tr = HitGeometry.trace(spec, turret_node.rotation.y, r[0], r[1], 0.0, ["track_left", "track_right"])
+	if tr.hit and tr.zone == "gun_barrel":
+		hover_label.text = "포신 — 맞으면 포신 손상(분산 2배) 또는 파괴(사격 불가)"
+		return
 	if not tr.hit:
 		hover_label.text = "사수 방위 %.0f° · 고각 %.0f° (표적 정면 기준, + = 표적 우측)" % [_rel_bearing(), cam_pitch]
 		if _hover_eff != 0.0:
@@ -574,10 +570,13 @@ func _hover() -> void:
 		return
 	var pl := spec.plate(tr.zone)
 	var eff := Ballistics.effective_thickness_mm(shell, pl.t, tr.impact_angle_deg)
-	var p := Ballistics.penetration_probability(shell, distance_m, pl.t, tr.impact_angle_deg)
-	hover_label.text = "%s · %dmm @%d° · 입사각 %.0f° · 유효 %.0fmm · 관통력 %.0fmm → 관통확률 %.0f%%%s" % [
-		tr.zone, pl.t, pl.slope, tr.impact_angle_deg, eff, shell.penetration_mm(distance_m), p * 100.0,
-		"  (도탄 %.0f%%)" % (Ballistics.ricochet_chance(shell, pl.t, tr.impact_angle_deg) * 100.0) if Ballistics.ricochet_chance(shell, pl.t, tr.impact_angle_deg) > 0 else ""]
+	var pen := shell.penetration_mm(distance_m) - (spec.track_armor_mm if via_track != "" else 0.0)
+	var sigma := maxf(pen * shell.penetration_sigma, 0.001)
+	var ric := Ballistics.ricochet_chance(shell, pl.t, tr.impact_angle_deg)
+	var p := Ballistics.normal_cdf((pen - eff) / sigma) * (1.0 - ric)
+	hover_label.text = "%s%s · %dmm @%d° · 입사각 %.0f° · 유효 %.0fmm · 관통력 %.0fmm → 관통확률 %.0f%%%s" % [
+		tr.zone, via_track, pl.t, tr.slope_deg, tr.impact_angle_deg, eff, pen, p * 100.0,
+		"  (도탄 %.0f%%)" % (ric * 100.0) if ric > 0 else ""]
 	if absf(eff - _hover_eff) > 0.5 or _hover_zone != tr.zone:
 		_hover_eff = eff
 		_hover_zone = tr.zone
@@ -633,6 +632,8 @@ func _shoot_at(screen_pos: Vector2) -> void:
 	if "hit_wreck" in res.events:
 		verdict = "[color=#aaa]잔해 명중(이미 파괴됨, 수리 버튼으로 초기화)[/color]"
 	var bb := "[b]%s[/b]  %s, %dm\n" % [verdict, shell.shell_name, distance_m]
+	if res.has("track_hit"):
+		bb += "궤도 명중(%s) → 관통력 −%dmm 후 차체로 진행\n" % [res.track_hit, spec.track_armor_mm]
 	bb += "구역 %s (%dmm @%d°)\n입사각 %.1f° → 유효장갑 %.1fmm\n" % [res.zone, res.plate_mm, res.slope_deg, res.impact_angle_deg, res.effective_mm]
 	bb += "평균 관통력 %.1fmm, 이번 탄 %.1fmm (사전 관통확률 %.0f%%)\n" % [res.pen_mean_mm, res.pen_roll_mm, res.pen_probability * 100.0]
 	bb += "사건: %s\n" % ", ".join(res.events)
@@ -659,7 +660,7 @@ func _monte_carlo() -> void:
 	var dir := (inv.basis * (-camera.global_transform.basis.z)).normalized()
 	var up := (inv.basis * camera.global_transform.basis.y).normalized()
 	var right := dir.cross(up).normalized()
-	var radius := Vector2(spec.hull_size.z, spec.total_height()).length() * 0.55
+	var radius := Vector2(spec.hull_length, spec.total_height()).length() * 0.55
 	var n_hit := 0
 	var n_pen := 0
 	var n_ric := 0
