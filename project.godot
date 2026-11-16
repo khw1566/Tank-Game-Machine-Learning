@@ -1,0 +1,25 @@
+; Engine configuration file.
+; Godot 4.3+
+
+config_version=5
+
+[application]
+
+config/name="Tank Game Machine Learning"
+config/description="WW2 tank tactics self-play testbed (Tiger I vs Sherman / T-34)"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.3")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+
+[physics]
+
+common/physics_ticks_per_second=30
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
