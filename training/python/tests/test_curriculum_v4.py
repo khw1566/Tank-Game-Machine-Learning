@@ -17,7 +17,7 @@ def test_scenarios_are_deterministic_and_complete():
                 b = scenarios.build(spec["builder"], spec["variant"], tank, 42)
                 assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
                 assert a["variant"] == spec["variant"] and "learner" in a
-                assert a["goal"] in ("reach", "survive", "destroy", "zone", "hits")
+                assert a["goal"] in ("reach", "survive", "destroy", "zone", "hits", "take_cover")
                 if a["goal"] == "reach":
                     assert "objective" in a
                 if spec["kind"] != "drive":
@@ -53,10 +53,10 @@ def test_shaping_decays_and_entropy_restarts(tmp_path):
     sid = c.stage["id"]
     assert c.shaping_scale(sid) == 1.0
     c.episodes_in_stage = c.stage["shaping_decay_episodes"] * 2
-    assert abs(c.shaping_scale(sid) - 0.5) < 1e-3          # hard cap after 4x decay episodes
+    assert c.shaping_scale(sid) == 1.0                   # unsolved driving retains shaping
     c.episodes_in_stage = 0
     for v in c.stage["variants"]:
-        for _ in range(40):
+        for _ in range(c.pair_minimum(c.stage)):
             c.results[sid][c.key(v, "tiger1")].append(1)
     assert c.shaping_scale(sid) == 0.0                      # competence removes shaping
     assert c.shaping_scale(curriculum_v4.STAGE_IDS[0]) == 0.0  # review = outcome only
@@ -108,6 +108,69 @@ def test_shared_requires_every_tank_and_branches():
         pass
 
 
+def test_mastered_pairs_are_skipped_and_stay_passed(tmp_path):
+    c = CurriculumV4("shared", start_stage=1, review_prob=0)
+    sid = c.stage["id"]
+    for key in c.results[sid]:
+        if key != "wall@t34_76":
+            c.results[sid][key].extend([1] * c.pair_minimum(c.stage))
+    rng = random.Random(1)
+    for seed in range(50):
+        _, _, extra = c.build_episode("shared", rng, seed)
+        assert extra["scenario"]["variant"] == "wall" and extra["learner"] == "t34_76"
+        assert extra["scenario"]["driving"]["min_forward_fraction"] == 0.85
+    # In-flight episodes finishing after the pass cannot reopen that pair.
+    c.report(sid, False, 1, variant="clear", learner="tiger1")
+    assert c.variant_rates(sid, 40)["clear@tiger1"] == 1.0
+    c.save(tmp_path / "passed.json")
+    d = CurriculumV4.load(tmp_path / "passed.json", "shared", review_prob=0)
+    assert d.pending_pairs(d.stage) == [("wall", "t34_76")]
+    d.episodes_in_stage = 1_000_000
+    assert d.shaping_scale(sid) > 0.0
+
+
+def test_legacy_assessment_keeps_weights_compatible_and_preserves_results(tmp_path):
+    c = CurriculumV4("shared", start_stage=2)
+    state = c.state()
+    state.pop("assessment_version")
+    state["results"]["m1_drive"]["behind@tiger1"] = [1] * 40
+    path = tmp_path / "legacy.json"
+    path.write_text(json.dumps(state), encoding="utf-8")
+    d = CurriculumV4.load(path, "shared")
+    assert d.stage["id"] == "m1_drive" and not any(d.results["m1_drive"].values())
+    assert d.previous_assessments[-1]["results"]["m1_drive"]["behind@tiger1"] == [1] * 40
+    d.save(path)
+    assert CurriculumV4.load(path, "shared").previous_assessments == d.previous_assessments
+
+
+def test_under_fire_requires_distant_off_axis_cover_and_preserves_driving(tmp_path):
+    for tank in curriculum_v4.SHARED_TANKS:
+        for variant in curriculum_v4.STAGES[2]["variants"]:
+            for seed in range(20):
+                sc = scenarios.build("evade_to_cover", variant, tank, seed)
+                assert sc["goal"] == "take_cover" and "objective" not in sc
+                assert sc["projectile_version"] == 1 and sc["evade"]["hold_s"] == 4
+                cover = sc["obstacles"][0]
+                spawn = sc["learner"]["p"]
+                assert math.dist(spawn, cover["p"]) > 50
+                yaw = sc["learner"]["yaw"]
+                to_cover = [cover["p"][i] - spawn[i] for i in range(2)]
+                lateral = abs(to_cover[0] * math.cos(yaw) - to_cover[1] * math.sin(yaw))
+                assert lateral > 30  # Never straight in front.
+    c = CurriculumV4("shared", start_stage=0)
+    state = c.state()
+    state["assessment_version"] = 2
+    state["results"]["m1_drive"]["near@tiger1"] = [1] * 40
+    state["mastered"]["m1_drive"] = ["near@tiger1"]
+    state["results"]["m3_under_fire"]["screened@tiger1"] = [1] * 40
+    path = tmp_path / "v2.json"
+    path.write_text(json.dumps(state), encoding="utf-8")
+    d = CurriculumV4.load(path, "shared")
+    assert d.stage_idx == 0 and "near@tiger1" in d.mastered["m1_drive"]
+    assert list(d.results["m1_drive"]["near@tiger1"]) == [1] * 40
+    assert not any(d.results["m3_under_fire"].values())
+
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -121,6 +184,9 @@ class CurriculumV4Test(unittest.TestCase):
         test_shaping_decays_and_entropy_restarts(Path(tempfile.mkdtemp()))
         test_build_episode_config()
         test_shared_requires_every_tank_and_branches()
+        test_mastered_pairs_are_skipped_and_stay_passed(Path(tempfile.mkdtemp()))
+        test_legacy_assessment_keeps_weights_compatible_and_preserves_results(Path(tempfile.mkdtemp()))
+        test_under_fire_requires_distant_off_axis_cover_and_preserves_driving(Path(tempfile.mkdtemp()))
 
 
 if __name__ == "__main__":

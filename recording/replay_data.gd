@@ -70,6 +70,27 @@ func duration() -> float:
 	return float(frames[-1].t) if not frames.is_empty() else 0.0
 
 
+func projectile_tracers(time: float) -> Array:
+	var index := frame_index(time)
+	if index < 0:
+		return []
+	var first: Dictionary = frames[index]
+	var second: Dictionary = frames[mini(index + 1, frames.size() - 1)]
+	var fraction := clampf((time - float(first.t)) / maxf(0.001, float(second.t) - float(first.t)), 0, 1)
+	var next := {}
+	for projectile in second.get("projectiles", []):
+		next[int(projectile.id)] = projectile
+	var tracers := []
+	for projectile in first.get("projectiles", []):
+		var from := vec3(projectile.from)
+		var to := vec3(projectile.to)
+		if next.has(int(projectile.id)):
+			from = from.lerp(vec3(next[int(projectile.id)].from), fraction)
+			to = to.lerp(vec3(next[int(projectile.id)].to), fraction)
+		tracers.append({"from": from, "to": to, "age": 0.0})
+	return tracers
+
+
 func tank_name(id: int) -> String:
 	var tl := tanks()
 	return tl[id].name if id >= 0 and id < tl.size() else "-"

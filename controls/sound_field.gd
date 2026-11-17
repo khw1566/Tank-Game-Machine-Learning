@@ -33,7 +33,8 @@ func add(kind: int, pos: Vector3, src := "", target := "") -> void:
 
 ## Tank.shot_fired 에 연결
 func on_shot(shooter: Tank, r: Dictionary) -> void:
-	add(GUNFIRE, _v(r.get("from", [])) if r.has("from") else shooter.muzzle_position(), shooter.name)
+	if not r.has("projectile_version"):
+		add(GUNFIRE, _v(r.get("from", [])) if r.has("from") else shooter.muzzle_position(), shooter.name)
 	if r.has("hit_pos"):
 		add(IMPACT, _v(r.hit_pos), shooter.name, str(r.get("target_name", "")) if r.get("hit", false) else "")
 

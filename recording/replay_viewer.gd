@@ -275,8 +275,11 @@ func _update_markers() -> void:
 		var age := t - float(e.t)
 		if age > WorldMarkers.TRACER_S:
 			break
+		if e.r.has("projectile_version"):
+			continue
 		var pts := data.shot_points(e)
 		tracers.append({"from": pts[0], "to": pts[1], "age": age})
+	tracers.append_array(data.projectile_tracers(t))
 	markers.set_tracers(tracers)
 	if markers.show_paths:
 		var fi := data.frame_index(t)

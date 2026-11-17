@@ -17,6 +17,7 @@ extends CharacterBody3D
 ## 매 물리 프레임 `control` 을 읽는다. control 은 키보드(KeyboardController.read()) 또는 AI(TankControlInput.from_array()).
 
 signal shot_fired(shooter: Tank, result: Dictionary)
+signal shot_launched(shooter: Tank, result: Dictionary)
 signal knocked_out(tank: Tank, cause: String)
 
 const LAYER_GROUND := 1    # 지형·바위·나무줄기 (포탄 차단)
@@ -96,6 +97,7 @@ var ground_normal := Vector3.UP
 ## 차체 흔들림 중 포 방향 피치 변화율(°/s, 조준 오차 계산용)
 var gun_axis_pitch_rate_dps := 0.0
 var shots_fired := 0
+var projectile_field: RefCounted = null
 var rng := RandomNumberGenerator.new()
 
 var _turret_pivot: Node3D
@@ -699,6 +701,11 @@ func fire() -> Dictionary:
 		"from": TankSpec._v(from), "dir": TankSpec._v(dir), "hit": false, "target_name": "",
 		"aim_error_mrad": snappedf(aim_error_mrad, 0.01),
 		"shooter_speed_mps": snappedf((track_speed_left + track_speed_right) * 0.5, 0.01)}
+	shot_launched.emit(self, result)
+	if projectile_field != null:
+		projectile_field.launch(self, from, dir, shell, result)
+		aim_error_mrad = maxf(aim_error_mrad, shell.dispersion_mrad * damage.dispersion_factor() * 2.0)
+		return result
 	var hit := _trace_shell(from, dir * shell.muzzle_velocity_ms)
 	if hit.is_empty():
 		result["blocked_by"] = "none"

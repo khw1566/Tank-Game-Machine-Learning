@@ -52,6 +52,9 @@ def parse():
     ap.add_argument("--auto-branch", action="store_true",
                     help="v4 공통 모델이 T3 를 마치면 전차별 모델로 복사해 T4~T6 을 --rotate-steps 씩 번갈아 학습")
     ap.add_argument("--branch-from", default="", help="v4: 이 실행 폴더의 shared 모델에서 전차별 모델을 시작(같은 실행이면 비움)")
+    ap.add_argument("--max-std", type=float, default=1.0,
+                    help="행동 잡음(gSDE 표준편차) 상한. 0 = 제한 없음. 성공이 없는 단계에서 잡음만 커져 행동이 ±1에 붙는 것을 막는다")
+    ap.add_argument("--target-kl", type=float, default=0.05, help="PPO 갱신 중 approx KL 이 이 값을 넘으면 그 갱신의 남은 반복을 멈춘다(0 = 끔)")
     ap.add_argument("--init-model", default="", help="체크포인트가 없을 때 이 모델 가중치로 시작(관측·행동 규격이 같아야 함)")
     ap.add_argument("--branch-tanks", default="tiger1,sherman75,t34_76", help="자동 분기할 전차 목록")
     ap.add_argument("--rotate", default="", help="여러 종류를 번갈아 학습: tiger1,sherman75,t34_76")
@@ -123,6 +126,11 @@ def write_manifest(run_dir: Path, args, env: GodotVecEnv, runtime: dict) -> None
                                 "protocol": env.procs[0].hello.get("protocol"),
                                 "repeat_ticks": env.procs[0].hello.get("repeat"),
                                 "terrain_course_version": env.procs[0].hello.get("terrain_course_version", 0),
+                                "situation_obs_version": env.procs[0].hello.get("situation_obs_version", 0),
+                                "driving_reward_version": env.procs[0].hello.get("driving_reward_version", 0),
+                                "threat_obs_version": env.procs[0].hello.get("threat_obs_version", 0),
+                                "projectile_version": env.procs[0].hello.get("projectile_version", 0),
+                                "assessment_version": getattr(env.curriculum, "assessment_version", 1),
                                 "terrain_courses": COURSES,
                                 "physics_hz": env.procs[0].hello.get("physics_hz")},
                                ensure_ascii=False, indent=1), encoding="utf-8")
@@ -141,6 +149,12 @@ def build_model(args, env, checkpoint: Path | None = None):
     overrides = {k: getattr(args, k) for k in ("n_steps", "batch_size", "n_epochs")
                  if getattr(args, k) is not None}
     if checkpoint is not None:
+        if getattr(getattr(env, "curriculum", None), "obs", "") == "situation_v3":
+            from tankrl.input_migration import expand_fire_inputs
+            migrated = expand_fire_inputs(checkpoint, env.observation_space, env.run_dir / "input_migrations")
+            if migrated != Path(checkpoint).resolve():
+                print(f"[model] 사격 관측 입력 확장: 기존 가중치·optimizer·누적 스텝 보존 → {migrated}", flush=True)
+            checkpoint = migrated
         return algorithm.load(str(checkpoint), env=env, device=device,
                               rollout_buffer_class=buffer_class, **overrides)
     n_steps = args.n_steps or 1024
@@ -168,6 +182,25 @@ def branch_source(args, run_dir: Path, tank: str):
     info = json.loads((sdir / "checkpoint.json").read_text(encoding="utf-8")) if (sdir / "checkpoint.json").exists() else {}
     source = f"{src_run.name}/{curriculum_v4.SHARED}/step_{int(info.get('num_timesteps', 0)):09d}"
     return model, shared, source, info
+
+
+def clamp_exploration(model, args) -> None:
+    """행동 잡음 상한과 KL 조기 중단(이어서 학습한 모델에도 적용). 상한에 걸리면 표준편차 로그에 그대로 보인다."""
+    import math
+    import torch
+    model.target_kl = args.target_kl or None
+    if args.max_std <= 0:
+        return
+    # HybridPPO: 갱신용(CUDA) 정책과 수집용(CPU) 복사본 모두. 수집 시작 콜백 시점의 model.policy 는 복사본이다.
+    policies = {id(p): p for p in (model.policy, getattr(model, "_update_policy", None)) if p is not None}
+    for policy in policies.values():
+        log_std = getattr(policy, "log_std", None)
+        if log_std is None:
+            continue
+        with torch.no_grad():
+            log_std.clamp_(min=math.log(0.05), max=math.log(args.max_std))
+    if getattr(model.policy, "use_sde", False):
+        model.policy.reset_noise(model.n_envs)
 
 
 def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: TrainController) -> bool:
@@ -200,6 +233,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     if args.terrain_course and cur.stage["id"] != "drive_terrain":
         cur.set_stage("drive_terrain", 0)
     ctl.curriculum = cur
+    if getattr(cur, "training_complete", False):
+        return tank == curriculum_v4.SHARED
     ctl.info.update({"tank": tank, "target_timesteps": None})
     ctl.write_status(None, force=True, phase="starting")
     inference_device = "cpu" if args.device in ("auto", "hybrid") else args.resolved_device
@@ -220,7 +255,12 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             write_json_atomic(tdir / "branch.json", {"source": branched[2], "source_checkpoint": branched[3],
                                                      "source_model": str(branched[0]), "tank": tank,
                                                      "start_stage": cur.stage["id"]})
+        if cur.history and cur.history[-1].get("reason") == "assessment_upgrade":
+            cur.stage_start_step = model.num_timesteps
+            cur.history[-1]["global_step"] = model.num_timesteps
+            print(f"[curriculum] 평가 v{cur.assessment_version}: 기존 모델을 유지하고 {cur.stage['id']}부터 진행합니다", flush=True)
         runtime = model_runtime(model, args.device)
+        runtime["input_migration"] = getattr(model, "input_migration", None)
         runtime['start_timesteps'] = model.num_timesteps
         runtime['resumed_from'] = str(checkpoint) if checkpoint else (str(branched[0]) if branched else None)
         runtime['branched_from'] = branched[2] if branched else None
@@ -253,6 +293,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
 
     env.learner_version = version()
     env.policy_fn = lambda o: model.predict(o, deterministic=False)[0]
+    if cur.history and cur.history[-1].get("reason") == "assessment_upgrade":
+        env.log_stage_change(cur.history[-1])
 
     class Cb(BaseCallback):
         def __init__(self):
@@ -262,6 +304,7 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
         def _on_rollout_start(self) -> None:
             if hasattr(cur, "entropy_coef"):
                 model.ent_coef = cur.entropy_coef(args.ent_coef, self.num_timesteps)
+            clamp_exploration(model, args)
             ctl.write_status(self.num_timesteps, force=True, phase="collecting")
 
         def _on_step(self) -> bool:
@@ -273,8 +316,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             if self.num_timesteps >= self.next_save:
                 self.next_save += args.save_every
                 save(snapshot=True)
-            if args.auto_branch and getattr(cur, "common_complete", False) and tank == curriculum_v4.SHARED:
-                print("[train] 공통 단계 완료: 전차별 분기를 위해 공통 모델 학습을 마칩니다", flush=True)
+            if getattr(cur, "training_complete", False):
+                print("[train] 모든 세부 항목 통과: 현재 커리큘럼 학습을 마칩니다", flush=True)
                 return False
             return ctl.tick(self.num_timesteps)
 

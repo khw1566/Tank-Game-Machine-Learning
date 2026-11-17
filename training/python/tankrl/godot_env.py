@@ -138,7 +138,8 @@ class GodotVecEnv(VecEnv):
         self.global_step = 0
         self.episode_count = episode_counter(self.run_dir, self.run_name, learner)
         self.stage_ids = getattr(curriculum, "stage_ids", STAGE_IDS)
-        extra = ["--obs=situation"] if getattr(curriculum, "obs", "") == "situation" else []
+        obs_mode = getattr(curriculum, "obs", "")
+        extra = [f"--obs={obs_mode}"] if obs_mode in ("situation", "situation_v3") else []
         self.procs = [GodotProcess(godot, project, i, str(self.run_dir), quiet=quiet, extra=extra) for i in range(n_envs)]
         p0 = self.procs[0]
         if extra and int(p0.hello.get("situation_obs_version", 0)) < 1:
@@ -191,6 +192,12 @@ class GodotVecEnv(VecEnv):
         require_pace_support(self.procs[i].hello, cfg)
         if int(self.procs[i].hello.get("scenario_version", 0)) < 1:
             raise RuntimeError("커리큘럼 v4 상황 배치를 지원하지 않는 게임입니다. 게임을 다시 빌드하세요.")
+        if (int(self.procs[i].hello.get("situation_obs_version", 0)) < 2
+                or int(self.procs[i].hello.get("driving_reward_version", 0)) < 2):
+            raise RuntimeError("주행 보상·장애물 관측 v2가 필요합니다. 최신 게임 실행 파일로 다시 빌드하세요.")
+        if (int(self.procs[i].hello.get("threat_obs_version", 0)) < 1
+                or int(self.procs[i].hello.get("projectile_version", 0)) < 1):
+            raise RuntimeError("사격 감지·비행 포탄 관측이 필요합니다. 최신 게임 실행 파일로 다시 빌드하세요.")
         self._ctx[i] = {"cfg": cfg, "stage": stage, "roles": ["learner"], "ext_names": [names[0]],
                         "opp_versions": [""], "learner_k": 0, "variant": variant, "tank": actual}
         return cfg
@@ -288,6 +295,9 @@ class GodotVecEnv(VecEnv):
                 self._log_episode(i, ep)
                 finished.append(i)
         self.global_step += n
+        if getattr(self.curriculum, "training_complete", False):
+            # The callback stops collection now; never schedule another mastered trial.
+            return obs, rews, dones, infos
         # 자동 리셋(병렬): 끝난 프로세스에 새 설정을 보내고 첫 관측을 받는다
         for i in finished:
             self.procs[i].send({"type": "reset", "config": self._new_config(i)})

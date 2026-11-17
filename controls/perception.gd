@@ -57,6 +57,7 @@ var sounds: SoundField
 var contacts := {}
 var vector := PackedFloat32Array()
 var last_sounds: Array = []
+var last_enemy_flash := {}
 var last_engine := PackedFloat32Array()
 var time := 0.0
 var _next_track := 1
@@ -342,6 +343,18 @@ func _scan_features(out: PackedFloat32Array) -> void:
 
 
 # ---------------------------------------------------------------- 소리
+
+func notice_launch(shooter: Tank, result: Dictionary) -> void:
+	if shooter.team == tank.team:
+		return
+	var point := SoundField._v(result.get("from", []))
+	var eye := view.eye_transform(tank, map)
+	if eye.origin.distance_to(point) > 1800 or not view.on_screen(TankView.screen_point(eye, view.fov(), point)):
+		return
+	var visible := LineOfSight.ray(map, eye.origin, point, [tank.get_rid(), shooter.get_rid()])
+	if float(visible.transmittance) >= LineOfSight.POINT_VISIBLE:
+		last_enemy_flash = {"time": time, "position": point}
+
 
 func _sound_features(out: PackedFloat32Array, tanks: Array) -> void:
 	var me := tank.global_position

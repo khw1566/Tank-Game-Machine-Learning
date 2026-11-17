@@ -63,6 +63,20 @@ var _sc_checks := 0
 var _sc_taken := {"hits": 0, "pens": 0}
 var _sc_path := 0.0
 var _sc_last := Vector3.ZERO
+var _sc_forward := 0.0
+var _sc_reverse := 0.0
+var _sc_route: ScenarioRoute
+var _sc_route_best := INF
+var _sc_cover_routes: Array = []
+var _sc_cover_initial := INF
+var _sc_cover_best := INF
+var _sc_best_shield := 0.0
+var _sc_cover_hold := 0.0
+var _sc_longest_cover := 0.0
+var _sc_fire_cue := false
+var _sc_enemy_seen := false
+var _sc_enemy_shots := 0
+var _sc_spawn := Vector3.ZERO
 
 
 func _init(p_env, overrides := {}) -> void:
@@ -114,6 +128,18 @@ func start() -> void:
 	if env.config.has("scenario"):
 		_sc_best = _wp_dist(env.tanks[0]) if env.waypoint != Vector3.INF else INF
 		_sc_last = env.tanks[0].global_position
+		_sc_spawn = _sc_last
+		for region in env.config.scenario.get("cover_regions", []):
+			var cover_config: Dictionary = env.config.scenario.duplicate(true)
+			cover_config["objective"] = {"p": region.p}
+			var route := ScenarioRoute.new(cover_config, env.tanks[0].spec)
+			_sc_cover_routes.append(route)
+			_sc_cover_initial = minf(_sc_cover_initial, route.remaining(_sc_last))
+		_sc_cover_best = _sc_cover_initial
+		var driving: Dictionary = env.config.scenario.get("driving", {})
+		if driving.get("route_progress", false) and env.config.scenario.has("objective"):
+			_sc_route = ScenarioRoute.new(env.config.scenario, env.tanks[0].spec)
+			_sc_route_best = _sc_route.remaining(_sc_last)
 	if env.config.has("terrain_course"):
 		_course_initial = _remaining_route(env.tanks[0])
 		_course_best = _course_initial
@@ -148,6 +174,15 @@ func taken(name: String) -> float:
 
 func total(name: String) -> float:
 	return _total.get(name, 0.0)
+
+
+func on_launch(shooter: Tank, result: Dictionary) -> void:
+	if not env.config.has("scenario") or not env.config.scenario.has("evade") or shooter.team == env.tanks[0].team:
+		return
+	_sc_enemy_shots += 1
+	var origin := SoundField._v(result.get("from", []))
+	if SoundField.loudness(SoundField.GUNFIRE, env.tanks[0].global_position.distance_to(origin)) >= SoundField.AUDIBLE:
+		_sc_fire_cue = true
 
 
 func on_shot(shooter: Tank, r: Dictionary) -> void:
@@ -389,8 +424,16 @@ func _scenario_decision(dt: float) -> Dictionary:
 	var me: Tank = env.tanks[0]
 	var goal := str(sc.get("goal", "reach"))
 	_add(me.name, float(w.time_per_s) * dt, "time")
-	_sc_path += Vector2(me.global_position.x - _sc_last.x, me.global_position.z - _sc_last.z).length()
-	var speed := Vector2(me.global_position.x - _sc_last.x, me.global_position.z - _sc_last.z).length() / dt
+	var movement := Vector2(me.global_position.x - _sc_last.x, me.global_position.z - _sc_last.z)
+	_sc_path += movement.length()
+	var speed := movement.length() / dt
+	var forward := Vector2(-sin(me.global_rotation.y), -cos(me.global_rotation.y))
+	var signed_m := movement.dot(forward)
+	_sc_forward += maxf(0.0, signed_m)
+	_sc_reverse += maxf(0.0, -signed_m)
+	var driving: Dictionary = sc.get("driving", {})
+	if not driving.is_empty():
+		_add(me.name, maxf(0.0, -signed_m) * float(driving.get("reverse_per_m", -0.08)), "reverse")
 	_sc_last = me.global_position
 	if env.decisions % 5 == 0:
 		_sc_exposure(me, dt * 5.0)
@@ -401,17 +444,26 @@ func _scenario_decision(dt: float) -> Dictionary:
 	for i in range(1, env.tanks.size()):
 		if env.tanks[i].team != me.team and env.tanks[i].damage.is_combat_effective():
 			enemies_alive += 1
+	if goal == "take_cover":
+		return _sc_evade(me, dt, enemies_alive)
 	if env.waypoint != Vector3.INF:
 		var d := _wp_dist(me)
-		if d < _sc_best:
-			_add(me.name, (_sc_best - d) * float(w.get("progress", 0.02)) * float(w.get("shaping_scale", 1.0)), "shaping_progress")
-			_sc_best = d
+		var remaining := _sc_route.remaining(me.global_position) if _sc_route else d
+		var best := _sc_route_best if _sc_route else _sc_best
+		if best < INF and remaining < best and (driving.is_empty() or signed_m > 0.0):
+			_add(me.name, (best - remaining) * float(w.get("progress", 0.02)) * float(w.get("shaping_scale", 1.0)), "shaping_progress")
+		# Consume new-best progress even when reversing: turning around cannot collect it later.
+		_sc_route_best = minf(_sc_route_best, remaining)
+		_sc_best = minf(_sc_best, d)
 		var radius := float(sc.get("objective", {}).get("radius", 10.0))
 		var inside := d <= radius
 		if inside:
 			_sc_zone += dt
 		_sc_hold = _sc_hold + dt if inside and speed < 1.0 else 0.0
 		if goal == "reach" and _sc_hold + 0.000001 >= float(sc.get("objective", {}).get("hold_s", 1.0)):
+			if not driving.is_empty() and not _sc_forward_pass(driving):
+				_add(me.name, float(w.get("timeout_penalty", -3.0)), "invalid_drive")
+				return _done("arrival_requires_forward_drive", false, -1)
 			_sc_objective = true
 			_add(me.name, float(w.get("objective", 8.0)), "objective")
 			return _sc_finish("objective_reached", learner_team())
@@ -433,6 +485,77 @@ func _scenario_decision(dt: float) -> Dictionary:
 		_add(me.name, float(w.get("timeout_penalty", -3.0)), "timeout")
 		return _done("time_limit", false, -1)
 	return {"done": false}
+
+
+func _sc_forward_pass(driving: Dictionary) -> bool:
+	var allowance := float(driving.get("reverse_allowance_m", 2.0))
+	var counted_reverse := maxf(0.0, _sc_reverse - allowance)
+	return _sc_forward / maxf(0.001, _sc_forward + counted_reverse) >= float(driving.get("min_forward_fraction", 0.85))
+
+
+func _sc_evade(me: Tank, dt: float, enemies_alive: int) -> Dictionary:
+	var rules: Dictionary = env.config.scenario.evade
+	for contact in env.agents[0].perception.contacts.values():
+		if contact.enemy and contact.visible_now and not contact.knocked_out:
+			_sc_enemy_seen = true
+	var displacement := Vector2(me.global_position.x - _sc_spawn.x, me.global_position.z - _sc_spawn.z).length()
+	if int(_sc_taken.hits) > int(env.config.scenario.get("max_hits", 4)):
+		_add(me.name, float(w.get("timeout_penalty", -3)), "too_many_hits")
+		return _done("evade_too_many_hits", false, -1)
+	if displacement > float(rules.get("arena_radius_m", 240)):
+		_add(me.name, float(w.get("timeout_penalty", -3)), "outside")
+		return _done("evade_outside_area", false, -1)
+	if enemies_alive == 0:
+		return _done("no_threat_to_evade", false, -1)
+	var shield := 0.0
+	var fully_blocked := true
+	for enemy in env.tanks:
+		if enemy.team == me.team or not enemy.damage.is_combat_effective():
+			continue
+		var seen := SituationObs.exposure_from(env.map, LineOfSight.eye_position(enemy), me, [me.get_rid(), enemy.get_rid()])
+		fully_blocked = fully_blocked and not seen.hull and not seen.turret
+		shield += (0.0 if seen.hull else 0.5) + (0.0 if seen.turret else 0.5)
+	shield /= enemies_alive
+	var scale := float(w.get("shaping_scale", 1))
+	var cue_ok: bool = _sc_fire_cue or not bool(rules.get("require_fire_cue", true))
+	var remaining := INF
+	for route in _sc_cover_routes:
+		remaining = minf(remaining, route.remaining(me.global_position))
+	if cue_ok and _sc_cover_best < INF and remaining < _sc_cover_best:
+		_add(me.name, (_sc_cover_best - remaining) / maxf(1, _sc_cover_initial)
+			* float(rules.get("cover_progress_budget", 2)) * scale, "cover_progress")
+	_sc_cover_best = minf(_sc_cover_best, remaining)
+	if cue_ok and shield > _sc_best_shield:
+		_add(me.name, (shield - _sc_best_shield) * float(rules.get("concealment_budget", 2)) * scale, "concealment")
+	_sc_best_shield = maxf(_sc_best_shield, shield)
+	if cue_ok and not fully_blocked:
+		_add(me.name, float(rules.get("exposed_per_s", -0.04)) * dt, "exposure")
+	var sheltered := fully_blocked and _sc_near_cover(me) and displacement >= float(rules.get("min_displacement_m", 35))
+	var eligible: bool = (_sc_fire_cue and _sc_enemy_seen) or not bool(rules.get("require_fire_cue", true))
+	_sc_cover_hold = _sc_cover_hold + dt if sheltered and eligible else 0.0
+	_sc_longest_cover = maxf(_sc_longest_cover, _sc_cover_hold)
+	if _sc_cover_hold + 0.000001 >= float(rules.get("hold_s", 4)):
+		_sc_objective = true
+		_add(me.name, float(w.get("objective", 8)), "objective")
+		return _sc_finish("covered_after_fire", learner_team())
+	if env.tick >= env.time_limit_ticks:
+		_add(me.name, float(w.get("timeout_penalty", -3)), "timeout")
+		return _done("evade_time_limit", false, -1)
+	return {"done": false}
+
+
+func _sc_near_cover(me: Tank) -> bool:
+	var pos := Vector2(me.global_position.x, me.global_position.z)
+	for obstacle in env.config.scenario.get("obstacles", []):
+		if obstacle.get("type", "stone") != "stone":
+			continue
+		var p: Array = obstacle.p
+		var size: Array = obstacle.size
+		var local := (pos - Vector2(p[0], p[1])).rotated(float(obstacle.get("yaw", 0)))
+		var offset := (local.abs() - Vector2(size[0], size[2]) * 0.5).max(Vector2.ZERO)
+		if offset.length() <= 18 and float(size[1]) >= me.spec.total_height():
+			return true
+	return false
 
 
 ## 목표를 이뤘어도 scenario.max_hits 보다 많이 맞았으면 실패(맞지 않는 법이 그 단계의 목표다)
@@ -473,6 +596,14 @@ func scenario_summary() -> Dictionary:
 		"hits_taken": _sc_taken.hits, "pens_taken": _sc_taken.pens, "path_m": snappedf(_sc_path, 0.01),
 		"status": me.damage.status_label(), "shaping_scale": float(w.get("shaping_scale", 1.0)),
 		"best_objective_m": snappedf(_sc_best, 0.01) if _sc_best < INF else -1.0,
+		"forward_m": snappedf(_sc_forward, 0.01), "reverse_m": snappedf(_sc_reverse, 0.01),
+		"route_remaining_m": snappedf(_sc_route_best, 0.01) if _sc_route_best < INF else -1.0,
+		"driving_version": sc.get("driving", {}).get("version", 1),
+		"evade_version": sc.get("evade", {}).get("version", 0), "fire_cue_received": _sc_fire_cue,
+		"enemy_seen": _sc_enemy_seen,
+		"enemy_shots": _sc_enemy_shots, "cover_hold_s": snappedf(_sc_cover_hold, 0.01),
+		"longest_cover_s": snappedf(_sc_longest_cover, 0.01),
+		"projectiles": env.projectiles.summary() if env.projectiles != null else {},
 		"reward_components": _battle_parts.get(str(me.name), {}).duplicate(),
 		"relocated": env.config.get("scenario_relocated", [])}
 

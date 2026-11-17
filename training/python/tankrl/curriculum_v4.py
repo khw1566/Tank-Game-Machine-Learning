@@ -17,13 +17,16 @@ from __future__ import annotations
 
 import collections
 import json
+import math
 import random
 
 from . import curriculum as _v1, scenarios
 from .pace import GAME_PACE
 
 VERSION = 4
-OBS = "situation"            # Godot --obs=situation (SituationObs) 이 필요하다
+ASSESSMENT_VERSION = 4   # 4: 노출과 피격 앞에 엄폐 찾기(m3a) 추가
+OBJECTIVE_VERSION = 6
+OBS = "situation_v3"        # Original situation features + explicit fire / tracer cues.
 
 # hit_taken: 맞을 때마다(관통 여부와 무관). 노출 → 피격 관계를 티거처럼 관통당하지 않는 전차도 분명히 겪게 한다
 BASE_REWARD = {"time_per_s": -0.01, "progress": 0.03, "objective": 8.0, "survive": 6.0, "win": 8.0,
@@ -82,14 +85,21 @@ STAGES = [
         D(V("gates", "move_obstacles", "gates", "drive", 90), "엇갈린 통로 두 개"),
     ], 600, lesson="장애물 → 경로: 막혀 있으면 돌아가고, 열려 있으면 곧장 간다",
         learn="장애물을 보고 직진과 우회를 구분하기.", goal="90~140m 앞 목표 도착·정지(90초 제한)."),
+    stage("m3a_find_cover", "기동", "엄폐 찾기", [
+        D(V("side", "find_cover", "side", "combat", 70), "적은 쏘지 않음 · 25~45m 옆 벽 뒤로"),
+        D(V("back", "find_cover", "back", "combat", 70), "적은 쏘지 않음 · 뒤쪽 벽 뒤로(선회 후 전진)"),
+        D(V("choice", "find_cover", "choice", "combat", 70), "가까운 낮은 바위(포탑이 보임) 대신 조금 먼 진짜 엄폐"),
+    ], 1600, lesson="엄폐물 → 시선 차단: 적과 나 사이에 높은 장애물을 두면 보이지 않는다",
+        learn="적이 보이는 개활지에서 출발해, 적 시선을 끊는 가까운 높은 엄폐물 뒤로 가서 머문다. 아직 사격 없음.",
+        goal="20m 이상 이동해 적에게 차체·포탑이 모두 가려진 상태를 4초 유지(70초 제한)."),
     stage("m3_under_fire", "기동", "노출과 피격", [
-        D(V("screened", "move_under_fire", "screened", "combat", 120), "벽이 경로를 가려 줌: 그대로 가면 안 맞는다"),
-        D(V("open_cover", "move_under_fire", "open_cover", "combat", 120), "개활지 + 바위: 바위 뒤를 거치면 덜 맞는다"),
-        D(V("crossing", "crossing", "steady", "combat", 90), "엄폐 없음: 멈추지 않고 움직이면 덜 맞는다"),
-        D(V("ambush", "ambush", "reverse", "combat", 40), "기습: 뒤쪽 벽 뒤로 빠져 시선을 끊으면 산다(40초 생존)"),
-    ], 2400, lesson="노출 → 피격: 적 시선 안에 서 있으면 맞고, 시선을 끊거나 움직이면 덜 맞는다",
-        learn="적이 쏘는 가운데 이동·생존. 맞으면(관통되지 않아도) 감점.",
-        goal="격파되지 않고 목표 도착 또는 40초 생존. 3발(횡단 4발) 넘게 맞으면 목표를 이뤄도 실패."),
+        D(V("screened", "evade_to_cover", "screened", "combat", 100), "노출 출발 → 55~95m 옆의 넓은 벽 뒤로 이동"),
+        D(V("open_cover", "evade_to_cover", "open_cover", "combat", 100), "적 2대 + 낮은 가짜 엄폐: 포탑까지 가려지는 먼 엄폐 선택"),
+        D(V("crossing", "evade_to_cover", "crossing", "combat", 100), "사선을 가로질러 65~95m 옆 엄폐로 이동"),
+        D(V("ambush", "evade_to_cover", "ambush", "combat", 100), "기습 인지 → 65~105m 뒤·옆 엄폐를 찾아 후퇴"),
+    ], 2400, lesson="적 사격 인지 → 회피 이동 → 실제 엄폐로 사선 차단",
+        learn="포성·보이는 발사·비행 탄·근접 통과를 구분하고 옆이나 뒤의 먼 엄폐물을 찾아간다.",
+        goal="사격을 인지하고 출발점에서 35m 이상 이동한 뒤, 적 전원의 차체·포탑 시야를 4초 연속 차단. 4발 이하 피격."),
     # ---------------------------------------------------------------- 2부 사격
     stage("g1_aim", "사격", "조준 사격", [
         D(V("static", "gunnery", "static", "gunnery", 45, "static"), "150~700m 정지 표적"),
@@ -140,6 +150,7 @@ FIRST_TANK = LAST_COMMON + 1
 
 class CurriculumV4:
     version = VERSION
+    assessment_version = ASSESSMENT_VERSION
     obs = OBS
     stages = STAGES
     stage_ids = STAGE_IDS
@@ -162,6 +173,8 @@ class CurriculumV4:
         self.results = {s["id"]: {self.key(v, t): collections.deque(maxlen=200) for v in s["variants"] for t in self.tanks}
                         for s in STAGES}
         self.terrain_fixed = ""      # 기존 인터페이스 호환(사용 안 함)
+        self.mastered = {s["id"]: set() for s in STAGES}
+        self.previous_assessments = []
 
     @staticmethod
     def key(variant: str, tank: str) -> str:
@@ -175,10 +188,28 @@ class CurriculumV4:
     def stage(self) -> dict:
         return STAGES[self.stage_idx]
 
+    @property
+    def training_complete(self) -> bool:
+        return self.stage_idx >= self.last_stage and not self.pending_pairs(self.stage)
+
     def pick_stage(self) -> dict:
-        if self.stage_idx > 0 and self.rng.random() < self.review_prob:
-            return STAGES[self.rng.randrange(self.stage_idx)]
+        reviews = [s for s in STAGES[:self.stage_idx] if self.pending_pairs(s)]
+        if reviews and self.rng.random() < self.review_prob:
+            return self.rng.choice(reviews)
         return self.stage
+
+    def pair_minimum(self, st: dict) -> int:
+        p = st["promote"]
+        return max(p["window"], math.ceil(p["min_episodes"] / (len(st["variants"]) * len(self.tanks))))
+
+    def pending_pairs(self, st: dict) -> list[tuple[str, str]]:
+        """A pass belongs to a variant AND a tank, and stays passed until assessment reset."""
+        sid = st["id"]
+        p = st["promote"]
+        for key, values in self.results[sid].items():
+            if len(values) >= self.pair_minimum(st) and sum(list(values)[-p["window"]:]) / p["window"] >= p["threshold"]:
+                self.mastered[sid].add(key)
+        return [(v, t) for v in st["variants"] for t in self.tanks if self.key(v, t) not in self.mastered[sid]]
 
     def shaping_scale(self, stage_id: str) -> float:
         """보조 보상 배율(복습 단계는 0 = 결과 보상만).
@@ -188,6 +219,9 @@ class CurriculumV4:
             return 0.0
         p = self.stage["promote"]
         skill = 1.0 - min(1.0, self.success_rate(stage_id, p["window"]) / p["threshold"])
+        if stage_id in ("m1_drive", "m2_route", "m3_under_fire"):
+            # A stalled route must retain a learning signal even after millions of steps.
+            return round(max(0.2, skill), 4) if self.pending_pairs(self.stage) else 0.0
         # 공통 모델은 전차 수만큼 판이 나뉘므로 상한도 그만큼 늘린다
         cap = max(0.0, 1.0 - self.episodes_in_stage / max(1, 4 * len(self.tanks) * self.stage["shaping_decay_episodes"]))
         return round(min(skill, cap), 4)
@@ -199,13 +233,20 @@ class CurriculumV4:
 
     def build_episode(self, learner: str, rng: random.Random, seed: int) -> tuple[dict, list[dict], dict]:
         st = self.pick_stage()
-        if learner == SHARED or learner not in scenarios.TEAM_OF:
-            learner = rng.choice(self.tanks)
-        variant = rng.choice(st["variants"])
+        pending = self.pending_pairs(st)
+        if learner in scenarios.TEAM_OF:
+            pending = [(v, t) for v, t in pending if t == learner]
+        if not pending:
+            raise RuntimeError(f"{st['id']}: 모든 세부 항목의 평가가 끝났습니다. 다음 단계로 진행하세요.")
+        variant, learner = rng.choice(pending)
         spec = st["variant_specs"][variant]
         sc = scenarios.build(spec["builder"], spec["variant"], learner, seed)
         sc["variant"] = variant
         sc["source"] = {"builder": spec["builder"], "variant": spec["variant"]}
+        sc["observation_version"] = 3
+        if st["id"] in ("m1_drive", "m2_route"):
+            sc["driving"] = {"version": 2, "min_forward_fraction": 0.85, "reverse_allowance_m": 2.0,
+                             "reverse_per_m": -0.08, "route_progress": True}
         team = scenarios.TEAM_OF[learner]
         lu = [{"type": learner, "team": team, "ctrl": "external", "role": "learner"}]
         for _ in sc["enemies"]:
@@ -213,10 +254,12 @@ class CurriculumV4:
             lu.append({"type": t, "team": 1 - team, "ctrl": spec["ctrl"], "role": spec["ctrl"]})
         reward = json.loads(json.dumps(st["reward"]))
         reward["shaping_scale"] = self.shaping_scale(st["id"])
+        if st["id"] == "m3_under_fire":
+            reward["combat"].update(hit=0.0, penetration=0.0, knockout=0.0, miss=-0.1)
         extra = {"scenario": sc, "reward": reward, "kind": spec["kind"],
                  "time_limit_s": sc.get("survive_s", spec["time_limit_s"]), "stageset": STAGESET,
                  "learning_objective": {"id": f"{st['id']}:{variant}", "label": f"{st['label']} · {variant}",
-                                        "version": VERSION, "part": st["part"]},
+                                        "version": OBJECTIVE_VERSION, "part": st["part"]},
                  "curriculum_version": VERSION, "learner": learner, "model": self.tank}
         return st, lu, extra
 
@@ -236,19 +279,19 @@ class CurriculumV4:
         if stage_id not in self.results:
             return None
         k = self.key(variant, learner or self.tanks[0])
-        if k in self.results[stage_id]:
+        if k in self.results[stage_id] and k not in self.mastered[stage_id]:
             self.results[stage_id][k].append(int(success))
         if stage_id != self.stage["id"]:
             return None
         self.episodes_in_stage += 1
         p = self.stage["promote"]
+        pending = self.pending_pairs(self.stage)
         if self.stage_idx >= self.last_stage:
             if self.tank == SHARED and not self.common_complete:
                 return self._complete_common(global_step, p)
             return None
-        window = p["window"]
-        enough = self.episodes_in_stage >= p["min_episodes"] and all(len(d) >= window for d in self.results[stage_id].values())
-        rates = self.variant_rates(stage_id, window)
+        enough = not pending
+        rates = self.variant_rates(stage_id, p["window"])
         rate = min(rates.values())
         forced = p.get("max_episodes") is not None and self.episodes_in_stage >= p["max_episodes"]
         if (enough and rate >= p["threshold"]) or forced:
@@ -258,9 +301,8 @@ class CurriculumV4:
     def _complete_common(self, global_step: int, p: dict) -> dict | None:
         """공통 단계 끝(t3): 기준을 넘거나 상한에 닿으면 전차별 분기 준비 완료."""
         sid = self.stage["id"]
-        window = p["window"]
-        enough = self.episodes_in_stage >= p["min_episodes"] and all(len(d) >= window for d in self.results[sid].values())
-        rates = self.variant_rates(sid, window)
+        enough = not self.pending_pairs(self.stage)
+        rates = self.variant_rates(sid, p["window"])
         passed = enough and min(rates.values()) >= p["threshold"]
         if not passed and (p.get("max_episodes") is None or self.episodes_in_stage < p["max_episodes"]):
             return None
@@ -286,6 +328,8 @@ class CurriculumV4:
             for k, d in vs.items():
                 if k in c.results[sid]:
                     c.results[sid][k].extend(d)
+            c.mastered[sid] = {k for k in self.mastered[sid] if k.endswith("@" + tank)}
+        c.previous_assessments = list(self.previous_assessments)
         return c
 
     def _advance(self, idx: int, global_step: int, reason: str, rates: dict) -> dict:
@@ -312,6 +356,9 @@ class CurriculumV4:
                 "branched_from": self.branched_from, "stage_idx": self.stage_idx, "stage": self.stage["id"],
                 "episodes_in_stage": self.episodes_in_stage, "stage_start_step": self.stage_start_step,
                 "history": self.history,
+                "assessment_version": ASSESSMENT_VERSION,
+                "mastered": {sid: sorted(keys) for sid, keys in self.mastered.items()},
+                "previous_assessments": self.previous_assessments,
                 "recent_success": {k: self.success_rate(k, 40) for k in STAGE_IDS if any(self.results[k].values())},
                 "variant_success": {k: self.variant_rates(k, 40) for k in STAGE_IDS if any(self.results[k].values())},
                 "results": {k: {v: list(d) for v, d in vs.items()} for k, vs in self.results.items()},
@@ -336,11 +383,32 @@ class CurriculumV4:
         c.history = st.get("history", [])
         c.common_complete = bool(st.get("common_complete", False))
         c.branched_from = st.get("branched_from", "")
+        c.previous_assessments = st.get("previous_assessments", [])
         for sid, vs in st.get("results", {}).items():
             for v, values in vs.items():
                 k = v if "@" in v else c.key(v, c.tanks[0])   # 초기 v4 저장본(변형만 기록)
                 if sid in c.results and k in c.results[sid]:
                     c.results[sid][k].extend(values)
+        for sid, keys in st.get("mastered", {}).items():
+            if sid in c.mastered:
+                c.mastered[sid].update(k for k in keys if k in c.results[sid])
+        old_assessment = st.get("assessment_version", 1)
+        if old_assessment < ASSESSMENT_VERSION:
+            c.previous_assessments.append({"assessment_version": st.get("assessment_version", 1),
+                "stage": st.get("stage"), "episodes_in_stage": c.episodes_in_stage,
+                "results": st.get("results", {}), "reason": "under-fire cues and active cover assessment"})
+            first_changed = 0 if old_assessment < 2 else STAGE_IDS.index("m3a_find_cover")
+            for sid in STAGE_IDS[first_changed:]:
+                for values in c.results[sid].values():
+                    values.clear()
+                c.mastered[sid].clear()
+            if c.stage_idx >= first_changed:
+                c.stage_idx = first_changed
+                c.episodes_in_stage = 0
+            c.common_complete = False
+            c.history.append({"from": st.get("stage"), "to": c.stage["id"], "reason": "assessment_upgrade",
+                              "assessment_version": ASSESSMENT_VERSION, "tank": tank,
+                              "episodes": 0, "success_rate": 0.0, "curriculum_version": VERSION})
         return c
 
 

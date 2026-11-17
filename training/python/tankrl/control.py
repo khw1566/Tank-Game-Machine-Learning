@@ -213,6 +213,10 @@ class TrainController:
                                 "success_rate": round(cur.success_rate(cur.stage["id"], p.get("window", 100)), 4),
                                 "window": p.get("window"), "threshold": p.get("threshold"),
                                 "min_episodes": p.get("min_episodes"), "max_episodes": p.get("max_episodes")}
+            if hasattr(cur, "pending_pairs"):
+                st["curriculum"]["pending_pairs"] = [cur.key(v, t) for v, t in cur.pending_pairs(cur.stage)]
+                st["curriculum"]["mastered_pairs"] = sorted(cur.mastered[cur.stage["id"]])
+                st["curriculum"]["assessment_version"] = cur.assessment_version
             if cur.stage["id"] == "drive_terrain":
                 from .terrain import COURSES, WINDOW
                 index = next((i for i, c in enumerate(COURSES) if c["id"] == cur.terrain_fixed), cur.terrain_idx)

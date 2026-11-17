@@ -26,14 +26,15 @@ const TEAM_BASE_SIGN := [1.0, -1.0]   # 팀0(독일) = +축 쪽, 팀1(연합군)
 
 ## --obs=situation: 커리큘럼 v4 목적 관측(SituationObs)을 뒤에 붙인다. 기존 실행·체크포인트는 그대로 쓴다
 static var situation := false
+static var threat_inputs := false
 
 
 static func obs_size() -> int:
-	return TankPerception.size() + TASK_SIZE + (SituationObs.size() if situation else 0)
+	return TankPerception.size() + TASK_SIZE + (SituationObs.size() if situation else 0) + (ThreatObs.LABELS.size() if threat_inputs else 0)
 
 
 static func obs_labels() -> Array:
-	return TankPerception.labels() + TASK_LABELS + (SituationObs.labels() if situation else [])
+	return TankPerception.labels() + TASK_LABELS + (SituationObs.labels() if situation else []) + (ThreatObs.LABELS if threat_inputs else [])
 
 
 var port := 11008
@@ -52,6 +53,7 @@ var ctrls: Array = []          # 전차별 "external" | "scripted" | "mover" | "
 var drivers := {}              # 전차 이름 -> TargetDriver
 var ext: Array = []            # 외부 조종 전차 인덱스(순서 = Python 행동 순서)
 var sounds := SoundField.new()
+var projectiles: TrainingProjectileField
 var rewarder: TrainingReward
 var recorder: MatchRecorder
 var waypoint := Vector3.INF
@@ -106,6 +108,9 @@ func _ready() -> void:
 			_log_obs_every = int(a.get_slice("=", 1))
 		elif a == "--obs=situation":
 			situation = true
+		elif a == "--obs=situation_v3":
+			situation = true
+			threat_inputs = true
 	if repro_path != "":
 		_start_reproduce(repro_path)
 		return
@@ -131,6 +136,8 @@ func _ready() -> void:
 		"terrain_course_version": TerrainCourse.VERSION, "spawn_safety_version": 1, "destruction_version": 1,
 		"compact_battle_version": 1, "fast_combat_reward_version": 1,
 		"scenario_version": ScenarioLayout.VERSION, "situation_obs_version": SituationObs.VERSION if situation else 0,
+		"driving_reward_version": 2,
+		"threat_obs_version": ThreatObs.VERSION if threat_inputs else 0, "projectile_version": TrainingProjectileField.VERSION,
 		"pace_version": 1, "perf_version": 1})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 
@@ -263,6 +270,7 @@ func reset_episode(p_config: Dictionary) -> void:
 	_ensure_map(config.get("map", {}))
 	_clear_tanks()
 	sounds = SoundField.new()
+	projectiles = TrainingProjectileField.new(self) if int(config.get("scenario", {}).get("projectile_version", 0)) >= 1 else null
 	tick = 0
 	decisions = 0
 	done = false
@@ -436,7 +444,7 @@ func _spawn_all(specs: Array, rng: RandomNumberGenerator) -> void:
 
 
 const SCENARIO_AI_KEYS := ["aim_noise_mrad", "fire_delay_s", "max_fire_range", "engage_range", "angle_deg",
-	"flank_offset", "reacquire_s"]
+	"flank_offset", "reacquire_s", "suppression_cone_mrad"]
 
 
 ## 커리큘럼 v4: Python 이 정한 위치·방향 그대로(안전하지 않으면 가장 가까운 안전 지점으로 옮기고 기록)
@@ -502,6 +510,8 @@ func _spawn_one(id: String, team: int, p: Vector2, yaw: float, seed_v: int, ctrl
 	add_child(t)
 	t.shot_fired.connect(_on_shot)
 	t.shot_fired.connect(sounds.on_shot)
+	t.shot_launched.connect(_on_launch)
+	t.projectile_field = projectiles
 	tanks.append(t)
 	ctrls.append(ctrl)
 
@@ -527,7 +537,10 @@ func _pick_waypoint(rng: RandomNumberGenerator) -> Vector3:
 
 func _start_recorder() -> void:
 	recorder = MatchRecorder.new()
-	recorder.external_rewards = bool(config.get("reward", {}).get("battle_shaping", false))
+	recorder.external_rewards = bool(config.get("reward", {}).get("battle_shaping", false)) or int(config.get("scenario", {}).get("observation_version", 0)) >= 3
+	recorder.projectile_field = projectiles
+	if threat_inputs:
+		recorder.observation_labels = obs_labels()
 	recorder.auto_end = false
 	recorder.time_limit_s = 0.0
 	recorder.log_root = _record_root()
@@ -650,6 +663,8 @@ static func policy_to_action(r: Array, lock := -1) -> Array:
 
 ## 모든 전차 한 틱(외부 = 직전 결정 유지, 나머지 = 규칙 AI·표적 조종사·정지)
 func _advance(dt: float) -> void:
+	if projectiles != null:
+		projectiles.step(dt)
 	sounds.advance(dt)
 	var log_now := recorder != null and tick % _log_ticks == 0
 	for i in tanks.size():
@@ -711,12 +726,17 @@ func _observation(i: int) -> PackedFloat32Array:
 	if situation:
 		var sc: Dictionary = config.get("scenario", {})
 		var radius := float(sc.get("objective", {}).get("radius", 0.0))
-		o.append_array(SituationObs.compute(map, t, agents[i].perception, waypoint if sc.has("objective") else Vector3.INF, radius))
+		o.append_array(SituationObs.compute(map, t, agents[i].perception, waypoint if sc.has("objective") else Vector3.INF, radius,
+			int(sc.get("observation_version", 1))))
+	if threat_inputs:
+		o.append_array(ThreatObs.compute(agents[i].perception, projectiles))
 	return o
 
 
 ## 임무 방향: 주행 = 웨이포인트, 전투 = 적 출발 지역(공개 정보), 사격 = 표적이 있는 방향(사수에게 지시된 구역)
 func _task_waypoint(t: Tank) -> Vector3:
+	if config.get("scenario", {}).get("goal", "") == "take_cover":
+		return Vector3.INF
 	if waypoint != Vector3.INF:
 		return waypoint
 	var kind := str(config.get("kind", "combat"))
@@ -745,6 +765,13 @@ func _record_path_point() -> void:
 	_paths.append(row)
 
 
+func _on_launch(shooter: Tank, result: Dictionary) -> void:
+	for agent in agents:
+		agent.perception.notice_launch(shooter, result)
+	if rewarder != null:
+		rewarder.on_launch(shooter, result)
+
+
 func _on_shot(shooter: Tank, r: Dictionary) -> void:
 	if rewarder:
 		rewarder.on_shot(shooter, r)
@@ -771,6 +798,11 @@ func final_hash() -> String:
 	var damage_state: Array = map.destruction.damage_state()
 	if not damage_state.is_empty():
 		parts.append("obstacles:" + JSON.stringify(damage_state))
+	if projectiles != null:
+		var flight := []
+		for projectile in projectiles.active:
+			flight.append([TankSpec._v(projectile.pos), TankSpec._v(projectile.velocity), projectile.age, projectile.rng.state])
+		parts.append("flight:" + JSON.stringify(flight))
 	return ("|".join(parts)).md5_text()
 
 
@@ -876,6 +908,9 @@ func _start_reproduce(path: String) -> void:
 	if _repro_out == "":
 		_repro_out = "user://logs"   # F3 리플레이 뷰어가 바로 여는 위치
 	var c: Dictionary = d.config.duplicate(true)
+	if int(c.get("scenario", {}).get("observation_version", 0)) >= 3:
+		situation = true
+		threat_inputs = true
 	c["record"] = true
 	c["save_episode"] = false
 	reset_episode(c)

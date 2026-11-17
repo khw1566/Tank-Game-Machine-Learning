@@ -38,6 +38,7 @@ var hold := false              # true = 팀과 무관하게 제자리 방어(차
 var advance := false           # true = 팀과 무관하게 공격(적 진영으로 접근, engage_range 안에서 정지 사격)
 var aim_noise_mrad := 0.0      # 발마다 새로 뽑는 조준점 오차(표준편차, mrad). 시드 고정 난수
 var fire_delay_s := 0.0        # 표적을 이만큼 계속 본 뒤에야 쏜다(반응 시간)
+var suppression_cone_mrad := 0.0  # Under-fire practice: fire near a visible moving target before perfect alignment.
 var rng := RandomNumberGenerator.new()
 var _aim_off := Vector2.ZERO
 var _last_shots := -1
@@ -99,7 +100,10 @@ func act(me: Tank, p: TankPerception) -> Array:
 		if int(target.track) != _track_id:
 			_track_id = int(target.track)
 			_track_seen_s = 0.0
-		_track_seen_s = _track_seen_s + STEP_S if target.visible_now else 0.0
+		if target.visible_now:
+			_track_seen_s += STEP_S
+		else:
+			_track_seen_s = maxf(0, _track_seen_s - STEP_S) if suppression_cone_mrad > 0 else 0.0
 		if (me.team == 0 and not advance) or hold:
 			drive = _turn_to(me, atan2(-to_t.x, -to_t.z) + deg_to_rad(angle_deg), 0.0)
 			mode = "angle_hold"
@@ -181,6 +185,10 @@ func _aim(me: Tank, p: TankPerception, c: Dictionary, est_r: float) -> Array:
 	var on := absf(ex) < half * 0.5 and absf(ey) < half * 0.5 \
 		and me.aim_error_mrad < me.current_shell().dispersion_mrad * 1.5 and est_r < max_fire_range \
 		and me.reload_timer <= 0.0
+	if suppression_cone_mrad > 0:
+		var cone := suppression_cone_mrad * 0.001
+		on = c.visible_now and absf(ex) < cone and absf(ey) < cone \
+			and me.aim_error_mrad < suppression_cone_mrad and est_r < max_fire_range and me.reload_timer <= 0
 	return [clampf(ex * 25.0, -1.0, 1.0), clampf(ey * 40.0, -1.0, 1.0), 1.0 if on else 0.0,
 		snappedf(Vector2(ex, ey).length() * 1000.0, 0.01)]
 

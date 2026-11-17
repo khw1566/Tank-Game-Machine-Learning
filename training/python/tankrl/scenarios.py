@@ -164,6 +164,81 @@ def crossing(rng, learner, variant):
 
 # ---------------------------------------------------------------- 2부 사격
 
+def evade_to_cover(rng, learner, variant):
+    """Start in the open, observe enemy fire, then find genuinely occluding cover off the initial axis.
+
+    cover_regions are reward/validation metadata only; no destination bearing is sent to the policy.
+    """
+    sc, f = _base("m3_evade_to_cover", variant, "take_cover", rng)
+    side = rng.choice([-1, 1])
+    lateral = side * rng.uniform(45, 75)
+    longitudinal = rng.uniform(35, 55)
+    width = rng.uniform(24, 30)
+    if variant == "ambush":
+        longitudinal = -rng.uniform(45, 65)
+    elif variant == "crossing":
+        lateral = side * rng.uniform(65, 90)
+        longitudinal = rng.uniform(-15, 15)
+    elif variant == "screened":
+        width = rng.uniform(32, 40)
+    depth = 6.0
+    # Enemy is on local +v. The safe area lies 9m beyond the screen on its far side.
+    safe = (lateral, longitudinal - depth * 0.5 - 9)
+    sc["obstacles"].append(_stone(f, lateral, longitudinal, width, 4.5, depth))
+    sc["cover_regions"] = [{"p": f.p(*safe), "radius": 5.0}]
+    if variant in ("open_cover", "crossing"):
+        # A nearby low rock is NOT full cover: the turret remains exposed.
+        sc["obstacles"].append(_stone(f, -side * rng.uniform(15, 25), rng.uniform(12, 25), 10, 0.7, 5))
+    distance = rng.uniform(520, 680) if learner == "tiger1" else rng.uniform(650, 850)
+    enemies = [(rng.uniform(-12, 12), distance)]
+    if variant == "open_cover":
+        enemies.append((rng.uniform(-18, 18), distance + rng.uniform(35, 65)))
+    sc["projectile_version"] = 1
+    sc["practice_rounds"] = True
+    sc["evade"] = {"version": 1, "hold_s": 4.0, "min_displacement_m": 35.0,
+                   "arena_radius_m": 240.0, "require_fire_cue": True,
+                   "cover_progress_budget": 2.0, "concealment_budget": 2.0, "exposed_per_s": -0.04}
+    sc["max_hits"] = 4
+    # The first shot occurs before the distant cover can be reached, leaving flight time to react.
+    sc = _finish(sc, f, (0, 0), enemies, rng,
+                 lambda r: _enemy_ai(r, (2.0, 3.5), (1.0, 1.8)) | {"suppression_cone_mrad": 18.0, "angle_deg": 0.0},
+                 learner_face=(0, distance), jitter_deg=10)
+    for enemy in sc["enemies"]:
+        enemy["yaw"] = yaw_to(enemy["p"], sc["learner"]["p"])
+    return sc
+
+
+def find_cover(rng, learner, variant):
+    """노출과 피격의 전 단계: 적은 보이지만 쏘지 않는다. 적 시선을 끊는 가까운 엄폐로 가서 머문다.
+
+    side: 25~45m 옆 벽 / back: 뒤쪽 벽 / choice: 가까운 낮은 바위(포탑이 보임)와 조금 먼 진짜 엄폐
+    성공 = 적 전원에게 차체·포탑이 4초 연속 가려짐(20m 이상 이동). 정답 엄폐 위치는 정책에 주지 않는다.
+    """
+    sc, f = _base("m3a_find_cover", variant, "take_cover", rng)
+    side = rng.choice([-1, 1])
+    lateral, longitudinal = side * rng.uniform(25, 45), rng.uniform(10, 30)
+    if variant == "back":
+        lateral, longitudinal = side * rng.uniform(0, 20), -rng.uniform(25, 40)
+    elif variant == "choice":
+        lateral, longitudinal = side * rng.uniform(35, 55), rng.uniform(10, 30)
+        sc["obstacles"].append(_stone(f, -side * rng.uniform(12, 20), rng.uniform(8, 18), 10, 0.7, 5))
+    depth = 6.0
+    sc["obstacles"].append(_stone(f, lateral, longitudinal, rng.uniform(26, 34), 4.5, depth))
+    sc["cover_regions"] = [{"p": f.p(lateral, longitudinal - depth * 0.5 - 8), "radius": 6.0}]
+    distance = rng.uniform(450, 650)
+    sc["projectile_version"] = 1
+    sc["practice_rounds"] = True
+    sc["evade"] = {"version": 1, "hold_s": 4.0, "min_displacement_m": 20.0, "arena_radius_m": 200.0,
+                   "require_fire_cue": False, "cover_progress_budget": 3.0, "concealment_budget": 2.0,
+                   "exposed_per_s": -0.04}
+    sc["max_hits"] = 4
+    sc = _finish(sc, f, (0, 0), [(rng.uniform(-15, 15), distance)], rng,
+                 {"hold": True, "max_fire_range": 0.0, "angle_deg": 0.0}, learner_face=(0, distance), jitter_deg=15)
+    for enemy in sc["enemies"]:
+        enemy["yaw"] = yaw_to(enemy["p"], sc["learner"]["p"])
+    return sc
+
+
 def gunnery(rng, learner, variant):
     """static / moving / hidden: 반격 없는 표적. 명중 2회."""
     sc, f = _base("g1_gunnery" if variant != "moving" else "g2_gunnery_moving", variant, "hits", rng)
@@ -197,6 +272,7 @@ def close_front(rng, learner, variant):
 
 
 BUILDERS = {"move_basic": move_basic, "move_obstacles": move_obstacles, "move_under_fire": move_under_fire,
+            "evade_to_cover": evade_to_cover, "find_cover": find_cover,
             "ambush": ambush, "crossing": crossing, "gunnery": gunnery, "return_fire": return_fire,
             "close_front": close_front}
 

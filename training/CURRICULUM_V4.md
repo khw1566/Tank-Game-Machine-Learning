@@ -16,8 +16,10 @@ python train.py --godot ../../build/TankGame.exe --curriculum v4 --tank t34_76 -
 python -m tests.check_curriculum_v4 --godot ../../build/TankGame.exe   # 모든 단계·변형 스모크 + 재현 해시
 ```
 
-`--curriculum v4` 는 Godot 을 `--obs=situation` 으로 띄워 관측 뒤에 `SituationObs` 30개를 붙인다
-(기존 v1 정책과 입력 크기가 달라 새 정책으로 시작한다).
+`--curriculum v4`는 Godot을 `--obs=situation_v3`로 띄워 기본 관측과 임무 389개 뒤에
+상황 30개와 사격·비행 탄 단서 18개를 붙인다(총 437개).
+기존 v4의 419개 입력 모델은 기존 가중치·optimizer를 보존해 자동 확장한다.
+노출과 피격의 새 규칙·배치·검증은 [UNDER_FIRE_V1.md](UNDER_FIRE_V1.md)에 설명한다.
 
 ## 구성
 
@@ -55,18 +57,51 @@ python -m tests.check_curriculum_v4 --godot ../../build/TankGame.exe   # 모든 
   피격 피해(`victim_scale` 1.0). 엄폐물 도착·차체 각도에는 직접 보상이 없다.
 - **보조 보상**: 목표까지 새로 줄인 거리 × 0.03 × `shaping_scale`. 현재 단계에서는 실력에 따라 줄인다
   (1 − 가장 약한 변형 성공률/승급 기준). 실력보다 먼저 사라지지 않게 하되 `shaping_decay_episodes`×4 판이 지나면 0 으로 끝낸다.
-  복습 단계에서는 0.
-- **승급**: 변형마다 최근 40판 성공률이 모두 기준 이상(최소 에피소드 충족). 상한(`max_episodes`)에 닿으면 강제 승급하고
-  `reason = max_episodes` 로 남긴다.
+  복습 단계에서는 0. 단, `m1_drive`, `m2_route`, `m3_under_fire`의 미통과 항목은 최소 0.2를 유지하고 판수만으로 없애지 않는다.
+- **승급**: 변형 × 전차마다 최근 40판 성공률 80% 이상. 조합별 최소 판수는
+  `max(40, ceil(단계 최소 판수 / 조합 수))`이며, 통과한 조합은 저장하고 이후 선택에서 제외한다.
+  이미 시작한 병렬 환경의 늦은 결과가 통과를 취소하지 않는다. 모든 조합 통과로만 승급하며 강제 승급하지 않는다.
+  자동 복습도 미통과 조합만 대상으로 한다. 완료 항목의 망각 여부는 별도 평가로 확인해야 한다.
 - **탐색 재개**: 단계 진입 시 `ent_coef` 를 `--entropy-boost`(0.02)로 올리고 `--entropy-steps`(30만) 동안 기본값까지 줄인다.
 - **적 AI**: `hold`(제자리), `aim_noise_mrad`(발마다 다시 뽑는 조준 오차, 시드 고정), `fire_delay_s`(반응 시간),
   `max_fire_range`. 리드를 주지 않으므로 움직이는 표적에 약하다.
 - **관측(SituationObs)**: 기억 중인 적의 어림 위치에서 본 노출(차체 / 포탑만), 최근 본 적 방향, 피격·근접 탄착,
   목표 방향·거리, 8방위 엄폐물(차체 높이 / 포탑 높이). 실제 적 위치 같은 정답 정보는 쓰지 않는다.
 
+### 주행·장애물 관측 수정 (평가 v2, 2026-11-17)
+
+`m1_drive`, `m2_route`는 차체 방향에 대한 실제 이동 변위로 전진·후진 거리를 잰다.
+후진은 m당 −0.08이며, 후진으로 줄인 거리는 진행 보상을 받지 못한다. 도착·정지 조건에 더해,
+후진 2m를 기동 여유로 제외한 전후진 합계에서 전진 비율 85% 이상이어야 성공한다.
+대부분 후진한 도착은 `arrival_requires_forward_drive`로 실패한다. 전투·기습·후퇴 과제는 후진을 허용한다.
+
+진행 보상은 전차 크기와 회전된 장애물 외곽을 반영한 통행 가능 경로의 새 최단 잔여 거리로 계산한다.
+벽 옆으로 우회하며 직선거리가 일시적으로 늘어도 경로를 줄이면 보상을 받는다.
+왕복이나 제자리 회전으로 중복 보상을 얻지 못하며, 계산한 경로는 정책 관측에 넣지 않는다.
+
+상황 관측 v2는 8방위마다 5개 광선을 펴서 120m까지 차체·포탑 높이 장애물을 검사한다.
+기존 60m 단일 광선 사이의 사각지대를 줄이고, 광선 시작점이 물체 안에 있을 때도 감지한다.
+입력 개수와 순서를 유지하여 기존 v4 정책·optimizer를 그대로 불러온다.
+새 설정에는 `scenario.observation_version=2`, `scenario.driving.version=2`가 기록된다.
+버전이 없는 예전 재현 파일은 기존 관측·보상 계산을 사용한다.
+
+평가 v1에서 이전 평가 결과는 `curriculum.json.previous_assessments`에 보관하고, 모델·누적 스텝을 이어받아
+`m1_drive`부터 평가를 다시 시작한다. 기존 성공률은 전진 조건을 검증하지 않았으므로 재사용하지 않는다.
+구버전 게임 실행 파일은 학습 시작 시 거부한다. 회귀 검사:
+
+평가 v3의 사격·엄폐 수정은 v2의 주행 진행과 통과 항목을 유지하고 m3 이후 평가만 갱신한다.
+현재 단계가 m3 이전이면 그 단계부터 계속 학습한다.
+
+```powershell
+godot --headless --path . -s res://training/tests/run_driving_v2_tests.gd
+cd training/python
+.venv/Scripts/python.exe -m unittest tests.test_curriculum_v4
+```
+
 ## 기록
 
 - 에피소드 파일(설정·시드·행동)은 그대로이며 `config.scenario` 에 배치 전체가 들어 있어 재현된다.
 - `result.scenario`: 변형, 목표 달성, 노출 시간(실제 적 시선 기준, 차체/포탑만 구분), 피격·관통 수, 이동 거리,
-  보상 성분, 스폰 이동 기록.
+  보상 성분, 스폰 이동 기록. 주행 v2는 `forward_m`, `reverse_m`, `route_remaining_m`, `driving_version`도 기록한다.
+  `route_remaining_m`은 에피소드에서 달성한 최단 잔여 경로 거리다.
 - 실행 폴더 `scenario_progress.csv`: 위 값을 에피소드마다 한 줄. `curriculum_log.jsonl` 승급 기록에는 변형별 성공률.

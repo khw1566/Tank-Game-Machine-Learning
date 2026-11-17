@@ -45,6 +45,8 @@ const STATUS_DESTROYED := 3    # 파괴(화재·탄약 유폭)
 @export var time_limit_s := 900.0
 @export var write_files := true
 var external_rewards := false  # TrainingReward is the sole score source when enabled.
+var projectile_field: RefCounted = null
+var observation_labels: Array = []
 @export var write_report := true
 @export var log_root := "user://logs"
 ## 전멸·시간초과로 스스로 끝낼지. 학습 환경은 단계별 종료 조건을 직접 판단하므로 끈다.
@@ -216,7 +218,7 @@ func _header() -> Dictionary:
 		"created": Time.get_datetime_string_from_system(), "engine": Engine.get_version_info().string,
 		"physics_hz": Engine.physics_ticks_per_second, "sample_every": sample_every,
 		"frame_fields": FRAME_FIELDS, "action_labels": TankControlInput.ACTION_LABELS,
-		"agent_action_labels": TankAgent.action_labels(), "observation_labels": TankPerception.labels(),
+		"agent_action_labels": TankAgent.action_labels(), "observation_labels": observation_labels if not observation_labels.is_empty() else TankPerception.labels(),
 		"teams": ["Germany", "Allies"], "reward_weights": rewards.weights, "time_limit_s": time_limit_s,
 		"score_source": "training" if external_rewards else "game",
 		"meta": meta, "map": map.to_record() if map else {}, "tanks": tl}
@@ -243,10 +245,13 @@ func _write_frame() -> void:
 		_last_pos[t.name] = p
 		if (tick / sample_every) % path_every == 0:
 			paths[t.name].append(p)
-	_write({"type": "frame", "tick": tick, "t": snappedf(sim_time(), 0.001), "s": s,
+	var frame := {"type": "frame", "tick": tick, "t": snappedf(sim_time(), 0.001), "s": s,
 		"destroyed": map.destruction.destroyed_ids() if map else [],
 		"score": [snappedf(team_scores[0], 0.001), snappedf(team_scores[1], 0.001)],
-		"r": tanks.map(func(t): return snappedf(tank_scores[t.name], 0.001))})
+		"r": tanks.map(func(t): return snappedf(tank_scores[t.name], 0.001))}
+	if projectile_field != null:
+		frame["projectiles"] = projectile_field.snapshot()
+	_write(frame)
 
 
 static func status_code(d: TankDamageState) -> int:

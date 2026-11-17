@@ -12,11 +12,13 @@ extends RefCounted
 ##   sit.hit_recent          내가 맞은 지 얼마나 됐나(exp(-초/3))
 ##   sit.incoming_recent     내 근처 탄착 소리(exp(-초/3))
 ##   sit.obj_*               목표 지점(있을 때) 방향·거리·도착 여부
-##   cover_low/high k        차체 기준 8방위 60m 안 장애물까지 가까움(1 - 거리/60). low = 차체 중간 높이,
+##   cover_low/high k        차체 기준 8방위 장애물 가까움. v1 = 60m 단일 광선, v2 = 120m 부채꼴 5개 광선.
+##                           1 - 거리/범위. low = 차체 중간 높이,
 ##                           high = 포탑 높이. low 만 막힘 = 헐다운 엄폐, 둘 다 막힘 = 완전 엄폐
 
-const VERSION := 1
+const VERSION := 2
 const COVER_RANGE := 60.0
+const NAV_RANGE := 120.0
 const SECTORS := 8
 const MAX_ENEMIES := 4.0
 const BASE_LABELS := ["sit.known_enemies", "sit.exposed_hull", "sit.exposed_turret_only", "sit.exposed_any",
@@ -54,7 +56,7 @@ static func exposure_from(map: HillMap, eye: Vector3, t: Tank, exclude: Array) -
 	return {"hull": hull, "turret": turret}
 
 
-static func compute(map: HillMap, t: Tank, p: TankPerception, objective: Vector3, obj_radius: float) -> PackedFloat32Array:
+static func compute(map: HillMap, t: Tank, p: TankPerception, objective: Vector3, obj_radius: float, version := 1) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	var hull_yaw := t.global_rotation.y
 	var known := 0
@@ -107,15 +109,21 @@ static func compute(map: HillMap, t: Tank, p: TankPerception, objective: Vector3
 	var space := map.get_world_3d().direct_space_state
 	var base := t.global_position
 	var g := map.height_at(base.x, base.z)
+	var scan_range := NAV_RANGE if version >= 2 else COVER_RANGE
 	for h in [low_h, high_h]:
 		for k in SECTORS:
 			var a := hull_yaw + TAU * k / SECTORS
 			var from := Vector3(base.x, g + h, base.z)
-			var to := from + Vector3(-sin(a), 0.0, -cos(a)) * COVER_RANGE
-			var q := PhysicsRayQueryParameters3D.create(from, to, 1, [t.get_rid()])
-			var hit_r := space.intersect_ray(q)
-			if hit_r.is_empty():
-				out.append(0.0)
-			else:
-				out.append(snappedf(1.0 - from.distance_to(hit_r.position) / COVER_RANGE, 0.01))
+			var nearest := scan_range
+			# Cover the full sector, rather than leaving 45-degree gaps between pencil rays.
+			var samples := 5 if version >= 2 else 1
+			for sample in samples:
+				var angle := a + (float(sample) / 4.0 - 0.5) * TAU / SECTORS if version >= 2 else a
+				var to := from + Vector3(-sin(angle), 0.0, -cos(angle)) * scan_range
+				var q := PhysicsRayQueryParameters3D.create(from, to, Tank.LAYER_GROUND, [t.get_rid()])
+				q.hit_from_inside = version >= 2
+				var hit_r := space.intersect_ray(q)
+				if not hit_r.is_empty():
+					nearest = minf(nearest, from.distance_to(hit_r.position))
+			out.append(snappedf(1.0 - nearest / scan_range, 0.01))
 	return out
