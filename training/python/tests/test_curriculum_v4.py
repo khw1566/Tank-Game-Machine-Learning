@@ -49,8 +49,13 @@ def test_shaping_decays_and_entropy_restarts(tmp_path):
     c = CurriculumV4("tiger1", start_stage=1, entropy_boost=0.03, entropy_steps=100)
     sid = c.stage["id"]
     assert c.shaping_scale(sid) == 1.0
-    c.episodes_in_stage = c.stage["shaping_decay_episodes"] // 2
-    assert abs(c.shaping_scale(sid) - 0.5) < 1e-3
+    c.episodes_in_stage = c.stage["shaping_decay_episodes"] * 2
+    assert abs(c.shaping_scale(sid) - 0.5) < 1e-3          # hard cap after 4x decay episodes
+    c.episodes_in_stage = 0
+    for v in c.stage["variants"]:
+        for _ in range(40):
+            c.results[sid][v].append(1)
+    assert c.shaping_scale(sid) == 0.0                      # competence removes shaping
     assert c.shaping_scale(curriculum_v4.STAGE_IDS[0]) == 0.0  # review = outcome only
     assert abs(c.entropy_coef(0.005, 0) - 0.03) < 1e-9
     assert abs(c.entropy_coef(0.005, 100) - 0.005) < 1e-9

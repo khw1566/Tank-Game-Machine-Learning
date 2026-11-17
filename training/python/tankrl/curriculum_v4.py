@@ -87,10 +87,15 @@ class CurriculumV4:
         return self.stage
 
     def shaping_scale(self, stage_id: str) -> float:
-        """보조 보상 배율: 현재 단계는 진입 후 에피소드 수에 따라 1 → 0, 복습 단계는 0(결과 보상만)."""
+        """보조 보상 배율(복습 단계는 0 = 결과 보상만).
+        현재 단계는 실력에 따라 줄인다: 1 - (가장 약한 변형의 성공률 / 승급 기준). 실력이 붙기 전에 보조 보상이
+        먼저 사라지지 않게 하고, 그래도 shaping_decay_episodes × 4 판이 지나면 상한을 0 까지 내려 끝낸다."""
         if stage_id != self.stage["id"]:
             return 0.0
-        return round(max(0.0, 1.0 - self.episodes_in_stage / max(1, self.stage["shaping_decay_episodes"])), 4)
+        p = self.stage["promote"]
+        skill = 1.0 - min(1.0, self.success_rate(stage_id, p["window"]) / p["threshold"])
+        cap = max(0.0, 1.0 - self.episodes_in_stage / max(1, 4 * self.stage["shaping_decay_episodes"]))
+        return round(min(skill, cap), 4)
 
     def entropy_coef(self, base: float, step: int) -> float:
         """단계 진입 직후 탐색 계수를 올렸다가 entropy_steps 동안 선형으로 기본값까지 줄인다."""
