@@ -33,11 +33,15 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from tankrl.curriculum import STAGE_IDS, STAGES  # noqa: E402
 from tankrl.runtime import select_device  # noqa: E402
+from tankrl.terrain import COURSES
+from tankrl.storage import default_runs_dir
+from tankrl.objectives import ObjectiveIndex
+from tankrl.control import write_json_atomic
 
 TANKS = ["tiger1", "sherman75", "t34_76"]
 # 브라우저로 보내는 에피소드 열(짧게): progress.csv 의 열 이름
 EP_COLS = ["wall_time", "global_step", "env", "tank", "stage_idx", "current_stage", "success", "return",
-           "decisions", "hits", "pens", "kills", "shots", "spawn_distance_m", "rec"]
+           "decisions", "hits", "pens", "kills", "shots", "spawn_distance_m", "rec", "objective"]
 RECENT_COLS = ["wall_time", "global_step", "env", "uid", "tank", "stage", "success", "reason", "winner", "return",
                "decisions", "duration_s", "spawn_distance_m", "hits", "pens", "kills", "shots", "learner_policy",
                "opponents", "episode_file", "replay_dir"]
@@ -112,12 +116,34 @@ class CsvTail:
         return len(self.rows) - n0
 
 
+class CsvSegments:
+    """Keep every PPO session; resuming must never truncate an older progress.csv."""
+    def __init__(self, directories):
+        self.directories = directories
+        self.tails = {}
+        self.rows = []
+
+    def update(self):
+        for directory in self.directories:
+            for path in directory.glob('**/progress.csv'):
+                self.tails.setdefault(path, CsvTail(path)).update()
+        self.rows = sorted([row for tail in self.tails.values() for row in tail.rows],
+                           key=lambda row: float(row.get('time/total_timesteps') or 0))
+
+
 class RunWatch:
     def __init__(self, run_dir: Path):
         self.run_dir = run_dir
         self.progress = CsvTail(run_dir / "progress.csv")
-        self.sb3 = {t: CsvTail(run_dir / "sb3" / t / "progress.csv") for t in TANKS}
+        self.terrain = CsvTail(run_dir / "terrain_progress.csv")
+        sources = read_json(run_dir / 'history_sources.json').get('sources', [])
+        self.imports = [run_dir / source['path'] for source in sources]
+        self.imported_progress = [CsvTail(directory / 'progress.csv') for directory in self.imports]
+        self.imported_terrain = [CsvTail(directory / 'terrain_progress.csv') for directory in self.imports]
+        self.sb3 = {t: CsvSegments([run_dir / 'sb3' / t] + [directory / 'sb3' / t for directory in self.imports]) for t in TANKS}
         self.lock = threading.Lock()
+        self.first_read = True
+        self.objectives = ObjectiveIndex()
 
     def ep_compact(self, r: dict) -> list:
         out = []
@@ -128,23 +154,38 @@ class RunWatch:
                 out.append(STAGE_IDS.index(r[c]) if r.get(c) in STAGE_IDS else -1)
             elif c == "rec":
                 out.append(1 if r.get("replay_dir") else 0)
+            elif c == 'objective':
+                out.append(r.get(c, ''))
             else:
                 out.append(num(r.get(c, "")))
         return out
 
     def state(self, ep_since: int, sb3_since: dict) -> dict:
         with self.lock:
+            if self.first_read:
+                ep_since, sb3_since = 0, {}
+                self.first_read = False
             self.progress.update()
+            self.terrain.update()
+            for tail in self.imported_progress + self.imported_terrain:
+                tail.update()
             for t in self.sb3.values():
                 t.update()
-            rows = self.progress.rows
+            by_uid = {}
+            terrain = {(r['uid'], r.get('global_step')): r for tail in self.imported_terrain + [self.terrain] for r in tail.rows}
+            for tail in self.imported_progress + [self.progress]:
+                for row in tail.rows:
+                    row = self.objectives.annotate(row, tail.path.parent, terrain.get((row.get('uid'), row.get('global_step'))))
+                    by_uid[(row.get('uid') or str(row), row.get('final_hash', ''))] = row
+            rows = sorted(by_uid.values(), key=lambda r: float(r.get('wall_time') or 0))
             ep_since = min(max(0, ep_since), len(rows))
             out = {"run": self.run_dir.name, "ep_cols": EP_COLS, "ep_total": len(rows),
                    "episodes": [self.ep_compact(r) for r in rows[ep_since:]], "ep_since": ep_since,
+                   "objectives": self.objectives.catalog,
                    "recent": [{c: num(r.get(c, "")) if c not in ("uid", "episode_file", "replay_dir",
                                                                  "learner_policy", "opponents", "stage",
                                                                  "reason", "tank") else r.get(c, "")
-                               for c in RECENT_COLS} | {"i": len(rows) - k}
+                               for c in RECENT_COLS} | {"i": len(rows) - k, "objective": r['objective']}
                               for k, r in enumerate(reversed(rows[-60:]), start=1)],
                    "sb3": {}}
             for tank, tail in self.sb3.items():
@@ -155,6 +196,8 @@ class RunWatch:
                                         "rows": [[num(r.get(k, "")) if r.get(k, "") != "" else None
                                                   for k in SB3_KEYS] for r in tail.rows[s:]]}
             out["sb3_keys"] = SB3_KEYS
+        out['history_sources'] = [directory.name for directory in self.imports]
+        out["terrain_recent"] = ([r for tail in self.imported_terrain for r in tail.rows] + self.terrain.rows)[-20:]
         out["status"] = read_json(self.run_dir / "status.json")
         out["curriculum_log"] = read_jsonl(self.run_dir / "curriculum_log.jsonl")[-200:]
         out["tanks"] = self.tank_info()
@@ -166,6 +209,9 @@ class RunWatch:
     def tank_info(self) -> dict:
         res = {}
         pool = self.run_dir.parent / "pool"
+        sessions = read_json(self.run_dir / "run.json").get("sessions", [])
+        if sessions and sessions[-1].get("args", {}).get("pool_dir"):
+            pool = abs_path(sessions[-1]["args"]["pool_dir"])
         for t in TANKS:
             d = self.run_dir / t
             if not d.exists():
@@ -173,6 +219,8 @@ class RunWatch:
             snaps = sorted(d.glob("step_*.zip"))
             latest = d / "latest.zip"
             res[t] = {"curriculum": read_json(d / "curriculum.json"),
+                      "checkpoint": read_json(d / "checkpoint.json"),
+                      "saved_steps": read_json(d / "checkpoint.json").get("num_timesteps", int(snaps[-1].stem.removeprefix("step_")) if snaps else 0),
                       "snapshots": len(snaps), "last_snapshot": snaps[-1].name if snaps else "",
                       "latest_mtime": latest.stat().st_mtime if latest.exists() else None,
                       "pool": read_json(pool / t / "latest.json"),
@@ -238,6 +286,11 @@ class Dashboard:
         self.lock = threading.Lock()
         self.settings_path = self.runs_dir / "dashboard_settings.json"
         self.settings = {"godot": default_godot(), "project": "", "python": "", "device": "auto"} | read_json(self.settings_path)
+        if self.settings.get('godot') and not abs_path(self.settings['godot']).is_file():
+            self.settings.update(godot=default_godot(), project='')
+        if self.settings.get('python') and not abs_path(self.settings['python']).is_file():
+            self.settings['python'] = ''
+        write_json_atomic(self.settings_path, self.settings)
         self._gpu_status = {"gpus": []}
         self._gpu_next_check = 0.0
         self._gpu_lock = threading.Lock()
@@ -290,7 +343,8 @@ class Dashboard:
         return {"stages": [{"id": s["id"], "kind": s["kind"], "promote": s.get("promote"),
                             "time_limit_s": s["time_limit_s"]} for s in STAGES],
                 "tanks": TANKS, "cpu_count": os.cpu_count() or 1, "settings": self.settings,
-                "runs_dir": str(self.runs_dir), "platform": sys.platform, "deps": self.deps_info()}
+                "runs_dir": str(self.runs_dir), "platform": sys.platform, "deps": self.deps_info(),
+                "terrain_courses": COURSES}
 
     # ------------------------------------------------------------ 학습용 Python·패키지
 
@@ -399,6 +453,8 @@ class Dashboard:
             cmd += ["--start-stage", a["start_stage"]]
         if a.get("resume"):
             cmd += ["--resume"]
+        if a.get("terrain_course"):
+            cmd += ["--terrain-course", a["terrain_course"]]
         for key, flag in [("record_every", "--record-every"), ("save_every", "--save-every"),
                           ("review_prob", "--review-prob"), ("speed_cap", "--speed-cap"), ("seed", "--seed"),
                            ("torch_threads", "--torch-threads"), ("n_steps", "--n-steps"),
@@ -480,7 +536,7 @@ class Dashboard:
              "speed_cap": args.get("speed_cap", 0), "seed": args.get("seed"),
              "torch_threads": args.get("torch_threads", 0), "resume": True,
              "device": args.get("device", "auto")}
-        for key in ("n_steps", "batch_size", "n_epochs", "lr", "ent_coef", "sde_freq", "pool_dir"):
+        for key in ("n_steps", "batch_size", "n_epochs", "lr", "ent_coef", "sde_freq", "pool_dir", "terrain_course"):
             if args.get(key) is not None:
                 a[key] = args[key]
         st = read_json(d / "status.json")
@@ -681,10 +737,13 @@ def make_handler(dash: Dashboard):
 
 
 def main():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='replace')
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--host", default="127.0.0.1", help="다른 PC 에서 보려면 0.0.0.0 (같은 네트워크 안에서만)")
-    ap.add_argument("--runs-dir", default="runs")
+    ap.add_argument("--runs-dir", default=str(default_runs_dir()))
     ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args()
     dash = Dashboard(Path(a.runs_dir) if Path(a.runs_dir).is_absolute() else HERE / a.runs_dir)

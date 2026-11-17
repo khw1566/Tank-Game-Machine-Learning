@@ -246,9 +246,14 @@ func _process(delta: float) -> void:
 
 func _apply(delta: float) -> void:
 	t = clampf(t, 0.0, data.duration())
+	var frame := data.frame_index(t)
+	if frame >= 0:
+		map.destruction.set_destroyed(data.frames[frame].get("destroyed", data.header.map.get("destroyed", [])))
 	for i in puppets.size():
 		var ps := data.pose(i, t)
 		puppets[i].apply_replay_pose(ps.xform, ps.turret_yaw, ps.gun_pitch, ps.status >= MatchRecorder.STATUS_KO)
+		puppets[i].track_speed_left = ps.tracks[0]
+		puppets[i].track_speed_right = ps.tracks[1]
 	_update_markers()
 	_update_camera(delta)
 	_update_ui()

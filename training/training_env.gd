@@ -51,6 +51,9 @@ var sounds := SoundField.new()
 var rewarder: TrainingReward
 var recorder: MatchRecorder
 var waypoint := Vector3.INF
+var course_route: Array[Vector3] = []
+var course_index := 0
+var _spawn_error := ""
 var tick := 0
 var decisions := 0
 var active := false
@@ -115,7 +118,8 @@ func _ready() -> void:
 	_send({"type": "hello", "protocol": PROTOCOL, "version": PROTOCOL_VERSION, "env_id": env_id,
 		"obs_size": obs_size(), "act_size": ACT_SIZE, "obs_labels": obs_labels(),
 		"action_labels": TankAgent.action_labels(), "physics_hz": Engine.physics_ticks_per_second,
-		"repeat": REPEAT, "engine": Engine.get_version_info().string})
+		"repeat": REPEAT, "engine": Engine.get_version_info().string,
+		"terrain_course_version": TerrainCourse.VERSION, "spawn_safety_version": 1, "destruction_version": 1})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 
 
@@ -191,7 +195,10 @@ func _serve() -> void:
 		match str(h.get("type", "")):
 			"reset":
 				reset_episode(h.get("config", {}))
-				_send_obs(0)
+				if _spawn_error != "":
+					_send({"type": "error", "message": _spawn_error})
+				else:
+					_send_obs(0)
 			"step":
 				if not active or done:
 					_send({"type": "error", "message": "step without active episode"})
@@ -238,9 +245,12 @@ func _send_obs(nrew: int) -> void:
 func reset_episode(p_config: Dictionary) -> void:
 	_finish_files("reset")
 	config = p_config.duplicate(true)
+	_spawn_error = ""
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(config.get("seed", 1))
 	config["seed"] = rng.seed
+	if config.has("terrain_course") and not config.has("terrain_layout"):
+		config["terrain_layout"] = TerrainCourse.plan(config)
 	_ensure_map(config.get("map", {}))
 	_clear_tanks()
 	sounds = SoundField.new()
@@ -256,10 +266,25 @@ func reset_episode(p_config: Dictionary) -> void:
 	time_limit_ticks = int(float(config.get("time_limit_s", 60.0)) * Engine.physics_ticks_per_second)
 	var specs: Array = config.get("tanks", [{"type": "tiger1", "team": 0, "ctrl": "external"}])
 	_spawn_all(specs, rng)
+	if _spawn_error != "":
+		active = false
+		return
+	config["spawn_safety_version"] = 1
+	config["spawn_positions"] = tanks.map(func(t): return TankSpec._v(t.global_position))
 	waypoint = Vector3.INF
+	course_route.clear()
+	course_index = 0
 	var kind := str(config.get("kind", "combat"))
-	if kind == "drive":
+	if config.has("terrain_layout"):
+		for p in config.terrain_layout.route:
+			course_route.append(Vector3(p[0], map.height_at(p[0], p[1]), p[1]))
+		waypoint = course_route[0]
+	elif kind == "drive":
 		waypoint = _pick_waypoint(rng)
+		if waypoint == Vector3.INF:
+			_spawn_error = "No safe drive waypoint for seed %s" % config.seed
+			active = false
+			return
 	elif kind == "combat":
 		# 목표 = 적 출발 지역(맵 공개 정보). 도착 보너스는 없다
 		waypoint = Vector3.INF
@@ -288,17 +313,32 @@ func _neutral_action() -> Array:
 
 
 func _ensure_map(mc: Dictionary) -> void:
-	var key := JSON.stringify([int(mc.get("seed", 1)), bool(mc.get("features", false)), float(mc.get("amplitude", 15.0))])
+	var key := JSON.stringify([mc, config.get("terrain_layout", {})])
 	if key == _map_key and map != null:
+		map.destruction.reset()
 		return
 	if map:
 		remove_child(map)
 		map.free()
-	map = HillMap.new()
+	if mc.has("profile"):
+		var practice := PracticeMap.new()
+		practice.profile = str(mc.profile)
+		var layout: Dictionary = config.get("terrain_layout", {})
+		practice.course_angle = float(layout.get("angle", 0))
+		var center: Array = layout.get("center", [0, 0])
+		practice.course_center = Vector2(center[0], center[1])
+		map = practice
+	else:
+		map = HillMap.new()
 	map.map_seed = int(mc.get("seed", 1))
 	map.features_enabled = bool(mc.get("features", false))
 	map.height_amplitude = float(mc.get("amplitude", 15.0))
+	map.size_m = float(mc.get("size_m", 1200.0))
+	map.cell_m = float(mc.get("cell_m", 5.0))
+	map.ridge_count = int(mc.get("ridge_count", 3))
 	add_child(map)
+	if config.has("terrain_layout"):
+		TerrainCourse.populate(map, config.terrain_layout)
 	_map_key = key
 
 
@@ -318,6 +358,17 @@ func _clear_tanks() -> void:
 
 ## 팀별로 축 양 끝에 놓는다. 축 방향·중심·간격은 시드로 흔든다.
 func _spawn_all(specs: Array, rng: RandomNumberGenerator) -> void:
+	if config.has("terrain_layout"):
+		var layout: Dictionary = config.terrain_layout
+		var s: Dictionary = specs[0]
+		if not map.is_spawn_safe(Vector2(layout.spawn[0], layout.spawn[1])):
+			_spawn_error = "Unsafe terrain course spawn for seed %s" % config.seed
+			return
+		_spawn_one(str(s.type), int(s.team), Vector2(layout.spawn[0], layout.spawn[1]),
+			float(layout.yaw), rng.randi_range(1, 2147483646), "external", 0)
+		agents.append(TankAgent.new(map, tanks[0], sounds))
+		config["spawn_distance_m"] = layout.length_m
+		return
 	var sp: Dictionary = config.get("spawn", {})
 	var dr: Array = sp.get("distance", [300.0, 300.0])
 	var dist := rng.randf_range(float(dr[0]), float(dr[1]))
@@ -339,6 +390,9 @@ func _spawn_all(specs: Array, rng: RandomNumberGenerator) -> void:
 			var s: Dictionary = per_team[team][j]
 			var p: Vector2 = bases[team] + side * (j - (n - 1) * 0.5) * spacing
 			p = _clear_spot(p, rng)
+			if p == Vector2.INF:
+				_spawn_error = "No safe spawn with a clear exit for seed %s" % config.seed
+				return
 			var face: Vector2 = bases[1 - team] - p if n > 0 else -axis
 			var yaw := atan2(-face.x, -face.y)
 			if bool(sp.get("random_yaw", false)) and (s.get("ctrl", "") != "external" or bool(sp.get("random_yaw_learner", false))):
@@ -361,16 +415,8 @@ func _spawn_all(specs: Array, rng: RandomNumberGenerator) -> void:
 
 
 func _clear_spot(p: Vector2, rng: RandomNumberGenerator) -> Vector2:
-	var half := map.size_m * 0.5 - 40.0
-	p = Vector2(clampf(p.x, -half, half), clampf(p.y, -half, half))
-	if map.is_clear(p, 7.0):
-		return p
-	for k in 40:
-		var q := p + Vector2(rng.randf_range(-1, 1), rng.randf_range(-1, 1)) * (10.0 + k * 3.0)
-		q = Vector2(clampf(q.x, -half, half), clampf(q.y, -half, half))
-		if map.is_clear(q, 7.0):
-			return q
-	return p
+	var reserved := tanks.map(func(t): return Vector2(t.global_position.x, t.global_position.z))
+	return map.find_safe_spawn(p, rng, reserved)
 
 
 func _spawn_one(id: String, team: int, p: Vector2, yaw: float, seed_v: int, ctrl: String, idx: int) -> void:
@@ -396,15 +442,13 @@ func _pick_waypoint(rng: RandomNumberGenerator) -> Vector3:
 	var dr: Array = wc.get("distance", [80.0, 250.0])
 	var half := map.size_m * 0.5 - 60.0
 	var from := Vector2(learner.global_position.x, learner.global_position.z)
-	var best := from + Vector2(0, -float(dr[0]))
-	for k in 30:
+	for k in 80:
 		var d := rng.randf_range(float(dr[0]), float(dr[1]))
 		var a := rng.randf_range(-PI, PI)
 		var q := from + Vector2(sin(a), cos(a)) * d
-		if absf(q.x) < half and absf(q.y) < half and map.is_clear(q, 10.0):
-			best = q
-			break
-	return Vector3(best.x, map.height_at(best.x, best.y), best.y)
+		if absf(q.x) < half and absf(q.y) < half and map.is_spawn_safe(q, 6.0, 12.0):
+			return Vector3(q.x, map.height_at(q.x, q.y), q.y)
+	return Vector3.INF
 
 
 func _start_recorder() -> void:
@@ -470,6 +514,9 @@ func _evaluate() -> void:
 		_end["uid"] = str(config.get("uid", ""))
 		_end["stage"] = str(config.get("stage", ""))
 		_end["seed"] = int(config.get("seed", 0))
+		_end["destroyed_obstacles"] = map.destruction.destroyed_ids()
+		if config.has("terrain_course"):
+			_end["terrain"] = rewarder.course_summary()
 		_end["spawn_distance_m"] = config.get("spawn_distance_m", 0.0)
 		_end["tanks"] = tanks.map(func(t): return {"name": t.name, "tank": t.spec.id, "team": t.team,
 			"status": t.damage.status_label(), "return": snappedf(rewarder.total(t.name), 0.0001),
@@ -619,6 +666,9 @@ func final_hash() -> String:
 		var p: Vector3 = t.global_position
 		parts.append("%s:%.3f,%.3f,%.3f,%.4f,%.4f,%s,%d,%d" % [t.name, p.x, p.y, p.z, t.turret_yaw, t.gun_pitch,
 			t.damage.status_label(), t.damage.ammo_remaining, t.shots_fired])
+	var damage_state: Array = map.destruction.damage_state()
+	if not damage_state.is_empty():
+		parts.append("obstacles:" + JSON.stringify(damage_state))
 	return ("|".join(parts)).md5_text()
 
 
@@ -686,6 +736,10 @@ func _start_reproduce(path: String) -> void:
 	c["record"] = true
 	c["save_episode"] = false
 	reset_episode(c)
+	if _spawn_error != "":
+		push_error(_spawn_error)
+		get_tree().quit(2)
+		return
 	print("reproduce: %s  stage=%s seed=%d  external=%s  decisions=%d" % [c.get("uid", ""), c.get("stage", ""),
 		int(c.get("seed", 0)), d.get("external", []), _repro_actions.size() / maxi(ext.size() * ACT_SIZE, 1)])
 

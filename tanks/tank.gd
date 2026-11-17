@@ -179,6 +179,9 @@ func _build_body() -> void:
 			elif part.name == "mantlet":
 				c = col.darkened(0.15)
 			parent.add_child(_mesh_from_faces(part.faces, c))
+		var tracks := TankTrackVisual.new()
+		add_child(tracks)
+		tracks.setup(self)
 	_sync_turret()
 
 
@@ -223,6 +226,14 @@ func _sync_turret() -> void:
 	# 포 좌표계(포신)는 포이 기준 X 회전. 포방패는 포탑에 고정.
 	_gun_pivot.rotation = Vector3(gun_pitch, 0, 0)
 	_turret_shape.transform = Transform3D(Basis(Vector3.UP, turret_yaw), spec.turret_origin())
+
+
+func hit_attachment(part_name: String) -> Node3D:
+	var part := shape.get_part(part_name)
+	match part.get("frame", "hull"):
+		"gun": return _gun_pivot
+		"turret": return _turret_pivot
+	return self
 
 
 func _physics_process(delta: float) -> void:
@@ -351,7 +362,7 @@ func _drive(c: TankControlInput, delta: float) -> void:
 		velocity = Vector3.ZERO
 		track_speed_left = 0.0
 		track_speed_right = 0.0
-	_slide(velocity * delta)
+	_slide(velocity * delta, delta)
 	_follow_ground(delta)
 
 
@@ -371,6 +382,10 @@ func _step_blocked(dir: float, dist: float) -> bool:
 		var q := PhysicsRayQueryParameters3D.create(top, Vector3(p.x, base - 3.0, p.z), LAYER_GROUND, [get_rid()])
 		var hit := space.intersect_ray(q)
 		if not hit.is_empty() and hit.position.y - base > spec.obstacle_step_m:
+			var collider: Object = hit.collider
+			var hill = collider.get_meta("hill_map") if collider and collider.has_meta("hill_map") else null
+			if hill != null and hill.destruction.id_for(collider, int(hit.shape)) >= 0:
+				continue  # Let actual contact apply crushing force instead of stopping before impact.
 			return true
 	return false
 
@@ -416,13 +431,24 @@ static func _track_step(s: float, t: float, a_drive: float, a_brake: float, delt
 
 ## 수평 이동 + 장애물(바위·나무·전차)에 미끄러짐. step(delta) 의 delta 를 그대로 쓰므로
 ## 학습 루프에서 프레임과 무관하게 직접 호출해도 같은 결과가 나온다.
-func _slide(motion: Vector3) -> void:
+func _slide(motion: Vector3, delta := 1.0 / 30.0) -> void:
 	if not is_inside_tree() or motion.length_squared() < 1e-10:
 		return
 	for i in 2:
 		var col := move_and_collide(motion)
 		if col == null:
 			return
+		var collider: Object = col.get_collider()
+		var hill = collider.get_meta("hill_map") if collider and collider.has_meta("hill_map") else null
+		if hill != null:
+			var effort := maxf(absf(control.left_track), absf(control.right_track)) * (1.0 - control.brake)
+			var energy := maxf(0.5 * spec.mass_t * forward_speed() * forward_speed(), spec.mass_t * effort * 2.0 * delta)
+			var result: Dictionary = hill.destruction.damage(collider, col.get_collider_shape_index(), energy, "tank:" + str(name))
+			if result.get("destroyed", false):
+				motion = col.get_remainder()
+				track_speed_left *= 0.7
+				track_speed_right *= 0.7
+				continue
 		var n := col.get_normal()
 		n.y = 0.0
 		if n.length_squared() < 1e-6:
@@ -653,6 +679,12 @@ func fire() -> Dictionary:
 	else:
 		result["blocked_by"] = hit.blocked_by
 		result["hit_pos"] = TankSpec._v(hit.position)
+		var collider: Object = hit.get("collider")
+		var hill = collider.get_meta("hill_map") if collider and collider.has_meta("hill_map") else null
+		if hill != null:
+			result["obstacle_damage"] = hill.destruction.damage(collider, int(hit.get("shape", -1)),
+				0.5 * shell.shell_mass_kg * shell.muzzle_velocity_ms * shell.muzzle_velocity_ms / 1000.0 + shell.filler_g * 2.0,
+				"shell:" + str(name))
 	# 조준 오차는 발사 반동으로 다시 커진다(연속 사격 시 재조준 필요)
 	aim_error_mrad = maxf(aim_error_mrad, shell.dispersion_mrad * damage.dispersion_factor() * 2.0)
 	shot_fired.emit(self, result)
@@ -681,7 +713,8 @@ func _trace_shell(from: Vector3, vel: Vector3) -> Dictionary:
 		if not gh.is_empty():
 			best_t = p.distance_to(gh.position)
 			var col = gh.collider
-			best = {"blocked_by": (col as Node).name if col is Node else "?", "position": gh.position}
+			best = {"blocked_by": (col as Node).name if col is Node else "?", "position": gh.position,
+				"collider": col, "shape": gh.shape}
 		for t in tanks:
 			var tk := t as Tank
 			if tk == null or tk == self:

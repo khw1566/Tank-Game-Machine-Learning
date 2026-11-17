@@ -4,6 +4,7 @@ extends Node3D
 ## 게임과 리플레이 뷰어가 같이 쓴다. 그래픽 전용이라 기록에는 영향 없음.
 
 const TRACER_S := 1.2
+const MAX_HIT_MARKERS := 128
 
 var show_hits := true:
 	set(v):
@@ -19,6 +20,7 @@ var _tracer_mesh := MeshInstance3D.new()
 var _paths_mesh := MeshInstance3D.new()
 var _tracers: Array = []   # {"from", "to", "age"}
 var _mats := {}
+var _hit_anchors := []
 
 
 func _ready() -> void:
@@ -48,23 +50,43 @@ static func attach_label(t: Tank, color: Color) -> Label3D:
 
 
 func clear_hits() -> void:
+	_hit_anchors.clear()
 	for c in _hits_root.get_children():
 		c.queue_free()
 
 
-func add_hit(pos: Vector3, kind: String) -> void:
+func add_hit(pos: Vector3, kind: String, normal := Vector3.UP, target: Node3D = null) -> void:
 	if kind == "miss":
 		return
+	if _hits_root.get_child_count() >= MAX_HIT_MARKERS:
+		var oldest := _hits_root.get_child(0)
+		_hit_anchors = _hit_anchors.filter(func(h): return h.anchor != oldest)
+		_hits_root.remove_child(oldest)
+		oldest.queue_free()
+	var anchor := Node3D.new()
+	_hits_root.add_child(anchor)
+	anchor.global_position = pos + normal.normalized() * .035
+	anchor.quaternion = Quaternion(Vector3.UP, normal.normalized())
 	var mi := MeshInstance3D.new()
 	var sm := SphereMesh.new()
-	sm.radius = 0.35 if kind == "penetration" else 0.25
+	sm.radius = .12
 	sm.height = sm.radius * 2.0
 	sm.radial_segments = 8
 	sm.rings = 4
 	mi.mesh = sm
 	mi.material_override = _flat(MinimapView.KIND_COLORS.get(kind, Color.WHITE))
-	mi.position = pos
-	_hits_root.add_child(mi)
+	anchor.add_child(mi)
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = .24
+	torus.outer_radius = .29
+	torus.rings = 16
+	torus.ring_segments = 8
+	ring.mesh = torus
+	ring.material_override = mi.material_override
+	anchor.add_child(ring)
+	if target:
+		_hit_anchors.append({"anchor": anchor, "target": target, "local": target.global_transform.affine_inverse() * anchor.global_transform})
 
 
 func add_tracer(from: Vector3, to: Vector3, age := 0.0) -> void:
@@ -91,6 +113,9 @@ func set_paths(paths: Array) -> void:
 
 
 func _process(delta: float) -> void:
+	for hit in _hit_anchors:
+		if is_instance_valid(hit.target) and is_instance_valid(hit.anchor):
+			hit.anchor.global_transform = hit.target.global_transform * hit.local
 	var im: ImmediateMesh = _tracer_mesh.mesh
 	im.clear_surfaces()
 	var keep := []

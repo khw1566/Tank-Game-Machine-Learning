@@ -66,6 +66,69 @@ var follow_only := false
 
 var tank: Tank
 var _mouse_delta := Vector2.ZERO
+var mouse_aim_enabled := true
+var aim_point := Vector3.INF
+var _third_yaw := 0.0
+var _third_pitch := 0.0
+var _scope_target := Vector2.ZERO
+var _scope_valid := false
+
+
+## Human input only. The normal rate limits, damage and elevation limits still apply.
+func human_control(p: Tank, delta: float) -> TankControlInput:
+	if p != tank:
+		update_view(p, 0.0)
+	var c := KeyboardController.read()
+	c.fire = c.fire or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	if follow_only or not mouse_aim_enabled or locks_gun():
+		return apply_locks(c)
+	if mode == THIRD:
+		aim_point = cursor_target(p, get_viewport().get_mouse_position())
+		var solution := p.aim_solution(aim_point)
+		var commands := aim_commands(p, float(solution.turret_yaw), float(solution.gun_pitch), delta)
+		if c.turret_traverse == 0.0:
+			c.turret_traverse = commands.x
+		if c.gun_elevation == 0.0:
+			c.gun_elevation = commands.y
+	elif mode == GUNNER:
+		if c.turret_traverse != 0.0 or c.gun_elevation != 0.0:
+			_scope_valid = false
+			return c
+		if not _scope_valid:
+			_scope_target = Vector2(p.turret_yaw, p.gun_pitch)
+			_scope_valid = true
+		var commands := aim_commands(p, _scope_target.x, _scope_target.y, delta)
+		c.turret_traverse = commands.x
+		c.gun_elevation = commands.y
+	return apply_locks(c)
+
+
+static func aim_commands(p: Tank, yaw: float, pitch: float, delta: float) -> Vector2:
+	var error := wrapf(yaw - p.turret_yaw, -PI, PI)
+	var direction := -signf(error)
+	var yaw_step := maxf(deg_to_rad(p.traverse_rate_deg_s(direction)) * delta, 0.00001)
+	var pitch_step := maxf(deg_to_rad(p.damage.elevation_rate_deg_s()) * delta, 0.00001)
+	return Vector2(clampf(-error / yaw_step, -1, 1), clampf((pitch - p.gun_pitch) / pitch_step, -1, 1))
+
+
+func cursor_target(p: Tank, pixel: Vector2) -> Vector3:
+	var origin := project_ray_origin(pixel)
+	var direction := project_ray_normal(pixel)
+	var distance := 2500.0
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + direction * distance, Tank.LAYER_GROUND, [p.get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		distance = origin.distance_to(hit.position)
+	# Exact armor geometry also exposes the low tracks, which have no tank movement collider.
+	for other in get_tree().get_nodes_in_group(Tank.GROUP):
+		if other == p or not other.is_visible_in_tree():
+			continue
+		var inv: Transform3D = other.global_transform.affine_inverse()
+		var result: Dictionary = HitGeometry.trace(other.spec, other.turret_yaw, inv * origin,
+			(inv.basis * direction).normalized(), other.gun_pitch)
+		if result.hit and float(result.t) < distance:
+			distance = float(result.t)
+	return origin + direction * distance
 
 
 func _init() -> void:
@@ -93,8 +156,12 @@ func toggle_commander() -> void:
 
 
 func set_mode(m: int) -> void:
+	if tank and m == THIRD:
+		_third_yaw = tank.global_rotation.y + tank.turret_yaw
+		_third_pitch = 0.0
 	view.set_mode(m, tank)
 	_mouse_delta = Vector2.ZERO
+	_scope_valid = false
 
 
 ## 휠·+/- : 포수 조준경 배율 단계 / 전차장 쌍안경 확대
@@ -110,12 +177,12 @@ func magnification() -> float:
 func status_text() -> String:
 	match mode:
 		GUNNER:
-			return "시점: 포수 조준경 x%.1f (Shift 해제, 휠 배율)" % magnification()
+			return "시점: 포수 조준경 x%.1f (마우스 조준, 좌클릭 발사, Shift 해제, 휠 배율)" % magnification()
 		COMMANDER:
 			return "시점: 전차장 x%.1f  시선 %+.0f° (포 고정, B 해제, 휠 확대)" % [magnification(), rad_to_deg(wrapf(cmd_yaw - tank.turret_yaw, -PI, PI)) if tank else 0.0]
 	if free_look:
 		return "시점: 3인칭 자유 시선 (포 고정, C 떼면 복귀)"
-	return "시점: 3인칭 (Shift 포수, C 자유 시선, B 전차장)"
+	return "시점: 3인칭 (커서 조준 %s · R 전환 · 우클릭/C 둘러보기 · Shift 포수 · B 전차장)" % ("켬" if mouse_aim_enabled else "끔")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -123,6 +190,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion:
 		_mouse_delta += event.relative
+		if mode == GUNNER and mouse_aim_enabled and tank:
+			if not _scope_valid:
+				_scope_target = Vector2(tank.turret_yaw, tank.gun_pitch)
+				_scope_valid = true
+			_scope_target += Vector2(-event.relative.x, -event.relative.y) * MOUSE_SENS * fov / THIRD_FOV
+			_scope_target.y = clampf(_scope_target.y, deg_to_rad(tank.spec.gun_depression_deg), deg_to_rad(tank.spec.gun_elevation_max_deg))
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			zoom(1)
@@ -134,6 +207,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				toggle_gunner()
 			KEY_B:
 				toggle_commander()
+			KEY_R:
+				mouse_aim_enabled = not mouse_aim_enabled
+				aim_point = Vector3.INF
+				_scope_valid = false
+				_mouse_delta = Vector2.ZERO
+				if tank:
+					_third_yaw = tank.global_rotation.y + tank.turret_yaw + view.orbit_yaw
 			KEY_EQUAL, KEY_KP_ADD:
 				zoom(1)
 			KEY_MINUS, KEY_KP_SUBTRACT:
@@ -145,6 +225,9 @@ func update_view(p: Tank, delta: float) -> void:
 	if p != tank:
 		_set_tag_visible(tank, true)
 		tank = p
+		_third_yaw = p.global_rotation.y + p.turret_yaw
+		_third_pitch = 0.0
+		_scope_valid = false
 	if follow_only:
 		_mouse_delta = Vector2.ZERO
 		release_mouse()
@@ -155,10 +238,10 @@ func update_view(p: Tank, delta: float) -> void:
 		if reticle:
 			reticle.queue_redraw()
 		return
-	free_look = mode == THIRD and Input.is_physical_key_pressed(KEY_C)
+	free_look = mode == THIRD and (Input.is_physical_key_pressed(KEY_C) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
 	var looking := free_look or mode == COMMANDER
 	if capture_mouse:
-		var want := Input.MOUSE_MODE_CAPTURED if looking else Input.MOUSE_MODE_VISIBLE
+		var want := Input.MOUSE_MODE_CAPTURED if looking or (mode == GUNNER and mouse_aim_enabled) else Input.MOUSE_MODE_VISIBLE
 		if Input.mouse_mode != want:
 			Input.mouse_mode = want
 	# 시선 입력: 마우스 + 방향키, 확대할수록 느리게
@@ -172,7 +255,13 @@ func update_view(p: Tank, delta: float) -> void:
 	_set_tag_visible(p, mode == THIRD)
 	if looking:
 		view.look(look.x, look.y)
+	if mode == THIRD and looking:
+		_third_yaw = p.global_rotation.y + p.turret_yaw + view.orbit_yaw
+		_third_pitch = view.orbit_pitch
 	view.relax(delta)
+	if mode == THIRD and mouse_aim_enabled and not looking:
+		view.orbit_yaw = wrapf(_third_yaw - p.global_rotation.y - p.turret_yaw, -PI, PI)
+		view.orbit_pitch = _third_pitch
 	fov = view.fov()
 	global_transform = view.eye_transform(p, map)
 	_scale_tags()

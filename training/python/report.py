@@ -13,6 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from tankrl.curriculum import STAGE_IDS
+from tankrl.objectives import ObjectiveIndex
 
 COLORS = ["#2a6fdb", "#d9534f", "#3c9d4e", "#e08a1e", "#8e5bd0", "#1aa3a3", "#b5487a", "#6b7b2a", "#555"]
 TANK_LABEL = {"tiger1": "티거 I", "sherman75": "셔먼 75mm", "t34_76": "T-34/76"}
@@ -65,22 +66,38 @@ def svg_chart(series, title, ylabel, width=900, height=260, ymin=None, ymax=None
             continue
         d = " ".join(f"{sx(x):.1f},{sy(y):.1f}" for x, y in s)
         out.append(f'<polyline points="{d}" fill=none stroke="{col}" stroke-width=1.8><title>{html.escape(lab)}</title></polyline>')
-    lx = L + 8
-    for lab, col, s in series:
-        if s:
-            out.append(f'<rect x="{lx}" y="{T + 4}" width=10 height=10 fill="{col}"/>'
-                       f'<text x="{lx + 14}" y="{T + 13}" class=ax>{html.escape(lab)}</text>')
-            lx += 14 + 8 * len(lab) + 18
+        if len(s) == 1:
+            out.append(f'<circle cx="{sx(s[0][0]):.1f}" cy="{sy(s[0][1]):.1f}" r="2.5" fill="{col}"/>')
     out.append(f'<text x="12" y="{T + H / 2}" class=ax transform="rotate(-90 12 {T + H / 2})" text-anchor=middle>{html.escape(ylabel)}</text>')
-    out.append("</svg>")
+    out.append("</svg><div class=objective-legend>" + "".join(
+        f'<span><i style="background:{col}"></i>{html.escape(lab)}</span>' for lab, col, points in series if points) + "</div>")
     return "".join(out)
 
 
 def build(run_dir: Path) -> Path:
-    rows = list(csv.DictReader(open(run_dir / "progress.csv", encoding="utf-8"))) if (run_dir / "progress.csv").exists() else []
+    sources_file = run_dir / 'history_sources.json'
+    sources = json.loads(sources_file.read_text(encoding='utf-8')).get('sources', []) if sources_file.exists() else []
+    directories = [run_dir / source['path'] for source in sources] + [run_dir]
+    unique = {}
+    objectives = ObjectiveIndex()
+    for directory in directories:
+        terrain_file = directory / 'terrain_progress.csv'
+        terrain = {}
+        if terrain_file.exists():
+            with terrain_file.open(encoding='utf-8-sig', newline='') as f:
+                terrain = {(r['uid'], r.get('global_step')): r for r in csv.DictReader(f)}
+        progress = directory / 'progress.csv'
+        if progress.exists():
+            with progress.open(encoding='utf-8-sig', newline='') as f:
+                for row in csv.DictReader(f):
+                    row = objectives.annotate(row, directory, terrain.get((row.get('uid'), row.get('global_step'))))
+                    unique[(row.get('uid') or str(row), row.get('final_hash', ''))] = row
+    rows = sorted(unique.values(), key=lambda row: float(row.get('wall_time') or 0))
     promos = []
-    if (run_dir / "curriculum_log.jsonl").exists():
-        promos = [json.loads(l) for l in open(run_dir / "curriculum_log.jsonl", encoding="utf-8") if l.strip()]
+    for directory in directories:
+        if (directory / 'curriculum_log.jsonl').exists():
+            promos.extend(json.loads(line) for line in (directory / 'curriculum_log.jsonl').read_text(encoding='utf-8').splitlines() if line.strip())
+    promos = list({json.dumps(event, sort_keys=True): event for event in promos}.values())
     manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8")) if (run_dir / "run.json").exists() else {}
     by_tank = defaultdict(list)
     for r in rows:
@@ -104,27 +121,30 @@ def build(run_dir: Path) -> Path:
         vl = [(p["global_step"], "→" + STAGE_LABEL.get(p["to"], p["to"])) for p in tp]
         per = defaultdict(list)
         for r in rs:
-            per[r["stage"]].append(r)
+            per[r["objective"]].append(r)
         succ, ret, dist, length = [], [], [], []
-        for k, sid in enumerate(STAGE_IDS):
+        for sid in per:
             sr = per.get(sid)
             if not sr:
                 continue
-            col = COLORS[k % len(COLORS)]
+            info = objectives.catalog[sid]
+            col = info["color"]
             xs = [int(r["global_step"]) for r in sr]
-            lab = STAGE_LABEL.get(sid, sid)
+            lab = STAGE_LABEL.get(info["stage"], info["stage"]) + " · " + info["label"]
             succ.append((lab, col, list(zip(xs, rolling([int(r["success"]) for r in sr], 100)))))
             ret.append((lab, col, list(zip(xs, rolling([float(r["return"]) for r in sr], 100)))))
             length.append((lab, col, list(zip(xs, rolling([float(r["duration_s"]) for r in sr], 100)))))
-        parts.append(svg_chart(succ, "단계별 성공률(최근 100 에피소드 이동평균)", "성공률", ymin=0, ymax=1, vlines=vl))
-        parts.append(svg_chart(ret, "단계별 에피소드 보상(이동평균 100)", "보상", vlines=vl))
-        parts.append(svg_chart(length, "단계별 에피소드 길이(초, 이동평균 100)", "초", vlines=vl))
-        parts.append("<h3>단계 통계</h3><table><tr><th>단계</th><th>에피소드</th><th>성공률</th><th>마지막 100</th>"
+        parts.append(svg_chart(succ, "세부 목표별 성공률(최근 100 에피소드 이동평균)", "성공률", ymin=0, ymax=1, vlines=vl))
+        parts.append(svg_chart(ret, "세부 목표별 에피소드 보상(이동평균 100)", "보상", vlines=vl))
+        parts.append(svg_chart(length, "세부 목표별 에피소드 길이(초, 이동평균 100)", "초", vlines=vl))
+        parts.append("<h3>세부 목표 통계</h3><table><tr><th>세부 목표</th><th>에피소드</th><th>성공률</th><th>마지막 100</th>"
                      "<th>평균 보상</th><th>발사</th><th>명중/발사</th><th>관통</th><th>격파</th><th>평균 스폰 거리</th><th>종료 사유</th></tr>")
-        for sid in STAGE_IDS:
+        for sid in per:
             sr = per.get(sid)
             if not sr:
                 continue
+            info = objectives.catalog[sid]
+            label = STAGE_LABEL.get(info["stage"], info["stage"]) + " · " + info["label"]
             n = len(sr)
             shots = sum(int(r["shots"]) for r in sr)
             hits = sum(int(r["hits"]) for r in sr)
@@ -132,7 +152,7 @@ def build(run_dir: Path) -> Path:
             for r in sr:
                 reasons[r["reason"]] += 1
             last = [int(r["success"]) for r in sr][-100:]
-            parts.append(f"<tr><td>{STAGE_LABEL.get(sid, sid)}</td><td>{n:,}</td>"
+            parts.append(f"<tr><td><span style=\"color:{info['color']}\">●</span> {html.escape(label)}</td><td>{n:,}</td>"
                          f"<td>{sum(int(r['success']) for r in sr) / n:.2f}</td><td>{sum(last) / len(last):.2f}</td>"
                          f"<td>{sum(float(r['return']) for r in sr) / n:.3f}</td><td>{shots:,}</td>"
                          f"<td>{(hits / shots if shots else 0):.3f}</td><td>{sum(int(r['pens']) for r in sr):,}</td>"
@@ -159,14 +179,16 @@ def build(run_dir: Path) -> Path:
                     link = os.path.relpath(rep, run_dir)
                 except ValueError:
                     link = str(rep)
-                parts.append(f"<tr><td>{html.escape(r['uid'])}</td><td>{STAGE_LABEL.get(r['stage'], r['stage'])}</td>"
+                info = objectives.catalog[r['objective']]
+                label = STAGE_LABEL.get(info['stage'], info['stage']) + ' · ' + info['label']
+                parts.append(f"<tr><td>{html.escape(r['uid'])}</td><td><span style=\"color:{info['color']}\">●</span> {html.escape(label)}</td>"
                              f"<td>{'✔' if r['success'] == '1' else '–'}</td><td>{float(r['return']):.3f}</td>"
                              f"<td><a href=\"{html.escape(link)}\">report.html</a></td></tr>")
             parts.append("</table>")
     parts.append("<h2>재현</h2><p>모든 에피소드는 <code>episodes/env*/&lt;uid&gt;.json</code> 에 설정·시드·행동이 저장되어 있어, "
                  "<code>python reproduce.py &lt;파일&gt;</code> 로 똑같이 다시 돌려 전체 리플레이(F3 뷰어)·경기 보고서·관측 기록을 만들 수 있다. "
                  "끝 상태 해시가 같으면 원래 경기와 동일하다.</p>")
-    css = """body{font-family:system-ui,'Malgun Gothic',sans-serif;margin:24px auto;max-width:960px;padding:0 16px;color:#222;background:#fff}
+    css = """.objective-legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 20px;font-size:12px}.objective-legend span{display:inline-flex;align-items:center;gap:5px}.objective-legend i{width:12px;height:4px;display:inline-block}body{font-family:system-ui,'Malgun Gothic',sans-serif;margin:24px auto;max-width:960px;padding:0 16px;color:#222;background:#fff}
 h1{font-size:22px}h2{margin-top:32px;border-bottom:1px solid #ddd;padding-bottom:4px}table{border-collapse:collapse;font-size:13px;margin:8px 0}
 td,th{border:1px solid #ddd;padding:4px 8px;text-align:left}th{background:#f4f4f4}.muted{color:#777;font-size:13px}
 .chart{width:100%;height:auto;margin:8px 0;background:#fcfcfc;border:1px solid #eee}.ct{font-size:13px;font-weight:600}.ax{font-size:11px;fill:#555}

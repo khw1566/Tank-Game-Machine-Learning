@@ -147,6 +147,7 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
   <section class="panel">
     <h2>커리큘럼 <span class="sub" id="curSub"></span></h2>
     <div class="stages" id="stages"></div>
+    <div id="terrainLessons" style="margin-top:12px"></div>
   </section>
 
   <section class="panel" style="padding-bottom:6px">
@@ -212,6 +213,7 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
       <div class="ctl"><label>PPO 갱신 배치 (빈칸 = 기본 / 저장된 값)</label><input type="number" name="batch_size" min="2" placeholder="2048"></div>
       <div class="ctl"><label>PPO 갱신 반복 (빈칸 = 기본 / 저장된 값)</label><input type="number" name="n_epochs" min="1" placeholder="8"></div>
       <div class="ctl"><label>시작 단계</label><select name="start_stage"></select></div>
+      <div class="ctl"><label>지형주행 시험공간 (고정 선택 시 자동 승급 없음)</label><select name="terrain_course"></select></div>
       <div class="ctl"><label>배속 제한 (0 = 무제한)</label><input type="number" name="speed_cap" value="0" min="0"></div>
       <div class="ctl"><label>리플레이 기록 간격</label><input type="number" name="record_every" value="200" min="0"></div>
       <div class="ctl"><label>체크포인트 간격(스텝)</label><input type="number" name="save_every" value="100000" step="10000"></div>
@@ -277,12 +279,13 @@ function lineChart(cv, series, o = {}) {
   (o.hlines || []).forEach(l => { const y = Math.round(sy(l.y)) + .5; g.strokeStyle = l.color || css("--muted"); g.setLineDash([5, 4]); g.beginPath(); g.moveTo(L, y); g.lineTo(L + w, y); g.stroke(); g.setLineDash([]); });
   series.forEach(s => {
     if (!s.pts.length) return;
-    g.strokeStyle = s.color; g.lineWidth = s.width || 1.6; g.lineJoin = "round"; g.beginPath();
+    g.strokeStyle = s.color; g.setLineDash(s.dash || []); g.lineWidth = s.width || 1.6; g.lineJoin = "round"; g.beginPath();
     let prev = null;
     s.pts.forEach(p => { const X = sx(p[0]), Y = sy(p[1]); if (prev === null || (s.gap && p[0] - prev > s.gap)) g.moveTo(X, Y); else g.lineTo(X, Y); prev = p[0]; });
     g.stroke();
     if (s.pts.length === 1) { g.fillStyle = s.color; g.beginPath(); g.arc(sx(s.pts[0][0]), sy(s.pts[0][1]), 2.5, 0, 7); g.fill(); }
   });
+  g.setLineDash([]);
   cv._chart = {series, sx, sy, x0, x1, L, w, o};
 }
 function hookTip(cv) {
@@ -300,14 +303,14 @@ function hookTip(cv) {
 }
 
 const CHARTS = [
-  {id: "succ", title: "성공률 (단계별, 이동평균)", note: "점선 = 현재 단계 승급 기준"},
-  {id: "ret", title: "에피소드 보상 합 (이동평균)", note: "단계마다 보상 크기가 다름"},
-  {id: "acc", title: "명중률 · 관통률 (사격·전투 단계)", note: "명중/발사, 관통/명중"},
+  {id: "succ", title: "성공률 (세부 목표별, 이동평균)", note: "점선 = 현재 단계 승급 기준"},
+  {id: "ret", title: "에피소드 보상 합 (이동평균)", note: "목표별로 별도 집계 · 색상은 보고서와 동일"},
+  {id: "acc", title: "명중률 · 관통률 (사격·전투 단계)", note: "목표별 색상 · 실선 명중 / 점선 관통"},
   {id: "len", title: "에피소드 길이 (결정 수, 이동평균)", note: "1 결정 = 게임 0.1초"},
   {id: "speed", title: "학습 속도", note: "초당 결정 수 · 실시간 대비 배속은 ×0.1"},
-  {id: "ppo_ent", title: "PPO: 엔트로피 · 행동 표준편차", note: "탐색 정도(줄어들면 정책이 굳어짐)"},
-  {id: "ppo_loss", title: "PPO: 가치 손실 · 설명 분산", note: "설명 분산 1에 가까울수록 가치 예측 정확"},
-  {id: "ppo_kl", title: "PPO: approx KL · clip 비율", note: "너무 크면 학습률이 큰 것"},
+  {id: "ppo_ent", title: "PPO: 엔트로피 · 행동 표준편차", note: "혼합 배치 전체 지표 · 목표별 분해 불가"},
+  {id: "ppo_loss", title: "PPO: 가치 손실 · 설명 분산", note: "혼합 배치 전체 지표 · 목표별 분해 불가"},
+  {id: "ppo_kl", title: "PPO: approx KL · clip 비율", note: "혼합 배치 전체 지표 · 목표별 분해 불가"},
 ];
 function buildCharts() {
   $("charts").innerHTML = CHARTS.map(c => `<div class="chart"><div class="ct">${c.title}<span>${c.note}</span></div><div class="legend" id="lg_${c.id}"></div><canvas id="cv_${c.id}"></canvas></div>`).join("");
@@ -335,26 +338,34 @@ function sb3Series(tank, key, name, color, x) {
   return {name, color, pts: thin(d.filter(r => r[ki] != null).map(r => [r[xi], r[ki]]))};
 }
 
+function objectiveInfo(key) {
+  const o = S.objectives?.[key];
+  return o ? {name: `${STAGE_LABEL[o.stage] || o.stage} · ${o.label}`, color: o.color} : {name: "세부 목표 미기록", color: "#64748b"};
+}
+function objectiveSeries(list, metric, win, predicate = () => true) {
+  const keys = [...new Set(list.filter(([e]) => predicate(e)).map(([e]) => e[col("objective")]))];
+  return keys.map(key => ({...objectiveInfo(key), pts: rolling(list, metric, win, e => e[col("objective")] === key && predicate(e))}));
+}
+
 function drawCharts() {
   if (!INFO || !S) return;
   const C = COLORS(), win = +$("winSel").value, list = tankEps(), xf = xfmt();
   const vlines = (S.curriculum_log || []).filter(p => !$("tankSel").value || p.tank === $("tankSel").value)
     .map(p => ({x: $("xSel").value === "step" ? p.global_step : $("xSel").value === "time" && EPS.length ? p.wall_time - EPS[0][col("wall_time")] : EPS.findIndex(e => e[col("global_step")] >= p.global_step) + 1}));
-  const stagesSeen = [...new Set(list.map(([e]) => e[col("stage_idx")]))].sort((a, b) => a - b);
-  // 성공률
-  const succ = stagesSeen.map(si => ({name: STAGE_LABEL[INFO.stages[si].id], color: C[si % 9], pts: rolling(list, "success", win, e => e[col("stage_idx")] === si)}));
-  const cs = S.status?.curriculum, hl = cs?.threshold ? [{y: cs.threshold, color: C[cs.stage_idx % 9]}] : [];
+  const succ = objectiveSeries(list, "success", win);
+  const cs = S.status?.curriculum, current = cs?.terrain;
+  const key = Object.keys(S.objectives || {}).find(k => k === `${cs?.stage}/terrain:v3/${current?.course}`);
+  const hl = (current?.threshold ?? cs?.threshold) ? [{y: current?.threshold ?? cs.threshold, color: key ? S.objectives[key].color : C[cs.stage_idx % 9]}] : [];
   lineChart($("cv_succ"), succ, {ymin: 0, ymax: 1, yfmt: v => (v * 100).toFixed(0) + "%", xfmt: xf, vlines, hlines: hl}); legend("succ", succ);
-  const ret = stagesSeen.map(si => ({name: STAGE_LABEL[INFO.stages[si].id], color: C[si % 9], pts: rolling(list, "return", win, e => e[col("stage_idx")] === si)}));
+  const ret = objectiveSeries(list, "return", win);
   lineChart($("cv_ret"), ret, {xfmt: xf, vlines}); legend("ret", ret);
   const shoot = e => INFO.stages[e[col("stage_idx")]].kind !== "drive";
   const acc = [
-    {name: "명중률", color: C[0], pts: rolling(list, e => e[col("shots")] > 0 ? e[col("hits")] / e[col("shots")] : null, win, shoot)},
-    {name: "관통률", color: C[2], pts: rolling(list, e => e[col("hits")] > 0 ? e[col("pens")] / e[col("hits")] : null, win, shoot)},
-    {name: "판당 격파", color: C[1], pts: rolling(list, "kills", win, shoot)},
+    ...objectiveSeries(list, e => e[col("shots")] > 0 ? e[col("hits")] / e[col("shots")] : null, win, shoot).map(s => ({...s, name: s.name + " · 명중률"})),
+    ...objectiveSeries(list, e => e[col("hits")] > 0 ? e[col("pens")] / e[col("hits")] : null, win, shoot).map(s => ({...s, name: s.name + " · 관통률", dash: [5, 3]})),
   ];
   lineChart($("cv_acc"), acc, {ymin: 0, xfmt: xf, vlines, yfmt: v => v.toFixed(2)}); legend("acc", acc);
-  const len = stagesSeen.map(si => ({name: STAGE_LABEL[INFO.stages[si].id], color: C[si % 9], pts: rolling(list, "decisions", win, e => e[col("stage_idx")] === si)}));
+  const len = objectiveSeries(list, "decisions", win);
   lineChart($("cv_len"), len, {ymin: 0, xfmt: xf, vlines}); legend("len", len);
   // 속도: 에피소드 끝 시각 기준으로 구간 평균(전차 구분 없이 전체)
   const sp = [], ep = [];
@@ -406,10 +417,11 @@ function render() {
   const eta = target && st.steps_per_s > 0 ? (target - steps) / st.steps_per_s : null;
   const C = COLORS();
   const rot = st.rotate ? ` · 교대 ${st.rotate.cycle}/${st.rotate.cycles}` : "";
+  const tc = cs.terrain, rate = tc?.success_rate ?? cs.success_rate, threshold = tc?.threshold ?? cs.threshold;
   $("kpis").innerHTML = [
     kpi("학습 전차", TANK_LABEL[st.tank] || st.tank || "-", (st.learner_policy || "").split("/").pop() + rot),
-    kpi("현재 단계", cs.stage ? `${cs.stage_idx + 1}/9 ${STAGE_LABEL[cs.stage]}` : "-", cs.stage ? `단계 안 ${fmt(cs.episodes_in_stage)}판 (최소 ${fmt(cs.min_episodes)}, 최대 ${fmt(cs.max_episodes)})` : ""),
-    kpi("성공률 / 승급 기준", cs.stage ? `${pct(cs.success_rate)} / ${cs.threshold ? pct(cs.threshold) : "마지막"}` : "-", cs.window ? `최근 ${cs.window}판` : "", cs.stage ? {v: cs.success_rate, mark: cs.threshold, color: cs.threshold && cs.success_rate >= cs.threshold ? css("--ok") : null} : null),
+    kpi("현재 단계", cs.stage ? `${cs.stage_idx + 1}/9 ${STAGE_LABEL[cs.stage]}` : "-", tc ? `${tc.index + 1}/${tc.count} ${esc(tc.label)} · ${tc.fixed ? "고정 연습" : "자동 승급"}` : cs.stage ? `단계 안 ${fmt(cs.episodes_in_stage)}판 (최소 ${fmt(cs.min_episodes)}, 최대 ${fmt(cs.max_episodes)})` : ""),
+    kpi("성공률 / 승급 기준", cs.stage ? `${pct(rate)} / ${threshold ? pct(threshold) : "마지막"}` : "-", tc ? `${tc.label} 최근 ${tc.episodes}/${tc.window}판` : cs.window ? `최근 ${cs.window}판` : "", cs.stage ? {v: rate, mark: threshold, color: threshold && rate >= threshold ? css("--ok") : null} : null),
     kpi("초당 결정 수", fmt(st.steps_per_s, 0), `환경 ${st.n_envs ?? "-"}개 · 환경당 ${st.n_envs ? fmt(st.steps_per_s / st.n_envs, 0) : "-"}`),
     kpi("실시간 대비", st.realtime_x ? `×${fmt(st.realtime_x, 0)}` : "-", st.speed_cap ? `제한 ×${st.speed_cap}` : "제한 없음(최대 속도)"),
     kpi("에피소드", fmt(S.ep_total), `${fmt((st.episodes_per_s || 0) * 60, 1)}판/분`),
@@ -424,6 +436,9 @@ function render() {
   $("stages").innerHTML = INFO.stages.map((s, i) => { const r = recent[i]; const rate = r ? r.reduce((a, b) => a + b, 0) / r.length : null;
     return `<div class="stage ${i < curIdx ? "done" : i === curIdx ? "cur" : ""}" title="${s.id}"><div class="n">${i + 1}단계 · 기준 ${s.promote ? pct(s.promote.threshold) : "-"}</div><div class="t">${STAGE_LABEL[s.id]}</div><div class="r">${rate == null ? "&nbsp;" : `최근 ${pct(rate)} (${r.length}판)`}</div></div>`; }).join("");
   $("curSub").textContent = st.review_prob != null ? `복습 확률 ${pct(st.review_prob)} · 승급은 최근 판 성공률이 기준을 넘고 최소 판 수를 채우면 자동` : "";
+  $("terrainLessons").innerHTML = tc ? `<p class="hint">목표점 5m 안 · 속도 1m/s 이하 · 0.6초 정지 → 다음 목표. 20초 무진전 시 종료. ${tc.fixed ? "선택한 코스 고정 연습" : `각 코스 최근 ${tc.window}판 기준으로 승급하며, 시간 경과만으로 건너뛰지 않습니다.`}</p>` +
+    `<div class="stages">${tc.courses.map((c, i) => `<div class="stage ${i === tc.index ? "cur" : ""}"><div class="n">시험공간 ${i + 1}</div><div class="t">${esc(c.label)}</div><div class="r">${pct(c.success_rate)} · ${c.episodes}판</div></div>`).join("")}</div>` +
+    ((S.terrain_recent || []).length ? `<p class="hint">최근 시험: ${S.terrain_recent.slice(-5).map(r => `${esc(r.course)} ${r.success === "1" ? "성공" : esc(r.reason)} · 잔여 ${esc(r.best_remaining_m)}m`).join(" / ")}</p>` : "") : "";
   renderTanks(); renderPromos(); renderEpisodes(); renderJobs();
   $("log").textContent = S.log_tail || "(로그 없음 — 대시보드에서 시작한 학습만 train_log.txt 에 남습니다)";
   if (!$("log")._user) $("log").scrollTop = 1e9;
@@ -438,10 +453,10 @@ function render() {
 }
 function renderTanks() {
   const rows = Object.entries(S.tanks || {});
-  $("tankTable").innerHTML = `<tr><th>전차</th><th>단계</th><th class="num">단계 안 판수</th><th class="num">최근 성공률</th><th class="num">스냅숏</th><th>정책 최종 저장</th><th>상대 풀(자기대전용)</th></tr>` +
+  $("tankTable").innerHTML = `<tr><th>전차</th><th>단계</th><th class="num">누적 저장 스텝</th><th class="num">단계 안 판수</th><th class="num">최근 성공률</th><th class="num">스냅숏</th><th>정책 최종 저장</th><th>상대 풀(자기대전용)</th></tr>` +
     (rows.length ? rows.map(([t, d]) => { const c = d.curriculum || {}, rs = (c.recent_success || {})[c.stage];
-      return `<tr><td>${TANK_LABEL[t]}</td><td>${c.stage ? `${c.stage_idx + 1}. ${STAGE_LABEL[c.stage]}` : "-"}</td><td class="num">${fmt(c.episodes_in_stage)}</td><td class="num">${pct(rs)}</td><td class="num">${d.snapshots}</td><td>${d.latest_mtime ? ago(d.latest_mtime) : "-"}</td><td>${d.pool?.version ? esc(d.pool.version.split("/").slice(1).join("/")) + ` <span class="muted">(${d.pool_snapshots}개)</span>` : "-"}</td></tr>`; }).join("")
-      : `<tr><td colspan="7" class="muted">아직 저장된 정책 없음</td></tr>`);
+      return `<tr><td>${TANK_LABEL[t]}</td><td>${c.stage ? `${c.stage_idx + 1}. ${STAGE_LABEL[c.stage]}` : "-"}</td><td class="num">${fmt(d.saved_steps)}</td><td class="num">${fmt(c.episodes_in_stage)}</td><td class="num">${pct(rs)}</td><td class="num">${d.snapshots}</td><td>${d.latest_mtime ? ago(d.latest_mtime) : "-"}</td><td>${d.pool?.version ? esc(d.pool.version.split("/").slice(1).join("/")) + ` <span class="muted">(${d.pool_snapshots}개)</span>` : "-"}</td></tr>`; }).join("")
+      : `<tr><td colspan="8" class="muted">아직 저장된 정책 없음</td></tr>`);
 }
 function renderPromos() {
   const log = (S.curriculum_log || []).slice().reverse();
@@ -458,7 +473,7 @@ function renderEpisodes() {
       const rel = (p) => p ? p.replace(/\\/g, "/").split("/" + RUN + "/").pop() : "";
       const rep = r.replay_dir ? `<button data-a="view" data-p="${esc(r.replay_dir)}">🎬 리플레이</button> <a href="/files/${encodeURIComponent(RUN)}/${rel(r.replay_dir).split("/").map(encodeURIComponent).join("/")}/report.html" target="_blank">보고서</a> ` : "";
       const rp = r.episode_file ? `<button data-a="repro" data-p="${esc(r.episode_file)}">재현 후 보기</button>` : "";
-      return `<tr><td class="num">${r.i}</td><td>${new Date(r.wall_time * 1000).toLocaleTimeString("ko-KR")}</td><td>${TANK_LABEL[r.tank] || r.tank}</td><td>${STAGE_LABEL[r.stage] || r.stage}</td><td class="${r.success ? "ok" : "bad"}">${r.success ? "성공" : "실패"} <span class="muted">${esc(reasonL[r.reason] || r.reason)}</span></td><td class="num">${fmt(r.return, 2)}</td><td class="num">${fmt(r.duration_s, 1)}</td><td class="num">${fmt(r.spawn_distance_m)}</td><td class="num">${r.shots}/${r.hits}/${r.pens}/${r.kills}</td><td>${rep}${rp}</td></tr>`;
+      return `<tr><td class="num">${r.i}</td><td>${new Date(r.wall_time * 1000).toLocaleTimeString("ko-KR")}</td><td>${TANK_LABEL[r.tank] || r.tank}</td><td>${esc(objectiveInfo(r.objective).name)} <span style="color:${objectiveInfo(r.objective).color}">●</span></td><td class="${r.success ? "ok" : "bad"}">${r.success ? "성공" : "실패"} <span class="muted">${esc(reasonL[r.reason] || r.reason)}</span></td><td class="num">${fmt(r.return, 2)}</td><td class="num">${fmt(r.duration_s, 1)}</td><td class="num">${fmt(r.spawn_distance_m)}</td><td class="num">${r.shots}/${r.hits}/${r.pens}/${r.kills}</td><td>${rep}${rp}</td></tr>`;
     }).join("") : `<tr><td colspan="10" class="muted">아직 끝난 에피소드 없음</td></tr>`);
 }
 function renderJobs() {
@@ -548,7 +563,7 @@ function wire() {
     e.preventDefault();
     const a = {godot: f.godot.value, project: f.project.value, python: f.python.value, run: f.run.value.trim(), n_envs: +f.n_envs.value, start_stage: f.start_stage.value,
       speed_cap: +f.speed_cap.value, record_every: +f.record_every.value, save_every: +f.save_every.value, resume: f.resume.checked, extra: f.extra.value,
-      device: f.device.value, n_steps: f.n_steps.value ? +f.n_steps.value : null,
+      device: f.device.value, terrain_course: f.terrain_course.value, n_steps: f.n_steps.value ? +f.n_steps.value : null,
       batch_size: f.batch_size.value ? +f.batch_size.value : null, n_epochs: f.n_epochs.value ? +f.n_epochs.value : null};
     if (f.mode.value === "rotate") Object.assign(a, {rotate: f.rotate.value, rotate_steps: +f.rotate_steps.value, cycles: +f.cycles.value});
     else Object.assign(a, {tank: f.tank.value, timesteps: +f.timesteps.value});
@@ -561,6 +576,7 @@ function openStart() {
   f.godot.value = s.godot || ""; f.project.value = s.project || ""; f.python.value = s.python || ""; f.python.placeholder = INFO.deps?.python ? `(자동: ${INFO.deps.python})` : "(자동)";
   const a = S?.run_json?.args;
   f.device.value = s.device || "auto";
+  f.terrain_course.value = a?.terrain_course || "";
   for (const key of ["n_steps", "batch_size", "n_epochs"]) f[key].value = a?.[key] ?? "";
   if (a && !S.alive) {   // 지금 보고 있는 실행을 이어서 하기 좋게 채운다
     f.run.value = RUN; f.resume.checked = true; f.n_envs.value = a.n_envs; f.mode.value = a.rotate ? "rotate" : "single";
@@ -619,6 +635,7 @@ async function init() {
   const stOpts = INFO.stages.map((s, i) => `<option value="${s.id}">${i + 1}. ${STAGE_LABEL[s.id]}</option>`).join("");
   $("stageSel").innerHTML = stOpts;
   $("startForm").start_stage.innerHTML = `<option value="">처음(1단계) / 저장된 단계</option>` + stOpts;
+  $("startForm").terrain_course.innerHTML = `<option value="">자동: 저장된 코스부터 순차 승급</option>` + (INFO.terrain_courses || []).map(c => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("");
   const tOpts = INFO.tanks.map(t => `<option value="${t}">${TANK_LABEL[t]}</option>`).join("");
   $("tankSel").innerHTML = `<option value="">전체</option>` + tOpts;
   $("startForm").tank.innerHTML = tOpts;

@@ -23,6 +23,7 @@ for (const el of form.elements) {
 }
 form.tank.innerHTML = '<option value="tiger1">Tiger</option>';
 form.start_stage.innerHTML = '<option value="">Default</option>';
+form.terrain_course.innerHTML = '<option value="">Auto</option><option value="gates">Gates</option>';
 w.fixture = {
   settings: { device: 'hybrid', godot: 'TankGame.exe', project: '', python: '' },
   cpu_count: 12,
@@ -40,19 +41,26 @@ const harness = [
   'if (f.device.value !== "hybrid") throw Error("Hybrid preference lost");',
   'f.run.value = "sample"; f.n_envs.value = 8; f.n_steps.value = 1024;',
   'f.batch_size.value = 2048; f.n_epochs.value = 8;',
+  'f.terrain_course.value = "gates";',
   'await $("btnGo").onclick({ preventDefault() {} });',
   '$("trainDevice").value = "hybrid"; await $("btnDevice").onclick();',
+  '\n    EPCOL = {objective: 0, success: 1, global_step: 2};\n    EPS = [["a", 1, 10], ["b", 0, 20], ["a", 1, 30]];\n    S.objectives = {a: {stage: "drive_terrain", label: "Approach", color: "#2563eb"},\n                    b: {stage: "drive_terrain", label: "Slope", color: "#9333ea"}};\n    $("xSel").value = "step";\n    window.goalCurves = objectiveSeries(EPS.map((e,i) => [e,i]), "success", 100);\n  ',
   '})();'
 ].join('\n');
 w.eval(script + '\n' + harness);
 (async () => {
   await w.checkFinished;
+  assert.equal(w.goalCurves.length, 2);
+  assert.equal(w.goalCurves[0].color, '#2563eb');
+  assert.deepEqual(Array.from(w.goalCurves[0].pts, p => p[1]), [1, 1]);
+  assert.deepEqual(Array.from(w.goalCurves[1].pts, p => p[1]), [0]);
   const start = calls.find(c => c.url === '/api/start');
   const restart = calls.find(c => c.url === '/api/restart');
   assert.equal(start.body.device, 'hybrid');
   assert.equal(start.body.n_steps, 1024);
   assert.equal(start.body.batch_size, 2048);
   assert.equal(start.body.n_epochs, 8);
+  assert.equal(start.body.terrain_course, 'gates');
   assert.equal(restart.body.device, 'hybrid');
   assert.match(w.document.getElementById('hardwareInfo').textContent, /CPU|cpu/);
   assert.match(w.document.getElementById('hardwareInfo').textContent, /cuda:0/);

@@ -35,6 +35,9 @@ from tankrl.curriculum import STAGE_IDS, STAGES, Curriculum
 from tankrl.godot_env import GodotVecEnv
 from tankrl.opponents import OpponentPool
 from tankrl.runtime import model_runtime, resolve_device
+from tankrl.terrain import COURSE_IDS, COURSES
+from tankrl.storage import (RunLock, archive_runtime, atomic_copy, checkpoint_paths, default_runs_dir,
+                            save_checkpoint, session_log_dir)
 
 
 def parse():
@@ -48,10 +51,12 @@ def parse():
     ap.add_argument("--timesteps", type=int, default=1_000_000, help="--rotate 가 없을 때 총 스텝(결정 수)")
     ap.add_argument("--n-envs", type=int, default=4, help="동시에 띄울 Godot 수(CPU 코어 수 정도)")
     ap.add_argument("--run", default="", help="실행 이름(runs/<run>). 비우면 날짜시각")
-    ap.add_argument("--runs-dir", default="runs")
+    ap.add_argument("--runs-dir", default=str(default_runs_dir()))
     ap.add_argument("--pool-dir", default="", help="자기대전 상대 정책 풀(기본 runs/pool)")
     ap.add_argument("--start-stage", default="", choices=[""] + STAGE_IDS, help="이 단계부터 시작")
     ap.add_argument("--resume", action="store_true", help="runs/<run>/<tank>/latest.zip 과 커리큘럼 상태에서 이어서")
+    ap.add_argument("--terrain-course", default="", choices=[""] + COURSE_IDS,
+                    help="지형주행 단일 코스 고정 연습(생략하면 자동 승급)")
     ap.add_argument("--save-every", type=int, default=100_000)
     ap.add_argument("--record-every", type=int, default=200, help="N 에피소드마다 전체 리플레이·보고서 기록(0 = 끔)")
     ap.add_argument("--review-prob", type=float, default=0.1, help="이전 단계 복습 확률")
@@ -95,11 +100,14 @@ def write_manifest(run_dir: Path, args, env: GodotVecEnv, runtime: dict) -> None
                  "torch": torch.__version__, "stable_baselines3": stable_baselines3.__version__,
                  "godot": env.procs[0].hello.get("engine", ""), "godot_cmd": env.procs[0].cmd,
                  "runtime": runtime})
+    runs[-1]['preserved_runtime'] = archive_runtime(Path(shutil.which(args.godot) or args.godot).resolve(), args.project)
     path.write_text(json.dumps({"format": "tankgame-train-run", "version": 1, "sessions": runs,
                                 "stages": STAGES, "obs_labels": env.obs_labels,
                                 "action_labels": env.action_labels,
                                 "protocol": env.procs[0].hello.get("protocol"),
                                 "repeat_ticks": env.procs[0].hello.get("repeat"),
+                                "terrain_course_version": env.procs[0].hello.get("terrain_course_version", 0),
+                                "terrain_courses": COURSES,
                                 "physics_hz": env.procs[0].hello.get("physics_hz")},
                                ensure_ascii=False, indent=1), encoding="utf-8")
 
@@ -137,12 +145,17 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     tdir = run_dir / tank
     tdir.mkdir(parents=True, exist_ok=True)
     cpath = tdir / "curriculum.json"
+    checkpoint, cpath = checkpoint_paths(tdir)
+    resume = checkpoint is not None
     start = STAGE_IDS.index(args.start_stage) if args.start_stage else 0
-    if cpath.exists() and (args.resume or args.rotate):
+    if cpath.exists() and (resume or args.resume or args.rotate):
         cur = Curriculum.load(cpath, tank, review_prob=args.review_prob, seed=args.seed)
     else:
         cur = Curriculum(tank, start_stage=start, review_prob=args.review_prob, seed=args.seed)
     cur.review_prob = ctl.review_prob
+    cur.terrain_fixed = args.terrain_course
+    if args.terrain_course and cur.stage["id"] != "drive_terrain":
+        cur.set_stage("drive_terrain", 0)
     ctl.curriculum = cur
     ctl.info.update({"tank": tank, "target_timesteps": None})
     ctl.write_status(None, force=True, phase="starting")
@@ -153,10 +166,13 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
                       quiet=not args.verbose_godot, run_name=run_dir.name)
     ctl.env = env
     latest = tdir / "latest.zip"
-    resume = latest.exists() and (args.resume or args.rotate)
+    if resume and not (args.resume or args.rotate):
+        print(f"[train] 기존 {tank} 체크포인트 보호: 자동으로 이어서 학습합니다", flush=True)
     try:
-        model = build_model(args, env, latest if resume else None)
+        model = build_model(args, env, checkpoint if resume else None)
         runtime = model_runtime(model, args.device)
+        runtime['start_timesteps'] = model.num_timesteps
+        runtime['resumed_from'] = str(checkpoint) if checkpoint else None
         ctl.info["runtime"] = runtime
         write_manifest(run_dir, args, env, runtime)
     except BaseException:
@@ -175,7 +191,7 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
         fmt.append("tensorboard")
     except ImportError:
         pass
-    model.set_logger(configure(str(run_dir / "sb3" / tank), fmt))
+    model.set_logger(configure(str(session_log_dir(run_dir, tank)), fmt))
     target = model.num_timesteps + steps
     ctl.model = model
     ctl.info["target_timesteps"] = target
@@ -213,17 +229,16 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
 
     def save(snapshot: bool) -> None:
         ctl.write_status(model.num_timesteps, force=True, phase="saving")
-        model.save(str(latest))
-        cur.save(cpath)
+        save_checkpoint(model, tdir, cur.state())
         pdir = pool_dir / tank
         pdir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(latest, pdir / "latest.zip")
+        atomic_copy(latest, pdir / "latest.zip")
         (pdir / "latest.json").write_text(json.dumps({"version": version(), "stage": cur.stage["id"]}),
                                           encoding="utf-8")
         if snapshot:
             name = f"step_{model.num_timesteps:09d}.zip"
-            shutil.copy2(latest, tdir / name)
-            shutil.copy2(latest, pdir / name)
+            atomic_copy(latest, tdir / name)
+            atomic_copy(latest, pdir / name)
         ctl.last_save = {"t": round(__import__("time").time(), 1), "version": version(), "snapshot": snapshot,
                          "stage": cur.stage["id"]}
         print(f"[train] {tank}: 저장 {version()} (단계 {cur.stage['id']})", flush=True)
@@ -265,6 +280,11 @@ def main():
     run_dir = (Path(args.runs_dir) / run).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     pool_dir = Path(args.pool_dir).resolve() if args.pool_dir else (Path(args.runs_dir) / "pool").resolve()
+    with RunLock(run_dir):
+        run_training(args, run_dir, pool_dir)
+
+
+def run_training(args, run_dir: Path, pool_dir: Path) -> None:
     ctl = TrainController(run_dir, record_every=args.record_every, review_prob=args.review_prob,
                           speed_cap=args.speed_cap)
     try:

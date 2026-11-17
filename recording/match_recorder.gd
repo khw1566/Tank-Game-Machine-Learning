@@ -87,6 +87,8 @@ func _init() -> void:
 ## 기록 시작. tanks 는 Tank 노드 배열(순서 = id). 이미 트리에 들어간 뒤 호출.
 func start(p_map: HillMap, p_tanks: Array, p_meta := {}, p_rewards: RewardModel = null) -> void:
 	map = p_map
+	if map and not map.obstacle_destroyed.is_connected(_on_obstacle_destroyed):
+		map.obstacle_destroyed.connect(_on_obstacle_destroyed)
 	tanks = p_tanks
 	meta = p_meta
 	if p_rewards:
@@ -131,6 +133,11 @@ func _physics_process(delta: float) -> void:
 	if tick % Engine.physics_ticks_per_second == 0:
 		score_history.append([sim_time(), team_scores[0], team_scores[1]])
 	_check_end()
+
+
+func _on_obstacle_destroyed(event: Dictionary) -> void:
+	if not ended:
+		_write({"type": "obstacle_destroyed", "tick": tick, "t": snappedf(sim_time(), 0.001), "event": event})
 
 
 func _check_end() -> void:
@@ -234,6 +241,7 @@ func _write_frame() -> void:
 		if (tick / sample_every) % path_every == 0:
 			paths[t.name].append(p)
 	_write({"type": "frame", "tick": tick, "t": snappedf(sim_time(), 0.001), "s": s,
+		"destroyed": map.destruction.destroyed_ids() if map else [],
 		"score": [snappedf(team_scores[0], 0.001), snappedf(team_scores[1], 0.001)],
 		"r": tanks.map(func(t): return snappedf(tank_scores[t.name], 0.001))})
 

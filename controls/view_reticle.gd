@@ -34,6 +34,13 @@ func _draw() -> void:
 			if rig.free_look:
 				_draw_gun_marker(p)
 				_draw_compass(p)
+			elif rig.mouse_aim_enabled:
+				_draw_gun_marker(p)
+				if rig.aim_point != Vector3.INF and not rig.is_position_behind(rig.aim_point):
+					var s := rig.unproject_position(rig.aim_point)
+					draw_arc(s, 9, 0, TAU, 24, MARK, 2)
+					draw_line(s - Vector2(14, 0), s + Vector2(14, 0), MARK, 1)
+					draw_line(s - Vector2(0, 14), s + Vector2(0, 14), MARK, 1)
 
 
 ## 화면 중앙에서 1 rad 가 몇 px 인가(수직 시야각 기준)

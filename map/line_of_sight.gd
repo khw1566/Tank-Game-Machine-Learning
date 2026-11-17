@@ -66,6 +66,8 @@ static func foliage(map: HillMap, from: Vector3, to: Vector3) -> Dictionary:
 	var main := ""
 	var main_depth := 0.0
 	for v in map.vision_volumes:
+		if bool(v.get("destroyed", false)):
+			continue
 		if not bb.intersects(v.aabb, true):
 			continue
 		var iv: Vector2
@@ -78,7 +80,25 @@ static func foliage(map: HillMap, from: Vector3, to: Vector3) -> Dictionary:
 		iv = _clip_y(iv, from.y, to.y, v.y0, v.y1)
 		if iv.x >= iv.y:
 			continue
-		var d: float = (iv.y - iv.x) * seg_len * v.density
+		var intervals := [iv]
+		for hole in map.foliage_clearings if v.type in ["woods", "treeline"] else []:
+			var cut := _seg_circle(a, b, hole.c, float(hole.r))
+			if cut.x >= cut.y:
+				continue
+			var remaining := []
+			for piece in intervals:
+				if cut.y <= piece.x or cut.x >= piece.y:
+					remaining.append(piece)
+				else:
+					if cut.x > piece.x:
+						remaining.append(Vector2(piece.x, cut.x))
+					if cut.y < piece.y:
+						remaining.append(Vector2(cut.y, piece.y))
+			intervals = remaining
+		var fraction := 0.0
+		for piece in intervals:
+			fraction += piece.y - piece.x
+		var d: float = fraction * seg_len * v.density
 		depth += d
 		if d > main_depth:
 			main_depth = d

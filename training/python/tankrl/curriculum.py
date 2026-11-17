@@ -19,6 +19,8 @@ import collections
 import json
 import random
 
+from .terrain import COURSES, COURSE_IDS, VERSION as TERRAIN_VERSION, WINDOW as TERRAIN_WINDOW, lesson
+
 TEAM_OF = {"tiger1": 0, "sherman75": 1, "t34_76": 1}
 ENEMIES_OF = {"tiger1": ["sherman75", "t34_76"], "sherman75": ["tiger1"], "t34_76": ["tiger1"]}
 ALLIED_TEAM = ["sherman75", "sherman75", "t34_76"]
@@ -98,6 +100,8 @@ STAGES = [
         "promote": None,   # 마지막 단계
     },
 ]
+STAGES[0] = lesson(STAGES[0], 0)  # Review must teach the same stop-at-target rule.
+STAGES[0]["promote"] = dict(window=TERRAIN_WINDOW, threshold=.85, min_episodes=TERRAIN_WINDOW, max_episodes=None)
 STAGE_IDS = [s["id"] for s in STAGES]
 
 
@@ -168,6 +172,11 @@ class Curriculum:
         self.results: dict[str, collections.deque] = {s["id"]: collections.deque(maxlen=1000) for s in STAGES}
         self.episodes_in_stage = 0
         self.history: list[dict] = []   # 승급 기록
+        self.terrain_idx = 0
+        self.terrain_results = {name: collections.deque(maxlen=TERRAIN_WINDOW) for name in COURSE_IDS}
+        self.terrain_history = []
+        self.terrain_fixed = ""
+        self.previous_assessments = []
 
     @property
     def stage(self) -> dict:
@@ -175,26 +184,57 @@ class Curriculum:
 
     def pick_stage(self) -> dict:
         """이번 에피소드 단계: 대개 현재 단계, 가끔(review_prob) 이전 단계 복습(잊지 않게)."""
+        if self.terrain_fixed and self.stage["id"] == "drive_terrain":
+            return lesson(self.stage, COURSE_IDS.index(self.terrain_fixed))
         if self.stage_idx > 0 and self.rng.random() < self.review_prob:
-            return STAGES[self.rng.randrange(self.stage_idx)]
-        return self.stage
+            stage = STAGES[self.rng.randrange(self.stage_idx)]
+        else:
+            stage = self.stage
+        if stage["id"] == "drive_terrain":
+            index = self.terrain_idx
+            if index > 0 and self.rng.random() < .2:
+                index = self.rng.randrange(index)
+            return lesson(stage, index)
+        return stage
 
     def success_rate(self, stage_id: str, window: int) -> float:
         r = list(self.results[stage_id])[-window:]
         return sum(r) / len(r) if r else 0.0
 
-    def report(self, stage_id: str, success: bool, global_step: int) -> dict | None:
+    def report(self, stage_id: str, success: bool, global_step: int, course: str = "") -> dict | None:
         """에피소드 결과 기록. 승급하면 승급 정보 dict 를 돌려준다."""
         self.results[stage_id].append(1 if success else 0)
         if stage_id != self.stage["id"]:
             return None
         self.episodes_in_stage += 1
+        if stage_id == "drive_terrain":
+            if course not in self.terrain_results:
+                return None  # Legacy executables cannot silently pass the new lessons.
+            self.terrain_results[course].append(int(success))
+            if self.terrain_fixed:
+                return None
+            current = COURSES[self.terrain_idx]
+            results = self.terrain_results[current["id"]]
+            if course != current["id"] or len(results) < TERRAIN_WINDOW or sum(results) / len(results) < current["threshold"]:
+                return None
+            self.terrain_history.append(dict(course=course, global_step=global_step,
+                                             success_rate=sum(results) / len(results)))
+            if self.terrain_idx < len(COURSES) - 1:
+                self.terrain_idx += 1
+                return None
+            ev = dict(tank=self.tank, **{"from": stage_id, "to": STAGES[self.stage_idx + 1]["id"]},
+                      episodes=self.episodes_in_stage, success_rate=sum(results) / len(results),
+                      reason="terrain_courses_mastered", global_step=global_step)
+            self.stage_idx += 1
+            self.episodes_in_stage = 0
+            self.history.append(ev)
+            return ev
         p = self.stage.get("promote")
         if not p or self.stage_idx >= len(STAGES) - 1:
             return None
         rate = self.success_rate(stage_id, p["window"])
         enough = self.episodes_in_stage >= p["min_episodes"] and len(self.results[stage_id]) >= p["window"]
-        forced = self.episodes_in_stage >= p["max_episodes"]
+        forced = p.get("max_episodes") is not None and self.episodes_in_stage >= p["max_episodes"]
         if (enough and rate >= p["threshold"]) or forced:
             ev = {"tank": self.tank, "from": stage_id, "to": STAGES[self.stage_idx + 1]["id"],
                   "episodes": self.episodes_in_stage, "success_rate": round(rate, 4),
@@ -222,7 +262,13 @@ class Curriculum:
     def state(self) -> dict:
         return {"tank": self.tank, "stage_idx": self.stage_idx, "stage": self.stage["id"],
                 "episodes_in_stage": self.episodes_in_stage, "history": self.history,
-                "recent_success": {k: self.success_rate(k, 100) for k in STAGE_IDS if self.results[k]}}
+                "recent_success": {k: self.success_rate(k, 100) for k in STAGE_IDS if self.results[k]},
+                "results": {k: list(v) for k, v in self.results.items()},
+                "previous_assessments": self.previous_assessments,
+                "terrain": {"version": TERRAIN_VERSION, "index": self.terrain_idx,
+                            "fixed": self.terrain_fixed,
+                            "course": COURSES[self.terrain_idx]["id"], "history": self.terrain_history,
+                            "results": {k: list(v) for k, v in self.terrain_results.items()}}}
 
     def save(self, path) -> None:
         with open(path, "w", encoding="utf-8") as f:
@@ -235,6 +281,23 @@ class Curriculum:
         c = cls(tank, start_stage=int(st.get("stage_idx", 0)), **kw)
         c.episodes_in_stage = int(st.get("episodes_in_stage", 0))
         c.history = st.get("history", [])
+        for name, values in st.get("results", {}).items():
+            if name in c.results:
+                c.results[name].extend(values)
+        terrain = st.get("terrain", {})
+        c.previous_assessments = st.get("previous_assessments", [])
+        if terrain.get("version") == TERRAIN_VERSION:
+            c.terrain_idx = max(0, min(len(COURSES) - 1, int(terrain.get("index", 0))))
+            c.terrain_fixed = terrain.get("fixed", "") if terrain.get("fixed", "") in COURSE_IDS else ""
+            c.terrain_history = terrain.get("history", [])
+            for name, values in terrain.get("results", {}).items():
+                if name in c.terrain_results:
+                    c.terrain_results[name].extend(values)
+        else:
+            c.previous_assessments.append({k: st[k] for k in ("terrain", "results", "episodes_in_stage", "stage") if k in st})
+            if c.stage["kind"] == "drive":
+                c.episodes_in_stage = 0
+                c.results[c.stage["id"]].clear()
         return c
 
 
@@ -245,13 +308,18 @@ def make_config(stage: dict, learner: str, lu: list[dict], seed: int, map_seed: 
     cfg = {
         "uid": uid, "seed": seed, "stage": stage["id"], "kind": stage["kind"],
         "time_limit_s": stage["time_limit_s"], "view_lock": stage.get("view_lock", -1),
-        "map": {"seed": map_seed, "features": m["features"], "amplitude": m["amplitude"]},
+        "map": {k: v for k, v in m.items() if k != "seeds"} | {"seed": map_seed},
         "tanks": [{"type": d["type"], "team": d["team"], "ctrl": d["ctrl"]} for d in lu],
         "spawn": stage.get("spawn", {}), "learner_team": TEAM_OF[learner],
         "record": record, "meta": meta,
     }
     if "waypoint" in stage:
         cfg["waypoint"] = stage["waypoint"]
+    if "terrain_course" in stage:
+        cfg["terrain_course"] = stage["terrain_course"]
+        cfg["map"]["seed"] = seed  # Every episode varies; replay retains the exact seed.
+    if "learning_objective" in stage:
+        cfg["learning_objective"] = json.loads(json.dumps(stage["learning_objective"]))
     if "success_hits" in stage:
         cfg["success_hits"] = stage["success_hits"]
     reward = json.loads(json.dumps(stage.get("reward", {})))

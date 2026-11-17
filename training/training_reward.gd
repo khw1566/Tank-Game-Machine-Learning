@@ -34,6 +34,16 @@ var _total := {}
 var _prev_dist := {}
 var _prev_aim := {}
 var _spotted := {}
+var _course_initial := 0.0
+var _course_best := 0.0
+var _course_anchor := 0.0
+var _course_idle := 0.0
+var _course_hold := 0.0
+var _course_blocked := 0.0
+var _course_path := 0.0
+var _course_last := Vector3.ZERO
+var _course_parts := {}
+var _course_checkpoints := 0
 
 
 func _init(p_env, overrides := {}) -> void:
@@ -59,6 +69,11 @@ func start() -> void:
 		_spotted[t.name] = {}
 		_prev_dist[t.name] = _wp_dist(t)
 		_prev_aim[t.name] = _aim_potential(t)
+	if env.config.has("terrain_course"):
+		_course_initial = _remaining_route(env.tanks[0])
+		_course_best = _course_initial
+		_course_anchor = _course_initial
+		_course_last = env.tanks[0].global_position
 
 
 func _add(name: String, v: float) -> void:
@@ -98,6 +113,8 @@ func on_shot(shooter: Tank, r: Dictionary) -> void:
 ## 결정 시점마다 호출: 보조 보상을 더하고 종료 여부를 돌려준다
 func decision() -> Dictionary:
 	var dt := float(TankAgent.PERCEIVE_EVERY) / Engine.physics_ticks_per_second
+	if env.config.has("terrain_course"):
+		return _course_decision(dt)
 	var kind := config_kind()
 	var out := {"done": false}
 	var arrived := false
@@ -163,6 +180,84 @@ func decision() -> Dictionary:
 
 func _done(reason: String, success: bool, winner: int) -> Dictionary:
 	return {"done": true, "reason": reason, "success": success, "winner": winner}
+
+
+func _course_add(t: Tank, component: String, value: float) -> void:
+	_course_parts[component] = float(_course_parts.get(component, 0.0)) + value
+	_add(t.name, value)
+
+
+func _remaining_route(t: Tank) -> float:
+	var remaining := _wp_dist(t)
+	for i in range(env.course_index, env.course_route.size() - 1):
+		var a: Vector3 = env.course_route[i]
+		var b: Vector3 = env.course_route[i + 1]
+		remaining += Vector2(a.x - b.x, a.z - b.z).length()
+	return remaining
+
+
+func _course_fail(t: Tank, reason: String) -> Dictionary:
+	_course_add(t, "failure", float(w.get("failure", -2.0)))
+	return _done(reason, false, -1)
+
+
+func _course_decision(dt: float) -> Dictionary:
+	var t: Tank = env.tanks[0]
+	var lesson: Dictionary = env.config.terrain_course
+	var moved := Vector2(t.global_position.x - _course_last.x, t.global_position.z - _course_last.z).length()
+	_course_last = t.global_position
+	_course_path += moved
+	var speed := moved / dt
+	_course_add(t, "time", float(w.time_per_s) * dt)
+	if not t.damage.can_move():
+		return _course_fail(t, "immobilized")
+	if TerrainCourse.outside(env.config.terrain_layout, t.global_position):
+		return _course_fail(t, "out_of_bounds")
+	var final: bool = env.course_index == env.course_route.size() - 1
+	var radius := float(lesson.goal_radius if final else lesson.checkpoint_radius)
+	# Every task waypoint uses the same observable rule: approach, slow down, hold.
+	if _wp_dist(t) <= radius and speed <= float(lesson.stop_speed) and absf(t.forward_speed()) <= float(lesson.stop_speed):
+		_course_hold += dt
+	else:
+		_course_hold = 0.0
+	if _course_hold + 0.000001 >= float(lesson.hold_s):
+		if final:
+			_course_add(t, "arrive", float(w.arrive))
+		else:
+			_course_add(t, "checkpoint", float(w.get("checkpoint", 1.0)))
+			_course_checkpoints += 1
+			env.course_index += 1
+			env.waypoint = env.course_route[env.course_index]
+			_course_hold = 0.0
+			_course_idle = 0.0
+	var remaining := _remaining_route(t)
+	# Reward only NEW best route progress; reversing/oscillating cannot harvest it again.
+	var improvement := maxf(0.0, _course_best - remaining)
+	_course_best = minf(_course_best, remaining)
+	_course_add(t, "progress", float(w.progress) * improvement / maxf(_course_initial, 1.0))
+	_course_idle += dt
+	if _course_anchor - _course_best >= 0.5:
+		_course_anchor = _course_best
+		_course_idle = 0.0
+	var pushing := maxf(absf(t.control.left_track), absf(t.control.right_track)) > 0.5 and t.control.brake < 0.2
+	_course_blocked = _course_blocked + dt if speed < 0.15 and pushing else 0.0
+	if _course_blocked > 2.0:
+		_course_add(t, "blocked", float(w.get("stalled_per_s", -0.1)) * dt)
+	if final and _course_hold + 0.000001 >= float(lesson.hold_s):
+		return _done("arrived_stopped", true, learner_team())
+	if _course_idle >= float(lesson.no_progress_s):
+		return _course_fail(t, "no_progress")
+	if env.tick >= env.time_limit_ticks:
+		return _course_fail(t, "time_limit")
+	return {"done": false}
+
+
+func course_summary() -> Dictionary:
+	return {"version": TerrainCourse.VERSION, "course": env.config.terrain_course.id,
+		"initial_route_m": snappedf(_course_initial, 0.01), "best_remaining_m": snappedf(_course_best, 0.01),
+		"path_m": snappedf(_course_path, 0.01), "checkpoints": _course_checkpoints,
+		"checkpoints_total": env.course_route.size() - 1, "hold_s": snappedf(_course_hold, 0.01),
+		"reward_components": _course_parts.duplicate()}
 
 
 func _wp_dist(t: Tank) -> float:

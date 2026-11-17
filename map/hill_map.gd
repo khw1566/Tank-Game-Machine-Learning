@@ -30,6 +30,7 @@ const LAYER_GROUND := 1
 ## 돌담 높이: 차체 중간까지 가림(포탑은 보임) → hull-down 자리
 const WALL_HEIGHT := 1.4
 const LAYER_FOLIAGE := 4
+signal obstacle_destroyed(event: Dictionary)
 
 @export var map_seed := 1
 @export var size_m := 1200.0
@@ -79,6 +80,11 @@ var _bodies := {}          # kind -> StaticBody3D
 var _foliage_area: Area3D
 var _mm := {}              # visual key -> Array[Transform3D]
 var _mm_col := {}          # visual key -> Array[Color]
+var _mm_nodes := {}
+var _visual_refs := {}
+var _solids: Array = []
+var foliage_clearings: Array = []
+var destruction := MapDestruction.new(self)
 
 
 var _generated := false
@@ -111,6 +117,11 @@ func generate() -> void:
 	_mm.clear()
 	_mm_col.clear()
 	_journal.clear()
+	_mm_nodes.clear()
+	_visual_refs.clear()
+	_solids.clear()
+	foliage_clearings.clear()
+	destruction.clear()
 	noise.seed = map_seed
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	noise.frequency = noise_frequency
@@ -172,6 +183,8 @@ func cover_at(p: Vector3) -> Array:
 	var out := []
 	var q := Vector2(p.x, p.z)
 	for v in vision_volumes:
+		if bool(v.get("destroyed", false)) or (v.type in ["woods", "treeline"] and foliage_cleared(q)):
+			continue
 		if not v.aabb.has_point(q) or p.y < v.y0 or p.y > v.y1:
 			continue
 		if v.kind == "cyl":
@@ -369,7 +382,83 @@ func is_clear(p: Vector2, r: float) -> bool:
 	for o in _occupied:
 		if p.distance_to(o[0]) < o[1] + r:
 			return false
+	for solid in _solids:
+		if solid.node.disabled:
+			continue
+		var delta: Vector2 = p - solid.center
+		if solid.has("radius"):
+			if delta.length() < r + float(solid.radius):
+				return false
+		else:
+			delta = delta.rotated(float(solid.yaw))
+			if absf(delta.x) < float(solid.half.x) + r and absf(delta.y) < float(solid.half.y) + r:
+				return false
 	return true
+
+
+func foliage_cleared(p: Vector2) -> bool:
+	for hole in foliage_clearings:
+		if p.distance_squared_to(hole.c) <= float(hole.r) * float(hole.r):
+			return true
+	return false
+
+
+## Analytic checks work immediately after map creation, before physics broadphase is updated.
+func is_spawn_safe(p: Vector2, radius := 5.0, exit_distance := 18.0) -> bool:
+	if not is_clear(p, radius):
+		return false
+	for volume in vision_volumes:
+		if bool(volume.get("destroyed", false)):
+			continue
+		var delta: Vector2 = p - volume.c
+		if volume.kind == "cyl":
+			if delta.length() < float(volume.r) + radius:
+				return false
+		else:
+			delta = delta.rotated(-float(volume.yaw))
+			if absf(delta.x) < float(volume.half.x) + radius and absf(delta.y) < float(volume.half.y) + radius:
+				return false
+	var min_height := INF
+	var max_height := -INF
+	for offset in [Vector2.ZERO, Vector2(radius, radius), Vector2(-radius, radius), Vector2(radius, -radius), Vector2(-radius, -radius)]:
+		var q: Vector2 = p + offset
+		if normal_at(q.x, q.y).y < cos(deg_to_rad(12.0)):
+			return false
+		var height := height_at(q.x, q.y)
+		min_height = minf(min_height, height)
+		max_height = maxf(max_height, height)
+	if max_height - min_height > 2.5:
+		return false
+	for direction in 8:
+		var axis := Vector2.from_angle(direction * TAU / 8.0)
+		var clear := true
+		for step in 6:
+			var q := p + axis * exit_distance * float(step + 1) / 6.0
+			if not is_clear(q, radius) or normal_at(q.x, q.y).y < cos(deg_to_rad(18.0)):
+				clear = false
+				break
+		if clear:
+			return true
+	return false
+
+
+func find_safe_spawn(preferred: Vector2, rng: RandomNumberGenerator, reserved: Array = [], radius := 5.0) -> Vector2:
+	var margin := size_m * 0.5 - radius - 25.0
+	for attempt in 192:
+		var candidate := preferred
+		if attempt > 0 and attempt < 64:
+			candidate += Vector2.from_angle(rng.randf() * TAU) * (12.0 + 1.5 * attempt)
+		elif attempt >= 64:
+			candidate = Vector2(rng.randf_range(-margin, margin), rng.randf_range(-margin, margin))
+		candidate = Vector2(clampf(candidate.x, -margin, margin), clampf(candidate.y, -margin, margin))
+		var separated := true
+		for other in reserved:
+			if candidate.distance_to(other) < radius * 2.0 + 2.0:
+				separated = false
+				break
+		if separated and is_spawn_safe(candidate, radius):
+			return candidate
+	return Vector2.INF  # Never silently spawn inside an obstacle when sampling fails.
 
 
 func _body(kind: String) -> StaticBody3D:
@@ -379,12 +468,14 @@ func _body(kind: String) -> StaticBody3D:
 		b.collision_layer = LAYER_GROUND
 		b.collision_mask = 0
 		b.set_meta("kind", kind)
+		b.set_meta("hill_map", self)
 		add_child(b)
 		_bodies[kind] = b
 	return _bodies[kind]
 
 
 func _add_box_shape(kind: String, center: Vector3, size: Vector3, yaw: float) -> void:
+	var id := _journal.size()
 	_journal.append(["box", kind, center, size, yaw])
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
@@ -392,9 +483,12 @@ func _add_box_shape(kind: String, center: Vector3, size: Vector3, yaw: float) ->
 	cs.shape = bs
 	cs.transform = Transform3D(Basis(Vector3.UP, yaw), center)
 	_body(kind).add_child(cs)
+	_solids.append({"node": cs, "center": Vector2(center.x, center.z), "half": Vector2(size.x, size.z) * 0.5, "yaw": yaw})
+	destruction.begin(kind, cs, id)
 
 
 func _add_cyl_shape(kind: String, center: Vector3, radius: float, height: float) -> void:
+	var id := _journal.size()
 	_journal.append(["cyl", kind, center, radius, height])
 	var cs := CollisionShape3D.new()
 	var c := CylinderShape3D.new()
@@ -403,6 +497,8 @@ func _add_cyl_shape(kind: String, center: Vector3, radius: float, height: float)
 	cs.shape = c
 	cs.position = center
 	_body(kind).add_child(cs)
+	_solids.append({"node": cs, "center": Vector2(center.x, center.z), "radius": radius})
+	destruction.begin(kind, cs, id)
 
 
 ## 시야 볼륨 등록(+ 레이어 4 충돌체: 다른 코드가 물리 쿼리로도 쓸 수 있게)
@@ -417,6 +513,7 @@ func _add_vision_cyl(type: String, c: Vector2, r: float, y0: float, y1: float, d
 	cs.shape = s
 	cs.position = Vector3(c.x, (y0 + y1) * 0.5, c.y)
 	_foliage_area.add_child(cs)
+	destruction.foliage(vision_volumes[-1], cs)
 
 
 func _add_vision_box(type: String, c: Vector2, half: Vector2, yaw: float, y0: float, y1: float, density: float) -> void:
@@ -431,15 +528,19 @@ func _add_vision_box(type: String, c: Vector2, half: Vector2, yaw: float, y0: fl
 	# 2D 회전(yaw)은 x→z 평면에서 반시계. Godot Basis(UP, a)는 x 를 -z 쪽으로 돌리므로 부호 반전
 	cs.transform = Transform3D(Basis(Vector3.UP, -yaw), Vector3(c.x, (y0 + y1) * 0.5, c.y))
 	_foliage_area.add_child(cs)
+	destruction.foliage(vision_volumes[-1], cs)
 
 
 func _visual(key: String, xf: Transform3D, col: Color) -> void:
+	var id := _journal.size()
 	_journal.append(["vis", key, xf, col])
+	destruction.visual(id)
 	if not visuals_enabled:
 		return
 	if not _mm.has(key):
 		_mm[key] = []
 		_mm_col[key] = []
+	_visual_refs[id] = [key, _mm[key].size()]
 	_mm[key].append(xf)
 	_mm_col[key].append(col)
 
@@ -723,6 +824,19 @@ func add_stone(p: Vector2, size: Vector3, yaw := 0.0, col := Color(0.52, 0.5, 0.
 	_visual("box", Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(full), center), col)
 
 
+## Flush the visuals after adding all obstacles of a procedural lesson.
+func finish_layout() -> void:
+	if visuals_enabled:
+		_flush_multimeshes()
+
+
+func add_practice_tree(p: Vector2, seed_value: int) -> void:
+	_ensure_foliage_area()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	_add_lone_tree(p, rng)
+
+
 ## 테스트·시나리오용: 길이 length, 지름 d 의 쓰러진 통나무(상자 근사), 방향 yaw(라디안, 2D 각도)
 func add_log(p: Vector2, length: float, d: float, yaw := 0.0) -> void:
 	var g := height_at(p.x, p.y)
@@ -746,6 +860,12 @@ func add_wall(a: Vector2, b: Vector2) -> void:
 	_add_wall_line(a, b)
 
 
+func add_training_barrier(p: Vector2, size: Vector3, yaw := 0.0) -> void:
+	var center := Vector3(p.x, height_at(p.x, p.y) + size.y * 0.5, p.y)
+	_add_box_shape("wall", center, size, yaw)
+	_visual("box", Transform3D(Basis(Vector3.UP, yaw) * Basis.from_scale(size), center), Color(0.6, 0.58, 0.54))
+
+
 func add_hedge(a: Vector2, b: Vector2) -> void:
 	_ensure_foliage_area()
 	var yaw := (b - a).angle()
@@ -757,6 +877,7 @@ func add_hedge(a: Vector2, b: Vector2) -> void:
 		var g := height_at(c.x, c.y)
 		_add_box_shape("hedge", Vector3(c.x, g + 0.45, c.y), Vector3(len + 0.4, 1.8, 2.2), -yaw)
 		_add_vision_box("hedge", c, Vector2(len * 0.5 + 0.2, 1.3), yaw, g, g + 3.6, DENSITY_HEDGE)
+		_visual("bush", Transform3D(_yaw_basis(yaw, Vector3(len + 0.4, 3.6, 2.6)), Vector3(c.x, g + 1.8, c.y)), Color(0.2, 0.36, 0.16))
 	obstacles.append({"type": "hedge", "pos": _v3((a + b) * 0.5), "radius": a.distance_to(b) * 0.5, "a": _v3(a), "b": _v3(b)})
 
 
@@ -779,6 +900,9 @@ func _v3(p: Vector2) -> Vector3:
 # ---------------------------------------------------------------- 외형(MultiMesh: 수천 개라도 노드 몇 개)
 
 func _flush_multimeshes() -> void:
+	for node in _mm_nodes.values():
+		node.free()
+	_mm_nodes.clear()
 	var meshes := {
 		"box": BoxMesh.new(),
 		"roof": _roof_mesh(),
@@ -806,14 +930,11 @@ func _flush_multimeshes() -> void:
 		var mmi := MultiMeshInstance3D.new()
 		mmi.name = "MM_" + key
 		mmi.multimesh = mm
+		_mm_nodes[key] = mmi
 		var mat := StandardMaterial3D.new()
 		mat.vertex_color_use_as_albedo = true
 		mmi.material_override = mat
 		add_child(mmi)
-	_mm.clear()
-	_mm_col.clear()
-
-
 func _cyl(top: float, bottom: float, h: float, seg: int) -> CylinderMesh:
 	var m := CylinderMesh.new()
 	m.top_radius = top
@@ -841,7 +962,7 @@ func to_record() -> Dictionary:
 		hs.append(snappedf(v, 0.001))
 	return {"generator": "HillMap", "seed": map_seed, "size_m": size_m, "cell_m": cell_m,
 		"features_enabled": features_enabled, "spawn_points": _ser(spawn_points),
-		"heights": hs, "obstacles": _ser(obstacles), "prims": _ser(_journal)}
+		"heights": hs, "obstacles": _ser(obstacles), "prims": _ser(_journal), "destroyed": destruction.destroyed_ids()}
 
 
 ## 기록에서 맵 재구성(리플레이 뷰어용). add_child 전에 부르면 _ready 에서 만든다.
@@ -862,6 +983,11 @@ func _build_from_record() -> void:
 	_mm.clear()
 	_mm_col.clear()
 	_journal.clear()
+	_mm_nodes.clear()
+	_visual_refs.clear()
+	_solids.clear()
+	foliage_clearings.clear()
+	destruction.clear()
 	map_seed = int(_record.get("seed", map_seed))
 	size_m = float(_record.size_m)
 	cell_m = float(_record.cell_m)
@@ -884,6 +1010,7 @@ func _build_from_record() -> void:
 		obstacles.append(d)
 	if visuals_enabled:
 		_flush_multimeshes()
+	destruction.set_destroyed(_record.get("destroyed", []))
 
 
 ## 기록된 격자에서 쌍선형 보간

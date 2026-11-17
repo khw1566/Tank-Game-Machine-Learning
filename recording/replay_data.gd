@@ -9,6 +9,7 @@ var frames: Array = []       # {"tick", "t", "s", "score", "r"}
 var shots: Array = []
 var rewards: Array = []
 var knockouts: Array = []
+var obstacle_events: Array = []
 var decisions: Array = []
 var end := {}
 var fields := {}             # 필드 이름 -> 배열 인덱스
@@ -40,6 +41,8 @@ static func load_file(p: String) -> ReplayData:
 				d.rewards.append(e)
 			"knockout":
 				d.knockouts.append(e)
+			"obstacle_destroyed":
+				d.obstacle_events.append(e)
 			"decision":
 				d.decisions.append(e)
 			"end":
@@ -122,6 +125,7 @@ func pose(id: int, t: float) -> Dictionary:
 		"gun_pitch": lerpf(field(a, "gun_pitch"), field(b, "gun_pitch"), w),
 		"status": int(field(a, "status")),
 		"speed": (field(a, "track_l") + field(a, "track_r")) * 0.5,
+		"tracks": [lerpf(field(a, "track_l"), field(b, "track_l"), w), lerpf(field(a, "track_r"), field(b, "track_r"), w)],
 		"reload": field(a, "reload"),
 		"action": [field(a, "a_left"), field(a, "a_right"), field(a, "a_brake"),
 			field(a, "a_traverse"), field(a, "a_elev"), field(a, "a_fire")],

@@ -15,20 +15,28 @@ import collections
 import json
 import os
 import time
+import tempfile
 from pathlib import Path
 
 DECISION_S = 0.1   # 결정 1번 = 게임 0.1초(30Hz 물리 × 3틱)
 
 
 def write_json_atomic(path: Path, data: dict) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    for _ in range(5):          # Windows: 대시보드가 읽는 중이면 잠깐 실패할 수 있다
-        try:
-            os.replace(tmp, path)
-            return
-        except PermissionError:
-            time.sleep(0.02)
+    fd, name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            json.dump(data, output, ensure_ascii=False)
+        for attempt in range(10):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if attempt == 9:
+                    raise
+                time.sleep(.02)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 class TrainController:
@@ -204,6 +212,20 @@ class TrainController:
                                 "success_rate": round(cur.success_rate(cur.stage["id"], p.get("window", 100)), 4),
                                 "window": p.get("window"), "threshold": p.get("threshold"),
                                 "min_episodes": p.get("min_episodes"), "max_episodes": p.get("max_episodes")}
+            if cur.stage["id"] == "drive_terrain":
+                from .terrain import COURSES, WINDOW
+                index = next((i for i, c in enumerate(COURSES) if c["id"] == cur.terrain_fixed), cur.terrain_idx)
+                course = COURSES[index]
+                results = cur.terrain_results[course["id"]]
+                st["curriculum"]["terrain"] = {
+                    "course": course["id"], "label": course["label"], "index": index, "fixed": bool(cur.terrain_fixed),
+                    "count": len(COURSES), "episodes": len(results), "window": WINDOW,
+                    "success_rate": round(sum(results) / len(results), 4) if results else 0.0,
+                    "threshold": course["threshold"],
+                    "courses": [{"id": c["id"], "label": c["label"],
+                                 "episodes": len(cur.terrain_results[c["id"]]),
+                                 "success_rate": (sum(cur.terrain_results[c["id"]]) / len(cur.terrain_results[c["id"]])
+                                                  if cur.terrain_results[c["id"]] else 0.0)} for c in COURSES]}
         # 중지된 뒤에도 마지막 단계·환경 수가 보이게
         for k in ("n_envs", "learner_policy", "curriculum"):
             if k in st:

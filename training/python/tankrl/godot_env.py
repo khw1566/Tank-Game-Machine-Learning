@@ -31,6 +31,28 @@ PROGRESS_FIELDS = ["wall_time", "global_step", "env", "uid", "tank", "stage", "s
                    "episode_file", "replay_dir", "final_hash"]
 
 
+def episode_counter(run_dir: Path, run_name: str, learner: str) -> int:
+    """Include unfinished episodes saved on shutdown, so resume never reuses their filenames."""
+    prefix = f'{run_name}_{learner}_'
+    highest = 0
+    paths = (run_dir / 'episodes').glob('env*/*.json')
+    for path in paths:
+        if path.stem.startswith(prefix):
+            value = path.stem[len(prefix):].split('_', 1)[0]
+            if value.isdigit():
+                highest = max(highest, int(value))
+    progress = run_dir / 'progress.csv'
+    if progress.exists():
+        with progress.open(newline='', encoding='utf-8-sig') as source:
+            for row in csv.DictReader(source):
+                uid = row.get('uid', '')
+                if uid.startswith(prefix):
+                    value = uid[len(prefix):].split('_', 1)[0]
+                    if value.isdigit():
+                        highest = max(highest, int(value))
+    return highest
+
+
 def godot_command(godot: str, project: str | None, port: int, env_id: int, log_dir: str,
                   extra: list[str] | None = None) -> list[str]:
     """godot = Godot 편집기 실행 파일(+ project 경로) 또는 내보낸 TankGame.exe(project 없이)."""
@@ -107,7 +129,7 @@ class GodotVecEnv(VecEnv):
         self.policy_fn = None          # 같은 종류 아군(copy) 추론: fn(obs[n, D]) -> actions[n, A]
         self.learner_version = ""
         self.global_step = 0
-        self.episode_count = 0
+        self.episode_count = episode_counter(self.run_dir, self.run_name, learner)
         self.procs = [GodotProcess(godot, project, i, str(self.run_dir), quiet=quiet) for i in range(n_envs)]
         p0 = self.procs[0]
         self.obs_labels = p0.hello.get("obs_labels", [])
@@ -122,10 +144,6 @@ class GodotVecEnv(VecEnv):
         self._ret = np.zeros(n_envs)
         self._progress_path = self.run_dir / "progress.csv"
         new = not self._progress_path.exists()
-        if not new:
-            # 이어서 학습(--resume·환경 수 변경 재시작)할 때 에피소드 번호를 이어 가서 재현 파일 이름(uid)이 겹치지 않게
-            with open(self._progress_path, newline="", encoding="utf-8") as f:
-                self.episode_count = sum(1 for r in csv.DictReader(f) if r.get("tank") == learner)
         self._progress_f = open(self._progress_path, "a", newline="", encoding="utf-8")
         self._progress = csv.DictWriter(self._progress_f, fieldnames=PROGRESS_FIELDS)
         if new:
@@ -163,6 +181,10 @@ class GodotVecEnv(VecEnv):
                 "stage_idx": STAGE_IDS.index(stage["id"]), "current_stage": self.curriculum.stage["id"]}
         cfg = make_config(stage, self.learner, lu, seed, self._map_seed(i, stage), uid, record, meta,
                           self.reward_overrides)
+        if int(self.procs[i].hello.get("spawn_safety_version", 0)) < 1:
+            raise RuntimeError("안전 스폰·장애물 파괴를 지원하는 최신 게임 실행 파일로 다시 빌드하세요.")
+        if "terrain_course" in cfg and int(self.procs[i].hello.get("terrain_course_version", 0)) < cfg["terrain_course"]["version"]:
+            raise RuntimeError("현재 지형주행 코스를 지원하지 않는 게임입니다. 최신 소스로 게임을 다시 빌드하세요.")
         ext = [k for k, d in enumerate(lu) if d["ctrl"] == "external"]
         roles = [lu[k]["role"] for k in ext]
         self._ctx[i] = {"cfg": cfg, "stage": stage, "roles": roles, "ext_names": [names[k] for k in ext],
@@ -256,7 +278,23 @@ class GodotVecEnv(VecEnv):
                "final_hash": ep.get("final_hash", "")}
         self._progress.writerow(row)
         self._progress_f.flush()
-        promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step)
+        terrain = ep.get("terrain", {})
+        if terrain:
+            path = self.run_dir / "terrain_progress.csv"
+            fields = ["global_step", "uid", "course", "success", "reason", "initial_route_m",
+                      "best_remaining_m", "path_m", "checkpoints", "checkpoints_total", "reward_components"]
+            new_file = not path.exists()
+            with path.open("a", newline="", encoding="utf-8") as output:
+                writer = csv.DictWriter(output, fieldnames=fields)
+                if new_file:
+                    writer.writeheader()
+                data = {key: terrain.get(key, "") for key in fields}
+                data.update(global_step=self.global_step, uid=cfg["uid"], success=int(bool(ep.get("success"))),
+                            reason=ep.get("reason", ""),
+                            reward_components=json.dumps(terrain.get("reward_components", {})))
+                writer.writerow(data)
+        promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step,
+                                       terrain.get("course", ""))
         if promo:
             self.log_stage_change(promo)
 

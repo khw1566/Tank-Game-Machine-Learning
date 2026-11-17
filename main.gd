@@ -45,10 +45,12 @@ var recorder: MatchRecorder
 var markers: WorldMarkers
 var overlay: CanvasLayer
 var minimap: MinimapView
+var impact_view: ImpactView
 var score_graph: ScoreGraph
 var score_label: Label
 var feed_label: Label
 var minimap_big := false
+var detailed_hud := false
 var last_event := ""
 var banner := ""
 var _restart_timer := -1.0
@@ -76,11 +78,13 @@ func _ready() -> void:
 	if cli_spawn_distance > 0.0:
 		map.spawn_points = [Vector3(0, 0, cli_spawn_distance * 0.5), Vector3(0, 0, -cli_spawn_distance * 0.5)]
 	add_child(map)
-	_spawn("tiger1", 0, map.spawn_points[0], 0)
+	if not _spawn("tiger1", 0, map.spawn_points[0], 0):
+		return
 	var n := allied_lineup.size()
 	for i in n:
 		var offset := Vector3((i - (n - 1) * 0.5) * 25.0, 0, 0)
-		_spawn(allied_lineup[i], 1, map.spawn_points[1] + offset, i + 1)
+		if not _spawn(allied_lineup[i], 1, map.spawn_points[1] + offset, i + 1):
+			return
 	var team_idx := [0, 0]
 	var views := {}
 	for t in tanks:
@@ -127,16 +131,25 @@ func _parse_cli() -> void:
 
 ## yaw = 0 이면 -Z 방향을 바라본다. 티거는 +Z 끝에서 -Z(연합군 쪽)를 보므로 0,
 ## 연합군은 -Z 끝에서 +Z 를 봐야 하므로 PI.
-func _spawn(id: String, team: int, at: Vector3, seed_v: int) -> void:
+func _spawn(id: String, team: int, at: Vector3, seed_v: int) -> bool:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = map_seed * 100 + seed_v
+	var reserved := tanks.map(func(t): return Vector2(t.position.x, t.position.z))
+	var spot := map.find_safe_spawn(Vector2(at.x, at.z), rng, reserved)
+	if spot == Vector2.INF:
+		push_error("No safe spawn with a clear exit for " + id)
+		get_tree().quit(2)
+		return false
 	var t := Tank.new()
 	t.name = "%s_%d" % [id, tanks.size()]
 	t.setup(id, team, 0)
-	t.position = Vector3(at.x, map.height_at(at.x, at.z) + 0.5, at.z)
+	t.position = Vector3(spot.x, map.height_at(spot.x, spot.y) + 0.5, spot.y)
 	t.rotation.y = 0.0 if team == 0 else PI
 	add_child(t)
 	t.shot_fired.connect(_on_shot)
 	t.knocked_out.connect(_on_knocked_out)
 	tanks.append(t)
+	return true
 
 
 func _setup_view() -> void:
@@ -165,6 +178,7 @@ func _setup_view() -> void:
 	camera.view = agents[player_index].view
 	add_child(camera)
 	camera.current = true
+	camera.update_view(tanks[player_index], 0.0)
 	markers = WorldMarkers.new()
 	add_child(markers)
 	for t in tanks:
@@ -173,6 +187,8 @@ func _setup_view() -> void:
 	add_child(layer)
 	hud = Label.new()
 	hud.position = Vector2(10, 10)
+	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.clip_text = true
 	_outline(hud)
 	layer.add_child(camera.reticle)
 	layer.add_child(hud)
@@ -183,6 +199,9 @@ func _setup_view() -> void:
 	minimap = MinimapView.new()
 	minimap.set_map(map.to_record())
 	overlay.add_child(minimap)
+	minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	impact_view = ImpactView.new()
+	overlay.add_child(impact_view)
 	score_graph = ScoreGraph.new()
 	overlay.add_child(score_graph)
 	score_label = Label.new()
@@ -192,6 +211,8 @@ func _setup_view() -> void:
 	_outline(feed_label)
 	feed_label.add_theme_font_size_override("font_size", 13)
 	feed_label.clip_text = true
+	score_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	feed_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_child(feed_label)
 	_layout_overlay()
 	get_viewport().size_changed.connect(_layout_overlay)
@@ -206,14 +227,17 @@ func _layout_overlay() -> void:
 	if minimap == null:
 		return
 	var vs := get_viewport().get_visible_rect().size
-	var s := minf(vs.y - 140.0, 620.0) if minimap_big else 240.0
+	hud.size = Vector2(maxf(260, vs.x - 280), vs.y - 20)
+	var s := maxf(140.0, minf(vs.y - 360.0, 620.0)) if minimap_big else minf(240.0, vs.y * .34)
 	minimap.size = Vector2(s, s)
 	minimap.position = Vector2(vs.x - s - 10.0, 10.0)
+	impact_view.position = Vector2(vs.x - 250.0, minimap.position.y + s + 6.0)
+	impact_view.size = Vector2(240, minf(210, vs.y * .29))
 	score_graph.size = Vector2(240, 70)
-	score_graph.position = Vector2(vs.x - 250.0, minimap.position.y + s + 6.0)
+	score_graph.position = Vector2(vs.x - 250.0, impact_view.position.y + impact_view.size.y + 6.0)
 	score_label.position = Vector2(vs.x - 250.0, score_graph.position.y + 72.0)
 	feed_label.position = Vector2(vs.x - 250.0, score_label.position.y + 26.0)
-	feed_label.size = Vector2(240, 200)
+	feed_label.size = Vector2(240, maxf(20, vs.y - feed_label.position.y - 10))
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -254,6 +278,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_F7:
 			ai_mode = (ai_mode + 1) % 3
 			banner = AI_LABELS[ai_mode]
+		KEY_F8:
+			detailed_hud = not detailed_hud
 		KEY_H:
 			if markers:
 				markers.show_hits = not markers.show_hits
@@ -288,7 +314,7 @@ func _physics_process(delta: float) -> void:
 		if human:
 			# 사람: 화면 카메라(camera.view == ag.view)가 시점을 바꾸고, 관측은 기록·HUD 용으로 같이 만든다
 			ag.update(tanks, delta)
-			t.control = ag.view.apply_locks(KeyboardController.read())
+			t.control = camera.human_control(t, delta)
 			a = Array(t.control.to_array())
 			who = "human"
 		elif ai_mode != AI_OFF and t.damage.is_combat_effective():
@@ -321,7 +347,7 @@ func _process(delta: float) -> void:
 	# 조준경에는 자체 거리 눈금이 있으므로 거리 격자 글자가 가리지 않게 숨긴다
 	grid.visible = camera.mode != TankViewCamera.GUNNER
 	var d := p.damage
-	hud.text = "[%s] %s  팀 %d   (Tab: 전차 전환)   %s   ep%d  %s\n%s\n%s\n상태: %s  재장전 %.1fs  탄 %d  [%s] (1/2/3 탄종)\n궤도 L %.1f / R %.1f m/s  기어 %s   포탑 %.0f°  포 %.1f° (%+.0f°~%+.0f°)  차체 피치 %.1f°\n조준 오차 %.2f mrad (1000m에서 %.1fm)%s\n승무원: %s\n모듈: %s\n최근: %s\n조작: Q/A 좌궤도, E/D 우궤도, W/S 양쪽, Space 브레이크, ←→ 포탑, ↑↓ 포, F 발사, G 거리 격자/링, V 시선 표시\nShift 포수 조준경  C(누른 채) 자유 시선·포 고정  B 전차장 시점·포 고정  휠/+- 확대  마우스·방향키 시선\nF1 장갑 시험장  F2 오버레이  M 지도 크기  H 탄착  P 경로  F3 리플레이  F4 경기 종료·보고서  F5 새 경기  F6 기록 폴더  F7 AI 전환  K 공정 시야(%s)\n%s" % [
+	hud.text = "[%s] %s  팀 %d   (Tab: 전차 전환)   %s   ep%d  %s\n%s\n%s\n상태: %s  재장전 %.1fs  탄 %d  [%s] (1/2/3 탄종)\n궤도 L %.1f / R %.1f m/s  기어 %s   포탑 %.0f°  포 %.1f° (%+.0f°~%+.0f°)  차체 피치 %.1f°\n조준 오차 %.2f mrad (1000m에서 %.1fm)%s\n승무원: %s\n모듈: %s\n최근: %s\n조작: Q/A 좌궤도, E/D 우궤도, W/S 양쪽, Space 브레이크, 마우스 조준, 좌클릭/F 발사, R 조준 전환, 방향키 미세 조준, G 거리 격자/링, V 시선 표시\nShift 포수 조준경  C/우클릭(누른 채) 자유 시선·포 고정  B 전차장 시점·포 고정  휠/+- 확대  마우스·방향키 시선\nF1 장갑 시험장  F2 오버레이  M 지도 크기  H 탄착  P 경로  F3 리플레이  F4 경기 종료·보고서  F5 새 경기  F6 기록 폴더  F7 AI 전환  K 공정 시야(%s)\n%s" % [
 		p.name, p.spec.display_name, p.team, AI_LABELS[ai_mode], recorder.episode, ReportBuilder._mmss(recorder.sim_time()),
 		camera.status_text(), _vision_text(p), d.status_label(), p.reload_timer, d.ammo_remaining, p.current_shell().shell_name,
 		p.track_speed_left, p.track_speed_right, p.gear_label(),
@@ -329,6 +355,13 @@ func _process(delta: float) -> void:
 		p.hull_pitch_deg(), p.aim_error_mrad, p.aim_error_mrad, "  [안정장치]" if p.damage.stabilizer_working() else "",
 		", ".join(d.crew.map(func(c): return "%s:%s" % [c.id, c.status])),
 		_damaged_modules(d), last_event, "켬" if _fair() else "끔", banner]
+	if not detailed_hud:
+		var lines := hud.text.split("\n")
+		hud.text = "\n".join([lines[0], lines[1], lines[4], lines[5], lines[9],
+			"마우스 조준 · 좌클릭/F 발사 · 우클릭/C 둘러보기 · Shift 조준경 · R 커서 조준 전환",
+			"W/S 전후진 · Q/A 좌궤도 · E/D 우궤도 · Space 제동 · Tab 전차 전환 · G 거리 표시 · F8 상세 HUD"])
+		if banner != "":
+			hud.text += "\n" + banner
 	_update_overlay()
 
 
@@ -455,14 +488,18 @@ func _on_shot_recorded(e: Dictionary) -> void:
 	var to: Vector3 = ReplayData.vec3(r.hit_pos) if r.has("hit_pos") else from + ReplayData.vec3(r.get("dir", [0, 0, -1])) * 600.0
 	markers.add_tracer(from, to)
 	if r.has("hit_pos"):
-		markers.add_hit(to, MatchRecorder.shot_kind(r))
+		var target: Tank = tanks[int(e.target)] if int(e.get("target", -1)) >= 0 and int(e.target) < tanks.size() else null
+		var attachment: Node3D = target.hit_attachment(str(r.get("part", "hull"))) if target else null
+		markers.add_hit(to, MatchRecorder.shot_kind(r), -ReplayData.vec3(r.get("dir", [0, 0, -1])), attachment)
+		if impact_view and (int(e.shooter) == player_index or int(e.get("target", -1)) == player_index):
+			impact_view.show_shot(r, target, tanks[int(e.shooter)].current_shell().muzzle_velocity_ms)
 
 
 func _on_shot(shooter: Tank, result: Dictionary) -> void:
 	if result.get("hit", false):
 		last_event = "%s → %s: %s %s (유효 %smm / 관통 %smm) %s" % [shooter.name, result.target_name,
-			result.zone, "관통" if result.penetrated else ("도탄" if result.ricochet else "불관통"),
-			result.effective_mm, result.pen_roll_mm, ",".join(result.events)]
+			ImpactView.zone_label(result), "관통" if result.penetrated else ("도탄" if result.ricochet else "불관통"),
+			result.effective_mm, result.pen_roll_mm, ""]
 	else:
 		last_event = "%s: 빗나감/차단 (%s)" % [shooter.name, result.get("blocked_by", "")]
 	if not _headless:
