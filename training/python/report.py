@@ -1,6 +1,11 @@
 """학습 보고서(HTML 한 장, 외부 라이브러리 없음): 단계별 학습 곡선·승급 기록·단계 통계·기록된 리플레이 목록.
 
   python report.py runs/<run>            → runs/<run>/training_report.html
+  python report.py runs/<run> --pdf      → 위 HTML + training_report.pdf (Edge/Chrome headless 인쇄)
+  python report.py runs/<run> --pdf --fragment "stage=m3_under_fire&variant=ambush"   → 고른 단계·변형만 PDF
+
+커리큘럼 v4 실행은 단계 × 세부 변형(× 전차)별 곡선·표와 화면 필터(단계·변형·전차)를 넣는다.
+필터는 주소의 #stage=…&variant=…&tank=… 로도 고를 수 있고, 인쇄/PDF 에는 고른 것만 나온다.
 """
 from __future__ import annotations
 
@@ -10,10 +15,12 @@ import json
 import os
 import sys
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 from tankrl.curriculum import STAGE_IDS
 from tankrl.objectives import ObjectiveIndex, objective_color
+from tankrl import report_v4
 
 COLORS = ["#2a6fdb", "#d9534f", "#3c9d4e", "#e08a1e", "#8e5bd0", "#1aa3a3", "#b5487a", "#6b7b2a", "#555"]
 TANK_LABEL = {"tiger1": "티거 I", "sherman75": "셔먼 75mm", "t34_76": "T-34/76"}
@@ -74,10 +81,64 @@ def svg_chart(series, title, ylabel, width=900, height=260, ymin=None, ymax=None
     return "".join(out)
 
 
+def load_promos(directories):
+    promos = []
+    for directory in directories:
+        if (directory / "curriculum_log.jsonl").exists():
+            promos.extend(json.loads(line) for line in (directory / "curriculum_log.jsonl").read_text(encoding="utf-8").splitlines() if line.strip())
+    promos = list({json.dumps(event, sort_keys=True): event for event in promos}.values())
+    promos.sort(key=lambda p: float(p.get("global_step", 0)))
+    return promos
+
+
+def session_line(manifest) -> str:
+    sess = manifest.get("sessions", [])
+    if not sess:
+        return ""
+    s0, s1 = sess[0], sess[-1]
+    return (f"<p class=muted>시작 {s0.get('started')} · 세션 {len(sess)}회 · git {s1.get('git_commit', '')[:10]} · "
+            f"Godot {html.escape(s1.get('godot', ''))} · torch {s1.get('torch')} · SB3 {s1.get('stable_baselines3')}</p>")
+
+
+REPRO = ("<h2>재현</h2><p>모든 에피소드는 <code>episodes/env*/&lt;uid&gt;.json</code> 에 설정·시드·행동이 저장되어 있어, "
+         "<code>python reproduce.py &lt;파일&gt;</code> 로 똑같이 다시 돌려 전체 리플레이(F3 뷰어)·경기 보고서·관측 기록을 만들 수 있다. "
+         "끝 상태 해시가 같으면 원래 경기와 동일하다.</p>")
+
+
+def write_doc(run_dir: Path, parts: list[str], meta: dict | None = None) -> Path:
+    head = ("<!doctype html><html lang=ko><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">"
+            f"<title>학습 보고서 {html.escape(run_dir.name)}</title><style>{CSS}{report_v4.CSS}</style></head><body>")
+    tail = ""
+    if meta:
+        blob = json.dumps(meta, ensure_ascii=False).replace("</", "<\\/")
+        tail = f"<script type=application/json id=report-meta>{blob}</script><script>{report_v4.FILTER_JS}</script>"
+    out = run_dir / "training_report.html"
+    tmp = out.with_suffix(".html.tmp")
+    tmp.write_text(head + "\n".join(p for p in parts if p) + tail + "</body></html>", encoding="utf-8")
+    os.replace(tmp, out)
+    return out
+
+
+def build_v4(run_dir: Path, directories, manifest) -> Path | None:
+    promos = load_promos(directories)
+    body, meta = report_v4.build_sections(run_dir, directories, promos)
+    if not body:
+        return None
+    parts = [f"<h1>학습 보고서 — {html.escape(run_dir.name)} <small class=muted>커리큘럼 v4</small></h1>", session_line(manifest),
+             f"<p class=muted>만든 시각 {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>", report_v4.TOOLBAR, body,
+             report_v4.recorded_table(run_dir, directories), REPRO]
+    return write_doc(run_dir, parts, meta)
+
+
 def build(run_dir: Path) -> Path:
     sources_file = run_dir / 'history_sources.json'
     sources = json.loads(sources_file.read_text(encoding='utf-8')).get('sources', []) if sources_file.exists() else []
     directories = [run_dir / source['path'] for source in sources] + [run_dir]
+    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8")) if (run_dir / "run.json").exists() else {}
+    if manifest.get("curriculum_version") == 4 or any((d / "scenario_progress.csv").exists() for d in directories):
+        out = build_v4(run_dir, directories, manifest)
+        if out:
+            return out
     unique = {}
     objectives = ObjectiveIndex()
     for directory in directories:
@@ -93,21 +154,12 @@ def build(run_dir: Path) -> Path:
                     row = objectives.annotate(row, directory, terrain.get((row.get('uid'), row.get('global_step'))))
                     unique[(row.get('uid') or str(row), row.get('final_hash', ''))] = row
     rows = sorted(unique.values(), key=lambda row: float(row.get('wall_time') or 0))
-    promos = []
-    for directory in directories:
-        if (directory / 'curriculum_log.jsonl').exists():
-            promos.extend(json.loads(line) for line in (directory / 'curriculum_log.jsonl').read_text(encoding='utf-8').splitlines() if line.strip())
-    promos = list({json.dumps(event, sort_keys=True): event for event in promos}.values())
-    manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8")) if (run_dir / "run.json").exists() else {}
+    promos = load_promos(directories)
     by_tank = defaultdict(list)
     for r in rows:
         by_tank[r["tank"]].append(r)
-    parts = [f"<h1>학습 보고서 — {html.escape(run_dir.name)}</h1>"]
-    sess = manifest.get("sessions", [])
-    if sess:
-        s0, s1 = sess[0], sess[-1]
-        parts.append(f"<p class=muted>시작 {s0.get('started')} · 세션 {len(sess)}회 · git {s1.get('git_commit', '')[:10]} · "
-                     f"Godot {html.escape(s1.get('godot', ''))} · torch {s1.get('torch')} · SB3 {s1.get('stable_baselines3')}</p>")
+    parts = [f"<h1>학습 보고서 — {html.escape(run_dir.name)}</h1>", session_line(manifest),
+             '<div class="toolbar no-print"><span class=sp></span><button type=button onclick="window.print()">인쇄 / PDF로 저장</button></div>']
     parts.append("<table><tr><th>전차</th><th>에피소드</th><th>결정 스텝</th><th>현재 단계</th><th>최근 100 성공률</th></tr>")
     for tank, rs in by_tank.items():
         cur = rs[-1]["current_stage"]
@@ -212,22 +264,32 @@ def build(run_dir: Path) -> Path:
                     parts.append(f'<tr><td>{html.escape(name)}</td><td>{html.escape(reason)}</td><td>{value:.4f}</td></tr>')
             parts.append('</table>')
 
-    parts.append("<h2>재현</h2><p>모든 에피소드는 <code>episodes/env*/&lt;uid&gt;.json</code> 에 설정·시드·행동이 저장되어 있어, "
-                 "<code>python reproduce.py &lt;파일&gt;</code> 로 똑같이 다시 돌려 전체 리플레이(F3 뷰어)·경기 보고서·관측 기록을 만들 수 있다. "
-                 "끝 상태 해시가 같으면 원래 경기와 동일하다.</p>")
-    css = """.objective-legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 20px;font-size:12px}.objective-legend span{display:inline-flex;align-items:center;gap:5px}.objective-legend i{width:12px;height:4px;display:inline-block}body{font-family:system-ui,'Malgun Gothic',sans-serif;margin:24px auto;max-width:960px;padding:0 16px;color:#222;background:#fff}
+    parts.append(REPRO)
+    return write_doc(run_dir, parts)
+
+
+CSS = """.objective-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 16px;font-size:12px}.objective-legend span{display:inline-flex;align-items:center;gap:5px}.objective-legend i{width:12px;height:4px;display:inline-block}
+body{font-family:system-ui,'Malgun Gothic',sans-serif;margin:24px auto;max-width:960px;padding:0 16px;color:#222;background:#fff}
 h1{font-size:22px}h2{margin-top:32px;border-bottom:1px solid #ddd;padding-bottom:4px}table{border-collapse:collapse;font-size:13px;margin:8px 0}
-td,th{border:1px solid #ddd;padding:4px 8px;text-align:left}th{background:#f4f4f4}.muted{color:#777;font-size:13px}
-.chart{width:100%;height:auto;margin:8px 0;background:#fcfcfc;border:1px solid #eee}.ct{font-size:13px;font-weight:600}.ax{font-size:11px;fill:#555}
-.grid{stroke:#e6e6e6}.vl{stroke:#999;stroke-dasharray:4 3}.vt{font-size:10px;fill:#666}code{background:#f3f3f3;padding:1px 4px}"""
-    out = run_dir / "training_report.html"
-    out.write_text(f"<!doctype html><meta charset=utf-8><title>학습 보고서 {html.escape(run_dir.name)}</title><style>{css}</style>"
-                   + "\n".join(parts), encoding="utf-8")
-    return out
+td,th{border:1px solid #ddd;padding:4px 8px;text-align:left;vertical-align:top}th{background:#f4f4f4}.muted{color:#777;font-size:13px}
+.chart{width:100%;height:auto;margin:4px 0;background:#fcfcfc;border:1px solid #eee}.ct{font-size:13px;font-weight:600}.ax{font-size:11px;fill:#555}
+.grid{stroke:#e6e6e6}.vl{stroke:#999;stroke-dasharray:4 3}.vt{font-size:10px;fill:#666}code{background:#f3f3f3;padding:1px 4px}figure{margin:0}"""
+
+
+def main(argv=None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("run_dir")
+    ap.add_argument("--pdf", action="store_true", help="HTML 과 함께 같은 이름의 PDF 도 만든다")
+    ap.add_argument("--fragment", default="", help="PDF 에 넣을 필터, 예: stage=m3_under_fire&variant=ambush")
+    a = ap.parse_args(argv)
+    out = build(Path(a.run_dir).resolve())
+    print(out)
+    if a.pdf:
+        from tankrl.pdf_export import file_to_pdf
+        print(file_to_pdf(out, fragment=a.fragment))
+    return 0
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(__doc__)
-        sys.exit(1)
-    print(build(Path(sys.argv[1]).resolve()))
+    raise SystemExit(main())
