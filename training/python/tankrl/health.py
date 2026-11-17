@@ -72,6 +72,8 @@ class HealthMonitor:
     # ------------------------------------------------------------ 점검
     @staticmethod
     def policy_metrics(model) -> dict:
+        """정책 수치 + 실제 행동 분포(최근 수집 관측 표본에서 계산). gSDE 는 log_std(행렬)만으로는 실제 잡음을 알 수 없다."""
+        import numpy as np
         import torch
         policy = getattr(model, "_update_policy", None) or model.policy
         finite = all(bool(torch.isfinite(p).all()) for p in policy.parameters())
@@ -79,7 +81,26 @@ class HealthMonitor:
         log_std = getattr(policy, "log_std", None)
         if log_std is not None:
             std = log_std.detach().exp()
-            out.update(std_mean=float(std.mean()), std_max=float(std.max()))
+            out.update(param_std_mean=float(std.mean()), param_std_max=float(std.max()))
+        try:
+            buf = model.rollout_buffer
+            obs = buf.observations
+            obs = obs.reshape(-1, obs.shape[-1])
+            if hasattr(obs, "detach"):
+                obs = obs.detach().cpu().numpy()
+            idx = np.linspace(0, len(obs) - 1, num=min(512, len(obs))).astype(int)
+            device = next(policy.parameters()).device
+            with torch.no_grad():
+                dist = policy.get_distribution(torch.as_tensor(np.asarray(obs[idx]), dtype=torch.float32, device=device))
+                eff = dist.distribution.stddev.median(dim=0).values
+                mean = dist.distribution.mean
+            out.update(std_mean=float(eff.mean()), std_max=float(eff.max()),
+                       std_per_action=[round(float(v), 3) for v in eff],
+                       saturated=float((mean.abs() > 1).float().mean()))
+        except Exception as error:   # 버퍼가 비었거나 형식이 다르면 행렬 값으로 대신한다
+            out.setdefault("std_mean", out.get("param_std_mean", 0.0))
+            out.setdefault("std_max", out.get("param_std_max", 0.0))
+            out["std_note"] = f"effective std unavailable: {type(error).__name__}"
         return out
 
     def check(self, step: int, stage: str, logged: dict, success: float | None, model) -> dict:
@@ -94,7 +115,8 @@ class HealthMonitor:
             reasons.append("nonfinite")
         self.streak["kl"] = self.streak["kl"] + 1 if kl is not None and kl > c.kl_limit else 0
         self.streak["value"] = self.streak["value"] + 1 if ev is not None and ev < c.ev_floor else 0
-        at_cap = c.std_cap > 0 and m.get("std_mean", 0) >= c.std_cap * c.std_ratio
+        # 실제 행동 잡음이 상한 근처에 붙어 있거나(상한이 안 먹힘), 행동 평균 대부분이 ±1 밖(포화)
+        at_cap = (c.std_cap > 0 and m.get("std_mean", 0) >= c.std_cap * c.std_ratio) or m.get("saturated", 0) > 0.9
         self.streak["std"] = self.streak["std"] + 1 if at_cap else 0
         if success is not None:
             self.best[stage] = max(self.best.get(stage, 0.0), success)

@@ -726,7 +726,7 @@ function renderTanks() {
   const healthCell = h => {
     if (!h || !h.verdict) return `<span class="muted">점검 전</span>`;
     const [label, cls] = VERDICT[h.verdict] || [h.verdict, ""];
-    const tip = `행동 잡음 평균 ${h.std_mean?.toFixed?.(2) ?? "-"} · KL ${h.approx_kl?.toFixed?.(3) ?? "-"} · 가치 설명분산 ${h.explained_variance?.toFixed?.(2) ?? "-"} · 성공률 ${pct(h.success)} (단계 최고 ${pct(h.best_success)})` + ((h.reasons || []).length ? ` · 원인 ${h.reasons.join(", ")}` : (h.warning || []).length ? ` · 주의 ${h.warning.join(", ")}` : "");
+    const tip = `실제 행동 잡음 평균 ${h.std_mean?.toFixed?.(2) ?? "-"}(최대 ${h.std_max?.toFixed?.(2) ?? "-"}) · 행동 평균 포화 ${pct(h.saturated)} · KL ${h.approx_kl?.toFixed?.(3) ?? "-"} · 가치 설명분산 ${h.explained_variance?.toFixed?.(2) ?? "-"} · 성공률 ${pct(h.success)} (단계 최고 ${pct(h.best_success)})` + ((h.reasons || []).length ? ` · 원인 ${h.reasons.join(", ")}` : (h.warning || []).length ? ` · 주의 ${h.warning.join(", ")}` : "");
     return `<span class="${cls}" data-tip="${esc(tip)}">${label}</span>`;
   };
   const goodCell = g => {
@@ -906,8 +906,9 @@ function openStart() {
     f.timesteps.value = rec.timesteps ?? 80000000; f.rotate_steps.value = rec.rotate_steps ?? 3000000; f.cycles.value = rec.cycles ?? 3;
     f.n_envs.value = rec.n_envs ?? Math.max(1, Math.min(8, INFO.cpu_count - 2));
     f.record_every.value = rec.record_every ?? 100; f.save_every.value = rec.save_every ?? 100000; f.speed_cap.value = 0;
-    if (rec.init_model) { f.init_model.value = rec.init_model.path; $("initHint").textContent = `최근 공통 모델 ${rec.init_model.version} (${rec.init_model.stage})에서 이어받기 — 새 정책으로 시작하려면 비우세요`; }
-    else $("initHint").textContent = "";
+    // 기본은 새 정책(예전 모델의 행동 습관·gSDE 잡음 문제를 물려받지 않게). 이어받으려면 경로를 직접 넣는다.
+    f.init_model.placeholder = rec.init_model ? rec.init_model.path : "(새 정책)";
+    $("initHint").textContent = rec.init_model ? `비우면 새 정책 · 최근 공통 모델 ${rec.init_model.version}(${rec.init_model.stage})을 이어받으려면 회색 경로를 입력` : "";
   }
   f.init_model.disabled = f.resume.checked;
   f.start_stage.value = "";

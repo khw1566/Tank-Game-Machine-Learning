@@ -56,6 +56,9 @@ def parse():
     ap.add_argument("--max-std", type=float, default=1.0,
                     help="행동 잡음(gSDE 표준편차) 상한. 0 = 제한 없음. 성공이 없는 단계에서 잡음만 커져 행동이 ±1에 붙는 것을 막는다")
     ap.add_argument("--target-kl", type=float, default=0.05, help="PPO 갱신 중 approx KL 이 이 값을 넘으면 그 갱신의 남은 반복을 멈춘다(0 = 끔)")
+    ap.add_argument("--use-sde", action="store_true",
+                    help="새 정책을 gSDE 로 만든다(예전 방식). 기본은 행동별 표준편차. 이어서 학습하는 모델은 저장된 방식을 따른다")
+    ap.add_argument("--log-std-init", type=float, default=-0.7, help="새 정책의 행동 표준편차 초기값(log, -0.7 ≈ 0.5)")
     ap.add_argument("--no-health", action="store_true",
                     help="건강 점검·정상 체크포인트 표시·자동 복구를 끈다(기본은 켜짐)")
     ap.add_argument("--rollback-limit", type=int, default=3, help="한 단계에서 자동 복구를 이만큼 하면 일시정지")
@@ -166,9 +169,11 @@ def build_model(args, env, checkpoint: Path | None = None):
                batch_size=args.batch_size or min(2048, n_steps * env.num_envs),
                learning_rate=args.lr, gamma=0.99, gae_lambda=0.95,
                ent_coef=args.ent_coef, clip_range=0.2, n_epochs=args.n_epochs or 8,
-               policy_kwargs={"net_arch": [256, 256], "log_std_init": -0.5},
+               # 새 정책 기본 = 행동별 표준편차(상한이 실제 행동 잡음에 그대로 적용된다).
+               # gSDE 는 잡음 = 특징값 × 행렬이라 행렬을 제한해도 실제 잡음이 커질 수 있었다(V4RUN 1~3 에서 확인).
+               policy_kwargs={"net_arch": [256, 256], "log_std_init": args.log_std_init},
                # gSDE noise must persist long enough for the tank gearbox to respond.
-               use_sde=True, sde_sample_freq=args.sde_freq, seed=args.seed,
+               use_sde=args.use_sde, sde_sample_freq=args.sde_freq if args.use_sde else -1, seed=args.seed,
                device=device, rollout_buffer_class=buffer_class, verbose=0)
 
 
