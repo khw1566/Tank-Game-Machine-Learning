@@ -27,14 +27,15 @@ def write_json_atomic(path: Path, data: dict) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as output:
             json.dump(data, output, ensure_ascii=False)
-        for attempt in range(10):
+        # Windows: 대시보드가 같은 파일을 읽는 순간에는 교체가 거부된다. 최대 약 3초 동안 다시 시도한다.
+        for attempt in range(60):
             try:
                 os.replace(tmp, path)
                 return
             except PermissionError:
-                if attempt == 9:
+                if attempt == 59:
                     raise
-                time.sleep(.02)
+                time.sleep(.05)
     finally:
         tmp.unlink(missing_ok=True)
 
@@ -237,4 +238,8 @@ class TrainController:
                 self._kept[k] = st[k]
             elif k in self._kept:
                 st[k] = self._kept[k]
-        write_json_atomic(self.status_path, st)
+        try:
+            write_json_atomic(self.status_path, st)
+        except PermissionError:
+            # 상태 표시용 파일일 뿐이다. 읽는 쪽이 오래 잡고 있어도 학습을 멈추지 않고 다음 갱신 때 다시 쓴다.
+            print("[status] status.json 이 사용 중이라 이번 갱신을 건너뜁니다", flush=True)

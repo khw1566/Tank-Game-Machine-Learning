@@ -280,7 +280,17 @@ class RunWatch:
                 continue
             snaps = sorted(d.glob("step_*.zip"))
             latest = d / "latest.zip"
+            good = read_json(d / "good_checkpoints.json")
+            health_last = {}
+            if (d / "health.jsonl").exists():
+                try:
+                    health_last = json.loads(tail_text(d / "health.jsonl", 4000).strip().splitlines()[-1])
+                except (ValueError, IndexError):
+                    health_last = {}
             res[t] = {"curriculum": read_json(d / "curriculum.json"),
+                      "health": health_last,
+                      "good": {"count": len(good.get("good", [])), "last": (good.get("good") or [{}])[-1],
+                               "best": good.get("best", {}), "rollbacks": good.get("rollbacks", {})},
                       "checkpoint": read_json(d / "checkpoint.json"),
                       "saved_steps": read_json(d / "checkpoint.json").get("num_timesteps", int(snaps[-1].stem.removeprefix("step_")) if snaps else 0),
                       "snapshots": len(snaps), "last_snapshot": snaps[-1].name if snaps else "",

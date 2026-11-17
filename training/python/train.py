@@ -36,6 +36,7 @@ from tankrl import curriculum_v4
 from tankrl.curriculum_v4 import CurriculumV4
 from tankrl.control import write_json_atomic
 from tankrl.godot_env import GodotVecEnv
+from tankrl.health import HealthConfig, HealthMonitor
 from tankrl.opponents import OpponentPool
 from tankrl.runtime import model_runtime, resolve_device
 from tankrl.terrain import COURSE_IDS, COURSES
@@ -55,6 +56,9 @@ def parse():
     ap.add_argument("--max-std", type=float, default=1.0,
                     help="행동 잡음(gSDE 표준편차) 상한. 0 = 제한 없음. 성공이 없는 단계에서 잡음만 커져 행동이 ±1에 붙는 것을 막는다")
     ap.add_argument("--target-kl", type=float, default=0.05, help="PPO 갱신 중 approx KL 이 이 값을 넘으면 그 갱신의 남은 반복을 멈춘다(0 = 끔)")
+    ap.add_argument("--no-health", action="store_true",
+                    help="건강 점검·정상 체크포인트 표시·자동 복구를 끈다(기본은 켜짐)")
+    ap.add_argument("--rollback-limit", type=int, default=3, help="한 단계에서 자동 복구를 이만큼 하면 일시정지")
     ap.add_argument("--init-model", default="", help="체크포인트가 없을 때 이 모델 가중치로 시작(관측·행동 규격이 같아야 함)")
     ap.add_argument("--branch-tanks", default="tiger1,sherman75,t34_76", help="자동 분기할 전차 목록")
     ap.add_argument("--rotate", default="", help="여러 종류를 번갈아 학습: tiger1,sherman75,t34_76")
@@ -293,6 +297,43 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
 
     env.learner_version = version()
     env.policy_fn = lambda o: model.predict(o, deterministic=False)[0]
+    health = None if args.no_health else HealthMonitor(
+        tdir, HealthConfig(std_cap=args.max_std, max_rollbacks=args.rollback_limit))
+
+    def stage_success() -> float | None:
+        """현재 단계 성공률: 기록이 있는 변형 × 전차의 최근 40판 평균(없으면 None)."""
+        sid = cur.stage["id"]
+        if hasattr(cur, "variant_rates"):
+            rates = [v for k, v in cur.variant_rates(sid, 40).items() if cur.results[sid][k]]
+            return round(sum(rates) / len(rates), 4) if rates else None
+        return cur.success_rate(sid, 100) if cur.results[sid] else None
+
+    def health_check(step: int, logged: dict) -> None:
+        if health is None or "train/approx_kl" not in logged:
+            return
+        stage = cur.stage["id"]
+        result = health.check(step, stage, logged, stage_success(), model)
+        if result["verdict"] != "collapse":
+            return
+        ev = {"tank": tank, "from": stage, "to": stage, "episodes": cur.episodes_in_stage,
+              "success_rate": result.get("success") or 0.0, "global_step": step, "causes": result["reasons"],
+              "best_success": result.get("best_success")}
+        if health.over_limit(stage):
+            ev["reason"] = "rollback_limit"
+            env.log_stage_change(ev)
+            ctl.paused = True
+            ctl.note(f"자동 복구 {health.config.max_rollbacks}회 초과: 일시정지 ({', '.join(result['reasons'])})")
+            return
+        target = health.rollback(model, stage)
+        if target is None:
+            ev["reason"] = "collapse_no_backup"
+            env.log_stage_change(ev)
+            ctl.note(f"망가짐 감지({', '.join(result['reasons'])}) — 되돌릴 정상 체크포인트 없음")
+            return
+        ev.update(reason="rollback", restored_step=target["step"], restored_path=target["path"],
+                  rollback_count=target["count"])
+        env.log_stage_change(ev)
+        ctl.note(f"자동 복구: {', '.join(result['reasons'])} → step {target['step']:,} ({target['count']}/{target['limit']})")
     if cur.history and cur.history[-1].get("reason") == "assessment_upgrade":
         env.log_stage_change(cur.history[-1])
 
@@ -322,6 +363,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             return ctl.tick(self.num_timesteps)
 
         def _on_rollout_end(self) -> None:
+            # 직전 PPO 갱신의 지표(train/*)는 다음 로그 출력 전까지 logger 에 남아 있다
+            health_check(self.num_timesteps, dict(self.logger.name_to_value))
             self.logger.record("curriculum/stage_idx", cur.stage_idx)
             self.logger.record("curriculum/success_rate", cur.success_rate(cur.stage["id"], 100))
             if hasattr(cur, "shaping_scale"):
@@ -342,6 +385,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             name = f"step_{model.num_timesteps:09d}.zip"
             atomic_copy(latest, tdir / name)
             atomic_copy(latest, pdir / name)
+            if health is not None:
+                health.mark_saved(model.num_timesteps, cur.stage["id"], tdir / name, stage_success())
         ctl.last_save = {"t": round(__import__("time").time(), 1), "version": version(), "snapshot": snapshot,
                          "stage": cur.stage["id"]}
         print(f"[train] {tank}: 저장 {version()} (단계 {cur.stage['id']})", flush=True)

@@ -445,6 +445,9 @@ function changeLines() {
     const x = xm === "step" ? p.global_step : xm === "time" && EPS.length ? p.wall_time - EPS[0][col("wall_time")] : EPS.findIndex(e => e[col("global_step")] >= p.global_step) + 1;
     const branch = p.reason === "branch" || p.to === "branch_tanks";
     const manual = p.reason === "manual";
+    const rb = String(p.reason || "").startsWith("rollback") || p.reason === "collapse_no_backup";
+    if (rb) return {x, color: "#dc2626", width: 2, dash: [6, 2],
+      label: p.reason === "rollback" ? `↺ 자동 복구 → ${fmt(p.restored_step)}` : p.reason === "rollback_limit" ? "⏸ 복구 한도 초과" : "⚠ 망가짐(백업 없음)"};
     return {x, color: branch ? "#9333ea" : manual ? "#c26708" : undefined, width: branch ? 2 : 1, dash: branch ? [] : [3, 3],
       label: branch ? (p.to === "branch_tanks" ? "공통 완료 → 전차별 분기" : `⑂ ${TANK_LABEL[p.tank] || p.tank}`) : `▶ ${STAGE_LABEL[p.to] || p.to}`};
   });
@@ -719,14 +722,28 @@ function renderTanks() {
     return;
   }
   const rows = Object.entries(S.tanks || {});
-  $("tankTable").innerHTML = `<tr><th>전차</th><th>단계</th><th class="num">누적 저장 스텝</th><th class="num">단계 안 판수</th><th class="num">최근 성공률</th><th class="num">스냅숏</th><th>정책 최종 저장</th><th>상대 풀(자기대전용)</th></tr>` +
+  const VERDICT = {ok: ["정상", "ok"], warning: ["주의", ""], collapse: ["망가짐 감지", "bad"]};
+  const healthCell = h => {
+    if (!h || !h.verdict) return `<span class="muted">점검 전</span>`;
+    const [label, cls] = VERDICT[h.verdict] || [h.verdict, ""];
+    const tip = `행동 잡음 평균 ${h.std_mean?.toFixed?.(2) ?? "-"} · KL ${h.approx_kl?.toFixed?.(3) ?? "-"} · 가치 설명분산 ${h.explained_variance?.toFixed?.(2) ?? "-"} · 성공률 ${pct(h.success)} (단계 최고 ${pct(h.best_success)})` + ((h.reasons || []).length ? ` · 원인 ${h.reasons.join(", ")}` : (h.warning || []).length ? ` · 주의 ${h.warning.join(", ")}` : "");
+    return `<span class="${cls}" data-tip="${esc(tip)}">${label}</span>`;
+  };
+  const goodCell = g => {
+    if (!g || !g.count) return `<span class="muted">없음</span>`;
+    const best = Object.entries(g.best || {}).map(([k, v]) => `${(STAGE_LABEL[k] || k).replace("v4 ", "")} ${pct(v.success)} @ ${fmt(v.step)}`).join(" / ");
+    const rb = Object.values(g.rollbacks || {}).reduce((a, b) => a + b, 0);
+    return `<span data-tip="${esc("단계별 최고 모델(good 폴더 보관): " + (best || "-"))}">${g.count}개 · 최근 ${fmt(g.last?.step)}${rb ? ` · <b class="bad">복구 ${rb}회</b>` : ""}</span>`;
+  };
+  $("tankTable").innerHTML = `<tr><th>모델</th><th>단계</th><th class="num">누적 저장 스텝</th><th class="num">단계 안 판수</th><th class="num">최근 성공률</th><th>건강 상태</th><th>정상 체크포인트</th><th class="num">스냅숏</th><th>정책 최종 저장</th></tr>` +
     (rows.length ? rows.map(([t, d]) => { const c = d.curriculum || {}, rs = (c.recent_success || {})[c.stage];
-      return `<tr><td>${TANK_LABEL[t]}</td><td>${c.stage ? `${c.stage_idx + 1}. ${STAGE_LABEL[c.stage]}` : "-"}</td><td class="num">${fmt(d.saved_steps)}</td><td class="num">${fmt(c.episodes_in_stage)}</td><td class="num">${pct(rs)}</td><td class="num">${d.snapshots}</td><td>${d.latest_mtime ? ago(d.latest_mtime) : "-"}</td><td>${d.pool?.version ? esc(d.pool.version.split("/").slice(1).join("/")) + ` <span class="muted">(${d.pool_snapshots}개)</span>` : "-"}</td></tr>`; }).join("")
-      : `<tr><td colspan="8" class="muted">아직 저장된 정책 없음</td></tr>`);
+      return `<tr><td>${t === "shared" ? "공통 모델" : TANK_LABEL[t]}</td><td>${c.stage ? `${(STAGE_LABEL[c.stage] || c.stage).replace("v4 ", "")}` : "-"}</td><td class="num">${fmt(d.saved_steps)}</td><td class="num">${fmt(c.episodes_in_stage)}</td><td class="num">${pct(rs)}</td><td>${healthCell(d.health)}</td><td>${goodCell(d.good)}</td><td class="num">${d.snapshots}</td><td>${d.latest_mtime ? ago(d.latest_mtime) : "-"}</td></tr>`; }).join("")
+      : `<tr><td colspan="9" class="muted">아직 저장된 정책 없음</td></tr>`);
 }
 function renderPromos() {
   const log = (S.curriculum_log || []).slice().reverse();
-  const reason = {threshold: "기준 달성", max_episodes: "최대 판수 도달", manual: "수동 변경", branch: "공통 모델에서 분기"};
+  const reason = {threshold: "기준 달성", max_episodes: "최대 판수 도달", manual: "수동 변경", branch: "공통 모델에서 분기",
+    rollback: "자동 복구(마지막 정상 모델)", rollback_limit: "복구 한도 초과 → 일시정지", collapse_no_backup: "망가짐 감지(백업 없음)", assessment_upgrade: "평가 기준 갱신"};
   $("promoTable").innerHTML = `<tr><th>시각</th><th>전차</th><th>변경</th><th class="num">판수</th><th class="num">성공률</th><th>사유</th><th class="num">스텝</th></tr>` +
     (log.length ? log.map(p => `<tr><td>${p.wall_time ? new Date(p.wall_time * 1000).toLocaleString("ko-KR", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"}) : "-"}</td><td>${MODEL_LABEL[p.tank] ? (p.tank === "shared" ? "공통 모델" : TANK_LABEL[p.tank]) : p.tank}</td><td title="${esc(Object.entries(p.variant_rates || {}).map(([k, x]) => k + " " + pct(x)).join(", "))}">${STAGE_LABEL[p.from] || p.from} → ${p.to === "branch_tanks" ? "전차별 분기" : STAGE_LABEL[p.to] || p.to}</td><td class="num">${fmt(p.episodes)}</td><td class="num">${pct(p.success_rate)}</td><td>${reason[p.reason] || p.reason}</td><td class="num">${fmt(p.global_step)}</td></tr>`).join("")
       : `<tr><td colspan="7" class="muted">아직 없음</td></tr>`);
