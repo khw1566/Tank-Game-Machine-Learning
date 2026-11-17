@@ -30,9 +30,6 @@ class HybridPPO(PPO):
     def inference_device(self):
         return "cpu"
 
-    def _excluded_save_params(self):
-        return super()._excluded_save_params() + ["_update_policy", "_rollout_policy", "_update_device"]
-
     def collect_rollouts(self, env, callback, rollout_buffer, n_rollout_steps):
         # Copy only the current policy, once per rollout. Actions/values/log-probs/GAE
         # are all computed by that frozen CPU policy; PPO updates begin after collection.
@@ -42,6 +39,17 @@ class HybridPPO(PPO):
             return super().collect_rollouts(env, callback, rollout_buffer, n_rollout_steps)
         finally:
             self.policy, self.device = self._update_policy, self._update_device
+
+    def train(self) -> None:
+        if getattr(self, "_skip_next_train", False):
+            # 자동 복구 직후: 이 롤아웃은 복구 전(망가진) 정책으로 모은 것이라 버린다
+            self._skip_next_train = False
+            self.logger.record("train/skipped_after_rollback", 1)
+            return
+        return super().train()
+
+    def _excluded_save_params(self):
+        return super()._excluded_save_params() + ["_update_policy", "_rollout_policy", "_update_device", "_skip_next_train"]
 
     def save(self, path, exclude=None, include=None) -> None:
         # Checkpoint callbacks can fire during CPU collection. Always save the actual

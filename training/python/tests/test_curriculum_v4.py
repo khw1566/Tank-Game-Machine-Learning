@@ -44,6 +44,9 @@ def test_promotion_requires_every_variant():
     assert ev is None and c.stage_idx == 0
     for i in range(window):
         ev = c.report(st["id"], True, 10_000 + i, variant="behind") or ev
+    assert ev is None, "one lucky 40-episode window must not pass (two non-overlapping windows required)"
+    for i in range(window):
+        ev = c.report(st["id"], True, 20_000 + i, variant="behind") or ev
     assert ev and ev["to"] == curriculum_v4.STAGE_IDS[1] and set(ev["variant_rates"]) == {f"{v}@tiger1" for v in st["variants"]}
     assert c.stage_start_step > 0
 
@@ -94,7 +97,7 @@ def test_shared_requires_every_tank_and_branches():
             for v in st["variants"]:
                 ev = c.report(st["id"], t != "sherman75", i, variant=v, learner=t) or ev
     assert ev is None and not c.common_complete           # one tank failing blocks the branch
-    for i in range(p["window"]):
+    for i in range(2 * p["window"]):   # two non-overlapping passing windows
         for v in st["variants"]:
             ev = c.report(st["id"], True, 99_000 + i, variant=v, learner="sherman75") or ev
     assert ev and ev["to"] == "branch_tanks" and c.common_complete
@@ -113,15 +116,18 @@ def test_mastered_pairs_are_skipped_and_stay_passed(tmp_path):
     sid = c.stage["id"]
     for key in c.results[sid]:
         if key != "wall@t34_76":
-            c.results[sid][key].extend([1] * c.pair_minimum(c.stage))
+            c.results[sid][key].extend([1] * max(c.pair_minimum(c.stage), 2 * c.stage["promote"]["window"]))
     rng = random.Random(1)
-    for seed in range(50):
+    target = 0
+    for seed in range(200):
         _, _, extra = c.build_episode("shared", rng, seed)
-        assert extra["scenario"]["variant"] == "wall" and extra["learner"] == "t34_76"
+        target += extra["scenario"]["variant"] == "wall" and extra["learner"] == "t34_76"
         assert extra["scenario"]["driving"]["min_forward_fraction"] == 0.85
-    # In-flight episodes finishing after the pass cannot reopen that pair.
+    assert target >= 150, target   # mostly the unpassed pair; passed pairs keep ~15% practice
+    # A late failure is recorded but a single one does not reopen a passed pair.
     c.report(sid, False, 1, variant="clear", learner="tiger1")
-    assert c.variant_rates(sid, 40)["clear@tiger1"] == 1.0
+    assert c.variant_rates(sid, 40)["clear@tiger1"] == 39 / 40
+    assert ("clear", "tiger1") not in c.pending_pairs(c.stage)
     c.save(tmp_path / "passed.json")
     d = CurriculumV4.load(tmp_path / "passed.json", "shared", review_prob=0)
     assert d.pending_pairs(d.stage) == [("wall", "t34_76")]
@@ -171,6 +177,23 @@ def test_under_fire_requires_distant_off_axis_cover_and_preserves_driving(tmp_pa
     assert not any(d.results["m3_under_fire"].values())
 
 
+def test_mastered_pairs_keep_practising_and_can_be_demoted():
+    c = CurriculumV4("tiger1", start_stage=1, review_prob=0)
+    st = c.stage
+    w = st["promote"]["window"]
+    for v in st["variants"]:
+        for i in range(max(c.pair_minimum(st), 2 * w)):
+            c.report(st["id"], v == "clear" or i % 2 == 0, i, variant=v)
+    assert ("clear", "tiger1") not in c.pending_pairs(st)
+    rng = random.Random(1)
+    picks = [c.build_episode("tiger1", rng, k + 1)[2]["scenario"]["variant"] for k in range(400)]
+    share = picks.count("clear") / len(picks)
+    assert 0.05 < share < 0.3, share          # still practised, but mostly on unmastered variants
+    for i in range(w):
+        c.report(st["id"], False, 9_000 + i, variant="clear")
+    assert ("clear", "tiger1") in c.pending_pairs(st), "a forgotten skill returns to training"
+
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -184,6 +207,7 @@ class CurriculumV4Test(unittest.TestCase):
         test_shaping_decays_and_entropy_restarts(Path(tempfile.mkdtemp()))
         test_build_episode_config()
         test_shared_requires_every_tank_and_branches()
+        test_mastered_pairs_keep_practising_and_can_be_demoted()
         test_mastered_pairs_are_skipped_and_stay_passed(Path(tempfile.mkdtemp()))
         test_legacy_assessment_keeps_weights_compatible_and_preserves_results(Path(tempfile.mkdtemp()))
         test_under_fire_requires_distant_off_axis_cover_and_preserves_driving(Path(tempfile.mkdtemp()))

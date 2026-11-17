@@ -74,7 +74,7 @@ def parse():
     ap.add_argument("--pool-dir", default="", help="자기대전 상대 정책 풀(기본 runs/pool)")
     ap.add_argument("--curriculum", default="v1", choices=["v1", "v4"],
                     help="v1 = 기존 10단계, v4 = 결과 기반 보상·변형 혼합(기동·사격·전술·최종), 상황 관측 사용")
-    ap.add_argument("--entropy-boost", type=float, default=0.02, help="v4: 단계 진입 직후 탐색 계수")
+    ap.add_argument("--entropy-boost", type=float, default=0.003, help="v4: 단계 진입 직후 탐색 계수")
     ap.add_argument("--entropy-steps", type=int, default=300_000, help="v4: 탐색 계수를 기본값으로 줄이는 스텝 수")
     ap.add_argument("--start-stage", default="", choices=[""] + STAGE_IDS + curriculum_v4.STAGE_IDS,
                     help="이 단계부터 시작")
@@ -92,7 +92,10 @@ def parse():
                     help="PPO 갱신 배치(새 정책 최대 2048, 재개 시 생략하면 기존 값)")
     ap.add_argument("--n-epochs", type=int, default=None, help="PPO 갱신 반복(새 정책 8)")
     ap.add_argument("--lr", type=float, default=3e-4)
-    ap.add_argument("--ent-coef", type=float, default=0.005)
+    ap.add_argument("--ent-coef", type=float, default=0.001,
+                    help="행동을 −1~1 로 자르는 구조에서는 잡음을 키워도 손해가 없어 큰 값이 잡음만 키운다")
+    ap.add_argument("--gamma", type=float, default=0.995, help="할인율(결정 10Hz, 0.995 ≈ 반감기 14초). 이어받는 모델에도 적용")
+    ap.add_argument("--gae-lambda", type=float, default=0.97, help="GAE λ. 이어받는 모델에도 적용")
     ap.add_argument("--sde-freq", type=int, default=20, help="gSDE 탐색 잡음을 몇 결정마다 다시 뽑을지(20 = 2초)")
     ap.add_argument("--speed-cap", type=float, default=0.0,
                     help="실시간 대비 최대 배속(모든 환경 합, 0 = 무제한). PC 를 같이 쓸 때 낮춘다")
@@ -155,6 +158,7 @@ def build_model(args, env, checkpoint: Path | None = None):
     buffer_class = CudaRolloutBuffer if device.startswith("cuda") else RolloutBuffer
     overrides = {k: getattr(args, k) for k in ("n_steps", "batch_size", "n_epochs")
                  if getattr(args, k) is not None}
+    overrides.update(gamma=args.gamma, gae_lambda=args.gae_lambda, ent_coef=args.ent_coef)
     if checkpoint is not None:
         if getattr(getattr(env, "curriculum", None), "obs", "") == "situation_v3":
             from tankrl.input_migration import expand_fire_inputs
@@ -166,8 +170,9 @@ def build_model(args, env, checkpoint: Path | None = None):
                               rollout_buffer_class=buffer_class, **overrides)
     n_steps = args.n_steps or 1024
     return algorithm("MlpPolicy", env, n_steps=n_steps,
-               batch_size=args.batch_size or min(2048, n_steps * env.num_envs),
-               learning_rate=args.lr, gamma=0.99, gae_lambda=0.95,
+               # 큰 롤아웃(환경 100개 이상)은 큰 미니배치가 GPU 에서 빠르고 기울기 잡음도 적다
+               batch_size=args.batch_size or min(8192 if n_steps * env.num_envs >= 65536 else 2048, n_steps * env.num_envs),
+               learning_rate=args.lr, gamma=args.gamma, gae_lambda=args.gae_lambda,
                ent_coef=args.ent_coef, clip_range=0.2, n_epochs=args.n_epochs or 8,
                # 새 정책 기본 = 행동별 표준편차(상한이 실제 행동 잡음에 그대로 적용된다).
                # gSDE 는 잡음 = 특징값 × 행렬이라 행렬을 제한해도 실제 잡음이 커질 수 있었다(V4RUN 1~3 에서 확인).
@@ -206,8 +211,13 @@ def clamp_exploration(model, args) -> None:
         log_std = getattr(policy, "log_std", None)
         if log_std is None:
             continue
+        cap = args.max_std
+        if getattr(policy, "use_sde", False):
+            # gSDE: 행동 잡음 표준편차 = sqrt(Σ_j latent_j² · σ_ij²), latent 는 tanh(|·|≤1) 이고 256개.
+            # 원소 상한을 max_std / sqrt(latent 수) 로 두어야 실제 잡음이 max_std 를 넘지 않는다(V4RUN-3 에서 확인).
+            cap = args.max_std / math.sqrt(log_std.shape[0])
         with torch.no_grad():
-            log_std.clamp_(min=math.log(0.05), max=math.log(args.max_std))
+            log_std.clamp_(min=math.log(min(0.05, cap * 0.5)), max=math.log(cap))
     if getattr(model.policy, "use_sde", False):
         model.policy.reset_noise(model.n_envs)
 
@@ -248,8 +258,14 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     ctl.write_status(None, force=True, phase="starting")
     inference_device = "cpu" if args.device in ("auto", "hybrid") else args.resolved_device
     pool = OpponentPool(pool_dir, exclude=tank, device=inference_device)
+    # 재개할 때마다 다른 배치 순서(같은 시드면 처음 수천 판이 매번 똑같이 반복됐다). 시드는 run.json 에 기록된다.
+    resume_steps = int(json.loads((tdir / "checkpoint.json").read_text(encoding="utf-8")).get("num_timesteps", 0)) \
+        if (tdir / "checkpoint.json").exists() else 0
+    env_seed = args.seed * 1000 + sum(map(ord, tank)) + resume_steps
+    cur.rng.seed(args.seed + resume_steps)
+    ctl.info["env_seed"] = env_seed
     env = GodotVecEnv(args.n_envs, args.godot, args.project, run_dir, tank, cur, opponents=pool,
-                      seed=args.seed * 1000 + sum(map(ord, tank)), record_every=ctl.record_every,
+                      seed=env_seed, record_every=ctl.record_every,
                       quiet=not args.verbose_godot, run_name=run_dir.name)
     ctl.env = env
     latest = tdir / "latest.zip"

@@ -31,7 +31,8 @@ OBS = "situation_v3"        # Original situation features + explicit fire / trac
 # hit_taken: 맞을 때마다(관통 여부와 무관). 노출 → 피격 관계를 티거처럼 관통당하지 않는 전차도 분명히 겪게 한다
 BASE_REWARD = {"time_per_s": -0.01, "progress": 0.03, "objective": 8.0, "survive": 6.0, "win": 8.0,
                "loss": -8.0, "timeout_penalty": -3.0, "hit_taken": -0.5,
-               "combat": {"hit": 0.5, "penetration": 2.0, "knockout": 8.0, "miss": -0.05,
+               # 비관통 명중 점수는 작게: 관통 못 하는 포탄을 계속 쏘는 것만으로 시간 초과 감점을 메우지 않게
+               "combat": {"hit": 0.1, "penetration": 2.0, "knockout": 8.0, "miss": -0.05,
                           "victim_scale": 1.0, "live_target_only": True}}
 
 
@@ -174,6 +175,7 @@ class CurriculumV4:
                         for s in STAGES}
         self.terrain_fixed = ""      # 기존 인터페이스 호환(사용 안 함)
         self.mastered = {s["id"]: set() for s in STAGES}
+        self.mastered_since: dict = {}   # (단계, 조합) -> 통과 당시 기록 수(통과 직후 바로 되돌리지 않게)
         self.previous_assessments = []
 
     @staticmethod
@@ -192,10 +194,13 @@ class CurriculumV4:
     def training_complete(self) -> bool:
         return self.stage_idx >= self.last_stage and not self.pending_pairs(self.stage)
 
+    PRACTICE_PROB = 0.15   # 통과한 조합도 이 비율로 계속 연습(기록이 이어지고, 실력이 떨어지면 다시 미통과)
+    DEMOTE_BELOW = 0.6     # 통과한 조합의 최근 40판이 이 아래면 미통과로 되돌린다
+
     def pick_stage(self) -> dict:
-        reviews = [s for s in STAGES[:self.stage_idx] if self.pending_pairs(s)]
-        if reviews and self.rng.random() < self.review_prob:
-            return self.rng.choice(reviews)
+        # 복습: 지나온 단계 전체에서 고른다(이전 단계가 모두 통과 상태여도 복습은 계속된다)
+        if self.stage_idx > 0 and self.rng.random() < self.review_prob:
+            return self.rng.choice(STAGES[:self.stage_idx])
         return self.stage
 
     def pair_minimum(self, st: dict) -> int:
@@ -203,12 +208,21 @@ class CurriculumV4:
         return max(p["window"], math.ceil(p["min_episodes"] / (len(st["variants"]) * len(self.tanks))))
 
     def pending_pairs(self, st: dict) -> list[tuple[str, str]]:
-        """A pass belongs to a variant AND a tank, and stays passed until assessment reset."""
+        """통과는 변형 × 전차 조합마다. 겹치지 않는 최근 40판 두 구간이 모두 기준 이상이어야 통과(한 번 운 좋게
+        닿는 순간 굳지 않게). 통과한 조합의 최근 40판이 DEMOTE_BELOW 아래로 떨어지면 다시 미통과."""
         sid = st["id"]
         p = st["promote"]
+        w = p["window"]
         for key, values in self.results[sid].items():
-            if len(values) >= self.pair_minimum(st) and sum(list(values)[-p["window"]:]) / p["window"] >= p["threshold"]:
+            r = list(values)
+            if key in self.mastered[sid]:
+                if len(r) >= w and sum(r[-w:]) / w < self.DEMOTE_BELOW and self.mastered_since.get((sid, key), 0) + w <= len(r):
+                    self.mastered[sid].discard(key)
+                continue
+            if (len(r) >= max(self.pair_minimum(st), 2 * w) and sum(r[-w:]) / w >= p["threshold"]
+                    and sum(r[-2 * w:-w]) / w >= p["threshold"]):
                 self.mastered[sid].add(key)
+                self.mastered_since[(sid, key)] = len(r)
         return [(v, t) for v in st["variants"] for t in self.tanks if self.key(v, t) not in self.mastered[sid]]
 
     def shaping_scale(self, stage_id: str) -> float:
@@ -219,7 +233,7 @@ class CurriculumV4:
             return 0.0
         p = self.stage["promote"]
         skill = 1.0 - min(1.0, self.success_rate(stage_id, p["window"]) / p["threshold"])
-        if stage_id in ("m1_drive", "m2_route", "m3_under_fire"):
+        if stage_id in ("m1_drive", "m2_route", "m3a_find_cover", "m3_under_fire"):
             # A stalled route must retain a learning signal even after millions of steps.
             return round(max(0.2, skill), 4) if self.pending_pairs(self.stage) else 0.0
         # 공통 모델은 전차 수만큼 판이 나뉘므로 상한도 그만큼 늘린다
@@ -234,11 +248,19 @@ class CurriculumV4:
     def build_episode(self, learner: str, rng: random.Random, seed: int) -> tuple[dict, list[dict], dict]:
         st = self.pick_stage()
         pending = self.pending_pairs(st)
+        everything = [(v, t) for v in st["variants"] for t in self.tanks]
+        mastered = [pair for pair in everything if pair not in pending]
         if learner in scenarios.TEAM_OF:
             pending = [(v, t) for v, t in pending if t == learner]
-        if not pending:
-            raise RuntimeError(f"{st['id']}: 모든 세부 항목의 평가가 끝났습니다. 다음 단계로 진행하세요.")
-        variant, learner = rng.choice(pending)
+            mastered = [(v, t) for v, t in mastered if t == learner]
+            everything = [(v, t) for v, t in everything if t == learner]
+        if st["id"] != self.stage["id"]:
+            pool = everything                   # 복습 단계: 모든 조합
+        elif pending and (not mastered or rng.random() >= self.PRACTICE_PROB):
+            pool = pending
+        else:
+            pool = mastered or everything       # 통과한 조합도 계속 연습
+        variant, learner = rng.choice(pool)
         spec = st["variant_specs"][variant]
         sc = scenarios.build(spec["builder"], spec["variant"], learner, seed)
         sc["variant"] = variant
@@ -254,8 +276,13 @@ class CurriculumV4:
             lu.append({"type": t, "team": 1 - team, "ctrl": spec["ctrl"], "role": spec["ctrl"]})
         reward = json.loads(json.dumps(st["reward"]))
         reward["shaping_scale"] = self.shaping_scale(st["id"])
-        if st["id"] == "m3_under_fire":
-            reward["combat"].update(hit=0.0, penetration=0.0, knockout=0.0, miss=-0.1)
+        if st["id"] in ("m3a_find_cover", "m3_under_fire"):
+            # 엄폐 과제에서는 되쏘아 얻는 점수가 없게(승무원·모듈 피해 점수까지 0)
+            reward["combat"].update(hit=0.0, penetration=0.0, knockout=0.0, miss=-0.1, crew_wounded=0.0,
+                                    crew_kia=0.0, module_damaged=0.0, module_destroyed=0.0)
+        if st["id"] not in ("m1_drive", "m2_route"):
+            # 주행 단계 뒤에는 누적 후진 15m 초과분에만 약한 감점(짧은 후퇴 전술은 허용)
+            reward.update(reverse_allowance_m=15.0, reverse_excess_per_m=-0.02)
         extra = {"scenario": sc, "reward": reward, "kind": spec["kind"],
                  "time_limit_s": sc.get("survive_s", spec["time_limit_s"]), "stageset": STAGESET,
                  "learning_objective": {"id": f"{st['id']}:{variant}", "label": f"{st['label']} · {variant}",
@@ -279,7 +306,7 @@ class CurriculumV4:
         if stage_id not in self.results:
             return None
         k = self.key(variant, learner or self.tanks[0])
-        if k in self.results[stage_id] and k not in self.mastered[stage_id]:
+        if k in self.results[stage_id]:
             self.results[stage_id][k].append(int(success))
         if stage_id != self.stage["id"]:
             return None

@@ -291,7 +291,8 @@ class GodotVecEnv(VecEnv):
                 infos[i] = {"terminal_observation": o[k].copy(), "episode": {"r": float(self._ret[i]),
                             "l": int(ep.get("decisions", 0)), "t": time.time()},
                             "stage": self._ctx[i]["stage"]["id"], "success": bool(ep.get("success", False)),
-                            "TimeLimit.truncated": ep.get("reason") == "time_limit"}
+                            # 남은 시간이 관측에 있으므로 제한 시간은 과제의 일부다. 모든 종료를 진짜 종료로 다룬다.
+                            "TimeLimit.truncated": False}
                 self._log_episode(i, ep)
                 finished.append(i)
         self.global_step += n

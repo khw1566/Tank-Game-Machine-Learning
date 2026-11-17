@@ -170,9 +170,14 @@ class HealthMonitor:
         tmp.replace(self.tdir / "good_checkpoints.json")
 
     def rollback_target(self, stage: str) -> dict | None:
-        same = [g for g in self.good if g["stage"] == stage and Path(g["path"]).exists()]
+        top = self.best.get(stage, 0.0)
+        same = [g for g in self.good if g["stage"] == stage and Path(g["path"]).exists()
+                and (g.get("success") is None or g["success"] >= top - 0.1)]
         if same:
             return same[-1]
+        best = self.best_models.get(stage)
+        if best and Path(best["path"]).exists():
+            return best
         any_good = [g for g in self.good if Path(g["path"]).exists()]
         return any_good[-1] if any_good else None
 
@@ -192,6 +197,7 @@ class HealthMonitor:
         rollout = getattr(model, "_rollout_policy", None)
         if rollout is not None and rollout is not policy:
             rollout.load_state_dict(policy.state_dict())
+        model._skip_next_train = True   # 망가진 정책으로 모은 롤아웃으로는 학습하지 않는다(HybridPPO.train 참조)
         self.rollbacks[stage] = self.rollbacks.get(stage, 0) + 1
         for k in ("kl", "value", "std", "success", "healthy"):
             self.streak[k] = 0

@@ -434,6 +434,13 @@ func _scenario_decision(dt: float) -> Dictionary:
 	var driving: Dictionary = sc.get("driving", {})
 	if not driving.is_empty():
 		_add(me.name, maxf(0.0, -signed_m) * float(driving.get("reverse_per_m", -0.08)), "reverse")
+	elif float(w.get("reverse_excess_per_m", 0.0)) != 0.0 and signed_m < 0.0:
+		# 주행 단계 뒤: 짧은 후퇴(엄폐로 물러나기)는 허용하고, 누적 후진이 여유를 넘은 만큼만 약하게 감점
+		var allowance := float(w.get("reverse_allowance_m", 15.0))
+		var before := maxf(0.0, _sc_reverse + signed_m - allowance)
+		var after := maxf(0.0, _sc_reverse - allowance)
+		if after > before:
+			_add(me.name, (after - before) * float(w.reverse_excess_per_m), "reverse_excess")
 	_sc_last = me.global_position
 	if env.decisions % 5 == 0:
 		_sc_exposure(me, dt * 5.0)
@@ -500,10 +507,10 @@ func _sc_evade(me: Tank, dt: float, enemies_alive: int) -> Dictionary:
 			_sc_enemy_seen = true
 	var displacement := Vector2(me.global_position.x - _sc_spawn.x, me.global_position.z - _sc_spawn.z).length()
 	if int(_sc_taken.hits) > int(env.config.scenario.get("max_hits", 4)):
-		_add(me.name, float(w.get("timeout_penalty", -3)), "too_many_hits")
+		_add(me.name, _sc_early_end_penalty(rules), "too_many_hits")
 		return _done("evade_too_many_hits", false, -1)
 	if displacement > float(rules.get("arena_radius_m", 240)):
-		_add(me.name, float(w.get("timeout_penalty", -3)), "outside")
+		_add(me.name, _sc_early_end_penalty(rules), "outside")
 		return _done("evade_outside_area", false, -1)
 	if enemies_alive == 0:
 		return _done("no_threat_to_evade", false, -1)
@@ -542,6 +549,12 @@ func _sc_evade(me: Tank, dt: float, enemies_alive: int) -> Dictionary:
 		_add(me.name, float(w.get("timeout_penalty", -3)), "timeout")
 		return _done("evade_time_limit", false, -1)
 	return {"done": false}
+
+
+## 일찍 끝난 실패가 끝까지 버틴 실패보다 이득이 되지 않게: 시간 초과 감점 + 남은 시간 동안 받았을 시간·노출 감점
+func _sc_early_end_penalty(rules: Dictionary) -> float:
+	var remaining_s := maxf(0.0, float(env.time_limit_ticks - env.tick) / Engine.physics_ticks_per_second)
+	return float(w.get("timeout_penalty", -3)) + remaining_s * (float(w.time_per_s) + float(rules.get("exposed_per_s", -0.04)))
 
 
 func _sc_near_cover(me: Tank) -> bool:
