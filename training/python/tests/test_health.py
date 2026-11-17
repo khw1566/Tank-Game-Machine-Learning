@@ -10,7 +10,8 @@ from tankrl.health import HealthConfig, HealthMonitor
 
 
 def ok_log(kl=0.02, ev=0.9):
-    return {"train/approx_kl": kl, "train/explained_variance": ev, "train/loss": 0.1}
+    import numpy as np   # SB3 logger values arrive as numpy floats
+    return {"train/approx_kl": np.float32(kl), "train/explained_variance": np.float32(ev), "train/loss": np.float32(0.1)}
 
 
 class HealthTest(unittest.TestCase):

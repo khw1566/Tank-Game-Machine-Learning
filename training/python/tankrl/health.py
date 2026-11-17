@@ -85,9 +85,10 @@ class HealthMonitor:
     def check(self, step: int, stage: str, logged: dict, success: float | None, model) -> dict:
         c = self.config
         m = self.policy_metrics(model)
-        kl = logged.get("train/approx_kl")
-        ev = logged.get("train/explained_variance")
-        loss = logged.get("train/loss")
+        def num(key):   # SB3 logger 값은 numpy float32 일 수 있다(JSON 기록용으로 float 로 바꾼다)
+            v = logged.get(key)
+            return None if v is None else float(v)
+        kl, ev, loss = num("train/approx_kl"), num("train/explained_variance"), num("train/loss")
         reasons = []
         if not m["finite"] or (loss is not None and not math.isfinite(loss)):
             reasons.append("nonfinite")
