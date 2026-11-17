@@ -24,12 +24,16 @@ const ACT_SIZE := TankAgent.ACTION_SIZE
 const KINDS := ["drive", "gunnery", "combat"]
 const TEAM_BASE_SIGN := [1.0, -1.0]   # 팀0(독일) = +축 쪽, 팀1(연합군) = -축 쪽 (main 과 같음)
 
+## --obs=situation: 커리큘럼 v4 목적 관측(SituationObs)을 뒤에 붙인다. 기존 실행·체크포인트는 그대로 쓴다
+static var situation := false
+
+
 static func obs_size() -> int:
-	return TankPerception.size() + TASK_SIZE
+	return TankPerception.size() + TASK_SIZE + (SituationObs.size() if situation else 0)
 
 
 static func obs_labels() -> Array:
-	return TankPerception.labels() + TASK_LABELS
+	return TankPerception.labels() + TASK_LABELS + (SituationObs.labels() if situation else [])
 
 
 var port := 11008
@@ -97,6 +101,8 @@ func _ready() -> void:
 			_repro_out = a.get_slice("=", 1)
 		elif a.begins_with("--log-obs="):
 			_log_obs_every = int(a.get_slice("=", 1))
+		elif a == "--obs=situation":
+			situation = true
 	if repro_path != "":
 		_start_reproduce(repro_path)
 		return
@@ -120,7 +126,8 @@ func _ready() -> void:
 		"action_labels": TankAgent.action_labels(), "physics_hz": Engine.physics_ticks_per_second,
 		"repeat": REPEAT, "engine": Engine.get_version_info().string,
 		"terrain_course_version": TerrainCourse.VERSION, "spawn_safety_version": 1, "destruction_version": 1,
-		"compact_battle_version": 1, "fast_combat_reward_version": 1})
+		"compact_battle_version": 1, "fast_combat_reward_version": 1,
+		"scenario_version": ScenarioLayout.VERSION, "situation_obs_version": SituationObs.VERSION if situation else 0})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 
 
@@ -233,6 +240,9 @@ func reset_episode(p_config: Dictionary) -> void:
 	config["seed"] = rng.seed
 	if config.has("terrain_course") and not config.has("terrain_layout"):
 		config["terrain_layout"] = TerrainCourse.plan(config)
+	if config.has("scenario"):
+		var first: Array = config.get("tanks", [{}])
+		config.scenario["learner_type"] = str(first[0].get("type", "tiger1")) if first.size() > 0 else "tiger1"
 	_ensure_map(config.get("map", {}))
 	_clear_tanks()
 	sounds = SoundField.new()
@@ -257,11 +267,13 @@ func reset_episode(p_config: Dictionary) -> void:
 	course_route.clear()
 	course_index = 0
 	var kind := str(config.get("kind", "combat"))
-	if config.has("terrain_layout"):
+	if config.has("scenario"):
+		waypoint = ScenarioLayout.objective_point(map, config.scenario)
+	elif config.has("terrain_layout"):
 		for p in config.terrain_layout.route:
 			course_route.append(Vector3(p[0], map.height_at(p[0], p[1]), p[1]))
 		waypoint = course_route[0]
-	elif kind == "drive":
+	elif kind == "drive" and not config.has("scenario"):
 		waypoint = _pick_waypoint(rng)
 		if waypoint == Vector3.INF:
 			_spawn_error = "No safe drive waypoint for seed %s" % config.seed
@@ -295,7 +307,8 @@ func _neutral_action() -> Array:
 
 
 func _ensure_map(mc: Dictionary) -> void:
-	var key := JSON.stringify([mc, config.get("terrain_layout", {})])
+	var sc: Dictionary = config.get("scenario", {})
+	var key := JSON.stringify([mc, config.get("terrain_layout", {}), sc.get("obstacles", []), sc.get("learner_type", "")])
 	if key == _map_key and map != null:
 		map.destruction.reset()
 		return
@@ -323,6 +336,8 @@ func _ensure_map(mc: Dictionary) -> void:
 		CompactBattle.populate(map)
 	if config.has("terrain_layout"):
 		TerrainCourse.populate(map, config.terrain_layout)
+	if config.has("scenario"):
+		ScenarioLayout.populate(map, config.scenario)
 	_map_key = key
 
 
@@ -342,6 +357,9 @@ func _clear_tanks() -> void:
 
 ## 팀별로 축 양 끝에 놓는다. 축 방향·중심·간격은 시드로 흔든다.
 func _spawn_all(specs: Array, rng: RandomNumberGenerator) -> void:
+	if config.has("scenario"):
+		_spawn_scenario(specs, rng)
+		return
 	if config.has("terrain_layout"):
 		var layout: Dictionary = config.terrain_layout
 		var s: Dictionary = specs[0]
@@ -396,6 +414,56 @@ func _spawn_all(specs: Array, rng: RandomNumberGenerator) -> void:
 		if ctrls[i] == "mover":
 			var d := TargetDriver.new(rng.randi_range(1, 2147483646), map.size_m * 0.5)
 			drivers[t.name] = d
+
+
+const SCENARIO_AI_KEYS := ["aim_noise_mrad", "fire_delay_s", "max_fire_range", "engage_range", "angle_deg",
+	"flank_offset", "reacquire_s"]
+
+
+## 커리큘럼 v4: Python 이 정한 위치·방향 그대로(안전하지 않으면 가장 가까운 안전 지점으로 옮기고 기록)
+func _spawn_scenario(specs: Array, rng: RandomNumberGenerator) -> void:
+	var sc: Dictionary = config.scenario
+	var places: Array = [sc.learner] + sc.get("enemies", [])
+	if places.size() != specs.size():
+		_spawn_error = "Scenario tank count mismatch for seed %s" % config.seed
+		return
+	var moved := []
+	for i in specs.size():
+		var s: Dictionary = specs[i]
+		var pl: Dictionary = places[i]
+		var p := Vector2(float(pl.p[0]), float(pl.p[1]))
+		if not map.is_spawn_safe(p, 4.0, 6.0):
+			var q := _clear_spot(p, rng)
+			if q == Vector2.INF:
+				_spawn_error = "No safe scenario spawn for seed %s" % config.seed
+				return
+			moved.append({"index": i, "from": [p.x, p.y], "to": [q.x, q.y]})
+			p = q
+		_spawn_one(str(s.get("type", "tiger1")), int(s.get("team", 0)), p, float(pl.get("yaw", 0.0)),
+			rng.randi_range(1, 2147483646), str(s.get("ctrl", "scripted")), i)
+	config["scenario_relocated"] = moved
+	var lp := Vector2(tanks[0].global_position.x, tanks[0].global_position.z)
+	var centroid := Vector2.ZERO
+	var nearest := INF
+	for i in range(1, tanks.size()):
+		var q := Vector2(tanks[i].global_position.x, tanks[i].global_position.z)
+		centroid += q / float(tanks.size() - 1)
+		nearest = minf(nearest, q.distance_to(lp))
+	config["spawn_distance_m"] = snappedf(nearest, 0.01) if nearest < INF else 0.0
+	for i in tanks.size():
+		var t: Tank = tanks[i]
+		var base := centroid if i == 0 else lp
+		var ai := ScriptedAI.for_tank(t, i, Vector3(base.x, 0, base.y))
+		ai.rng.seed = t.rng.seed + 7919
+		if i > 0:
+			var params: Dictionary = places[i].get("ai", {})
+			ai.hold = bool(params.get("hold", false))
+			for k in SCENARIO_AI_KEYS:
+				if params.has(k):
+					ai.set(k, float(params[k]))
+		agents.append(TankAgent.new(map, t, sounds, ai))
+		if ctrls[i] == "mover":
+			drivers[t.name] = TargetDriver.new(rng.randi_range(1, 2147483646), map.size_m * 0.5)
 
 
 func _clear_spot(p: Vector2, rng: RandomNumberGenerator) -> Vector2:
@@ -504,6 +572,8 @@ func _evaluate() -> void:
 			_end["combat_rewards"] = rewarder.battle_summary()
 		if config.has("terrain_course"):
 			_end["terrain"] = rewarder.course_summary()
+		if config.has("scenario"):
+			_end["scenario"] = rewarder.scenario_summary()
 		_end["spawn_distance_m"] = config.get("spawn_distance_m", 0.0)
 		_end["tanks"] = tanks.map(func(t): return {"name": t.name, "tank": t.spec.id, "team": t.team,
 			"status": t.damage.status_label(), "return": snappedf(rewarder.total(t.name), 0.0001),
@@ -602,6 +672,10 @@ func _observation(i: int) -> PackedFloat32Array:
 	task[4] = clampf(1.0 - float(tick) / maxf(time_limit_ticks, 1.0), 0.0, 1.0)
 	task[5 + maxi(KINDS.find(kind), 0)] = 1.0
 	o.append_array(task)
+	if situation:
+		var sc: Dictionary = config.get("scenario", {})
+		var radius := float(sc.get("objective", {}).get("radius", 0.0))
+		o.append_array(SituationObs.compute(map, t, agents[i].perception, waypoint if sc.has("objective") else Vector3.INF, radius))
 	return o
 
 

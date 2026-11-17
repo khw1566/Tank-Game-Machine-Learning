@@ -249,7 +249,9 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 "use strict";
 const $ = (id) => document.getElementById(id);
 const STAGE_LABEL = {drive: "주행", drive_terrain: "지형 주행", gunnery_static: "정지 표적 사격", gunnery_moving: "이동 표적 사격",
-  gunnery_search: "수색·사격", duel_scripted: "1대1 vs 규칙 AI", duel_selfplay: "1대1 자기대전", team_scripted: "팀전 vs 규칙 AI", team_selfplay: "팀 자기대전", final_battle: "최종전 1 대 6"};
+  gunnery_search: "수색·사격", duel_scripted: "1대1 vs 규칙 AI", duel_selfplay: "1대1 자기대전", team_scripted: "팀전 vs 규칙 AI", team_selfplay: "팀 자기대전", final_battle: "최종전 1 대 6",
+  m1_move_basic: "v4 기동·기본 주행", m2_move_obstacles: "v4 기동·장애물 지대", m3_move_under_fire: "v4 기동·포화 속 이동", m4_ambush: "v4 기동·기습 대응", m5_crossing: "v4 기동·개활지 횡단",
+  g1_gunnery: "v4 사격·정지/은폐 표적", g2_gunnery_moving: "v4 사격·이동 표적", g4_return_fire: "v4 사격·반격 대결", g6_close_front: "v4 사격·근거리 정면"};
 const TANK_LABEL = {tiger1: "티거 I", sherman75: "셔먼 75mm", t34_76: "T-34/76"};
 const PHASE = {starting: "시작 중", collecting: "학습 중(수집)", updating: "학습 중(PPO 갱신)", paused: "일시정지", saving: "저장 중", stopped: "중지됨", evaluating: "평가 중(학습 없음)"};
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();

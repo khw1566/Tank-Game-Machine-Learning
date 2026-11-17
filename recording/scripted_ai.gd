@@ -33,10 +33,20 @@ var _stuck_count := 0
 var _scan_t := 0.0
 var _cue_yaw := INF            # 마지막으로 들은 포성·피탄 방향(월드 방위)
 var _cue_age := 99.0
+## 커리큘럼 v4 상대 조절(기본값이면 기존 동작과 같다)
+var hold := false              # true = 팀과 무관하게 제자리 방어(차체만 적 쪽으로 비스듬히)
+var aim_noise_mrad := 0.0      # 발마다 새로 뽑는 조준점 오차(표준편차, mrad). 시드 고정 난수
+var fire_delay_s := 0.0        # 표적을 이만큼 계속 본 뒤에야 쏜다(반응 시간)
+var rng := RandomNumberGenerator.new()
+var _aim_off := Vector2.ZERO
+var _last_shots := -1
+var _track_id := -1
+var _track_seen_s := 0.0
 
 
 static func for_tank(t: Tank, index_in_team: int, p_enemy_base := Vector3.ZERO) -> ScriptedAI:
 	var ai := ScriptedAI.new()
+	ai.rng.seed = 1
 	ai.enemy_base = p_enemy_base
 	if t.team == 1:
 		ai.flank_offset = [-260.0, 260.0, -140.0, 140.0, 0.0, -380.0, 380.0][index_in_team % 7]
@@ -49,6 +59,10 @@ func act(me: Tank, p: TankPerception) -> Array:
 	_scan_t += STEP_S
 	_cue_age += STEP_S
 	_listen(me, p)
+	if _last_shots != me.shots_fired:
+		_last_shots = me.shots_fired
+		if aim_noise_mrad > 0.0:
+			_aim_off = Vector2(rng.randfn(0.0, aim_noise_mrad), rng.randfn(0.0, aim_noise_mrad)) / 1000.0
 	var hull_yaw := me.global_rotation.y
 	var target := _pick_target(p)
 	var drive := [0.0, 0.0, 1.0]
@@ -64,7 +78,7 @@ func act(me: Tank, p: TankPerception) -> Array:
 		var focus := _cue_yaw if cue else base_yaw
 		var sweep := deg_to_rad(20.0 if cue else 60.0) * sin(_scan_t * 0.6)
 		view = _look_at(p, wrapf(focus + sweep - hull_yaw, -PI, PI), 0.0, 30.0)
-		if me.team == 0:
+		if me.team == 0 or hold:
 			drive = _turn_to(me, focus + deg_to_rad(angle_deg), 0.0)
 			mode = "search_hold"
 		else:
@@ -81,7 +95,11 @@ func act(me: Tank, p: TankPerception) -> Array:
 		var to_t := est_pos - me.global_position
 		var dist := Vector2(to_t.x, to_t.z).length()
 		var age := p.time - float(target.t)
-		if me.team == 0:
+		if int(target.track) != _track_id:
+			_track_id = int(target.track)
+			_track_seen_s = 0.0
+		_track_seen_s = _track_seen_s + STEP_S if target.visible_now else 0.0
+		if me.team == 0 or hold:
 			drive = _turn_to(me, atan2(-to_t.x, -to_t.z) + deg_to_rad(angle_deg), 0.0)
 			mode = "angle_hold"
 		elif dist > engage_range or age > reacquire_s:
@@ -100,6 +118,8 @@ func act(me: Tank, p: TankPerception) -> Array:
 		else:
 			view = [TankView.GUNNER, 0.0, 0.0, 0.0, 1.0 if est_r > 500.0 else -1.0]
 			gun = _aim(me, p, target, est_r)
+			if _track_seen_s < fire_delay_s:
+				gun[2] = 0.0
 			mode += "+aim" if target.gun_err == null else "+gunsight"
 		info = {"track": target.track, "type": target.get("type", "?"), "px": int(target.size_px),
 			"est_range_m": snappedf(est_r, 1.0), "seen_age_s": snappedf(age, 0.1)}
@@ -154,8 +174,8 @@ func _aim(me: Tank, p: TankPerception, c: Dictionary, est_r: float) -> Array:
 		var e_pitch := float(c.elev) + se - asin(clampf(me.gun_direction().y, -1.0, 1.0))
 		return [clampf(-e_yaw * 20.0, -1.0, 1.0), clampf(e_pitch * 40.0, -1.0, 1.0), 0.0]
 	# 조준경 안: 십자선 오차 + 거리 눈금(어림 거리의 초과앙각만큼 표적을 십자선 아래에 둔다)
-	var ex: float = ge.x
-	var ey: float = ge.y + se
+	var ex: float = ge.x + _aim_off.x
+	var ey: float = ge.y + se + _aim_off.y
 	var half := maxf(float(c.size_px) / TankPerception.SCREEN_H_PX * deg_to_rad(float(c.fov)) * 0.5, 0.0005)
 	var on := absf(ex) < half * 0.5 and absf(ey) < half * 0.5 \
 		and me.aim_error_mrad < me.current_shell().dispersion_mrad * 1.5 and est_r < max_fire_range \

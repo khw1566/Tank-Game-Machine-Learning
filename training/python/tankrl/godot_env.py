@@ -24,6 +24,12 @@ from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
 from . import protocol
 from .curriculum import STAGE_IDS, Curriculum, lineup, make_config, tank_names
+from . import curriculum_v4
+
+SCENARIO_FIELDS = ["global_step", "uid", "stage", "variant", "goal", "success", "reason", "return", "duration_s",
+                   "objective_reached", "status", "exposed_s", "hull_exposed_s", "turret_only_s", "hits_taken",
+                   "pens_taken", "hits", "pens", "kills", "shots", "path_m", "best_objective_m", "zone_s",
+                   "shaping_scale", "spawn_distance_m", "seed", "learner_policy", "reward_components", "relocated"]
 
 PROGRESS_FIELDS = ["wall_time", "global_step", "env", "uid", "tank", "stage", "stage_idx", "current_stage",
                    "success", "reason", "winner", "return", "decisions", "duration_s", "spawn_distance_m",
@@ -65,7 +71,7 @@ def godot_command(godot: str, project: str | None, port: int, env_id: int, log_d
 
 class GodotProcess:
     def __init__(self, godot: str, project: str | None, env_id: int, log_dir: str, timeout: float = 120.0,
-                 quiet: bool = True):
+                 quiet: bool = True, extra: list[str] | None = None):
         self.env_id = env_id
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -73,7 +79,7 @@ class GodotProcess:
         srv.listen(1)
         srv.settimeout(timeout)
         port = srv.getsockname()[1]
-        self.cmd = godot_command(godot, project, port, env_id, log_dir)
+        self.cmd = godot_command(godot, project, port, env_id, log_dir, extra)
         out = subprocess.DEVNULL if quiet else None
         self.proc = subprocess.Popen(self.cmd, stdout=out, stderr=out)
         try:
@@ -130,8 +136,14 @@ class GodotVecEnv(VecEnv):
         self.learner_version = ""
         self.global_step = 0
         self.episode_count = episode_counter(self.run_dir, self.run_name, learner)
-        self.procs = [GodotProcess(godot, project, i, str(self.run_dir), quiet=quiet) for i in range(n_envs)]
+        self.stage_ids = getattr(curriculum, "stage_ids", STAGE_IDS)
+        extra = ["--obs=situation"] if getattr(curriculum, "obs", "") == "situation" else []
+        self.procs = [GodotProcess(godot, project, i, str(self.run_dir), quiet=quiet, extra=extra) for i in range(n_envs)]
         p0 = self.procs[0]
+        if extra and int(p0.hello.get("situation_obs_version", 0)) < 1:
+            for p in self.procs:
+                p.close()
+            raise RuntimeError("커리큘럼 v4 는 상황 관측을 지원하는 최신 게임 실행 파일이 필요합니다. 게임을 다시 빌드하세요.")
         self.obs_labels = p0.hello.get("obs_labels", [])
         self.action_labels = p0.hello.get("action_labels", [])
         obs_space = gym.spaces.Box(-np.inf, np.inf, shape=(p0.obs_size,), dtype=np.float32)
@@ -160,7 +172,29 @@ class GodotVecEnv(VecEnv):
         self._maps[i] = cur
         return cur[1]
 
+    def _new_config_v4(self, i: int) -> dict:
+        seed = self.rng.randrange(1, 2**31 - 1)
+        stage, lu, extra = self.curriculum.build_episode(self.learner, self.rng, seed)
+        names = tank_names(lu)
+        self.episode_count += 1
+        variant = extra["scenario"]["variant"]
+        uid = f"{self.run_name}_{self.learner}_{self.episode_count:07d}_{stage['id']}_{variant}"
+        record = self.record_every > 0 and self.episode_count % self.record_every == 0
+        meta = {"run": self.run_name, "learner_tank": self.learner, "policies": {names[0]: self.learner_version},
+                "roles": {n: d["role"] for d, n in zip(lu, names)}, "global_step": self.global_step,
+                "stage_idx": self.stage_ids.index(stage["id"]), "current_stage": self.curriculum.stage["id"],
+                "curriculum_version": curriculum_v4.VERSION, "variant": variant,
+                "shaping_scale": extra["reward"]["shaping_scale"]}
+        cfg = curriculum_v4.make_config(stage, extra, self.learner, lu, seed, uid, record, meta, self.reward_overrides)
+        if int(self.procs[i].hello.get("scenario_version", 0)) < 1:
+            raise RuntimeError("커리큘럼 v4 상황 배치를 지원하지 않는 게임입니다. 게임을 다시 빌드하세요.")
+        self._ctx[i] = {"cfg": cfg, "stage": stage, "roles": ["learner"], "ext_names": [names[0]],
+                        "opp_versions": [""], "learner_k": 0, "variant": variant}
+        return cfg
+
     def _new_config(self, i: int) -> dict:
+        if hasattr(self.curriculum, "build_episode"):
+            return self._new_config_v4(i)
         stage = self.curriculum.pick_stage()
         have = set(self.opponents.available()) if self.opponents else set()
         lu = lineup(stage, self.learner, self.rng, have)
@@ -267,7 +301,8 @@ class GodotVecEnv(VecEnv):
         me = ctx["ext_names"][ctx["learner_k"]]
         tinfo = next((t for t in ep.get("tanks", []) if t["name"] == me), {})
         row = {"wall_time": round(time.time(), 2), "global_step": self.global_step, "env": i, "uid": cfg["uid"],
-               "tank": self.learner, "stage": stage_id, "stage_idx": STAGE_IDS.index(stage_id),
+               "tank": self.learner, "stage": stage_id,
+               "stage_idx": self.stage_ids.index(stage_id) + getattr(self.curriculum, "dashboard_offset", 0),
                "current_stage": self.curriculum.stage["id"], "success": int(bool(ep.get("success"))),
                "reason": ep.get("reason", ""), "winner": ep.get("winner", -1),
                "return": round(float(self._ret[i]), 4), "decisions": ep.get("decisions", 0),
@@ -295,8 +330,30 @@ class GodotVecEnv(VecEnv):
                             reason=ep.get("reason", ""),
                             reward_components=json.dumps(terrain.get("reward_components", {})))
                 writer.writerow(data)
-        promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step,
-                                       terrain.get("course", ""))
+        scenario = ep.get("scenario", {})
+        if scenario:
+            path = self.run_dir / "scenario_progress.csv"
+            new_file = not path.exists()
+            with path.open("a", newline="", encoding="utf-8") as output:
+                writer = csv.DictWriter(output, fieldnames=SCENARIO_FIELDS)
+                if new_file:
+                    writer.writeheader()
+                data = {key: scenario.get(key, "") for key in SCENARIO_FIELDS}
+                data.update(global_step=self.global_step, uid=cfg["uid"], stage=stage_id,
+                            success=int(bool(ep.get("success"))), reason=ep.get("reason", ""),
+                            duration_s=ep.get("duration_s", 0), spawn_distance_m=ep.get("spawn_distance_m", 0),
+                            seed=cfg["seed"], learner_policy=self.learner_version,
+                            hits=tinfo.get("hits", 0), pens=tinfo.get("pens", 0), kills=tinfo.get("kills", 0),
+                            shots=tinfo.get("shots", 0),
+                            reward_components=json.dumps(scenario.get("reward_components", {}), ensure_ascii=False),
+                            relocated=json.dumps(scenario.get("relocated", [])))
+                data["return"] = round(float(self._ret[i]), 4)
+                writer.writerow(data)
+            promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step,
+                                           variant=scenario.get("variant", ""))
+        else:
+            promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step,
+                                           terrain.get("course", ""))
         if promo:
             self.log_stage_change(promo)
 

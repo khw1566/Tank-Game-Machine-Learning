@@ -32,7 +32,12 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from tankrl.curriculum import STAGE_IDS, STAGES  # noqa: E402
+from tankrl.curriculum import STAGE_IDS as V1_STAGE_IDS, STAGES as V1_STAGES  # noqa: E402
+from tankrl import curriculum_v4  # noqa: E402
+
+# 기존 10단계 뒤에 커리큘럼 v4 단계를 이어 붙인다(번호가 겹치지 않게).
+STAGES = V1_STAGES + curriculum_v4.STAGES
+STAGE_IDS = V1_STAGE_IDS + curriculum_v4.STAGE_IDS
 from tankrl.runtime import select_device  # noqa: E402
 from tankrl.terrain import COURSES
 from tankrl.storage import default_runs_dir

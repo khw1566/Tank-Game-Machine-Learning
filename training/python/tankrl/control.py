@@ -207,7 +207,8 @@ class TrainController:
             st["gpu_memory"] = gpu_memory(str(getattr(self.model, "training_device", self.model.device)))
         if cur is not None:
             p = cur.stage.get("promote") or {}
-            st["curriculum"] = {"stage_idx": cur.stage_idx, "stage": cur.stage["id"],
+            st["curriculum"] = {"stage_idx": cur.stage_idx + getattr(cur, "dashboard_offset", 0), "stage": cur.stage["id"],
+                                "variant_success": cur.variant_rates(cur.stage["id"], p.get("window", 100)) if hasattr(cur, "variant_rates") else None,
                                 "episodes_in_stage": cur.episodes_in_stage,
                                 "success_rate": round(cur.success_rate(cur.stage["id"], p.get("window", 100)), 4),
                                 "window": p.get("window"), "threshold": p.get("threshold"),

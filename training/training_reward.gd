@@ -51,6 +51,18 @@ var _battle_milestones := {}
 var _near_best := {}
 var _near_paid := {}
 var _closing_paid := {}
+# 커리큘럼 v4 전투 상황(config.scenario): 결과 보상 + 감쇠하는 목표 진행 보조 보상
+var _sc_best := INF
+var _sc_hold := 0.0
+var _sc_zone := 0.0
+var _sc_objective := false
+var _sc_exposed := 0.0
+var _sc_hull := 0.0
+var _sc_turret := 0.0
+var _sc_checks := 0
+var _sc_taken := {"hits": 0, "pens": 0}
+var _sc_path := 0.0
+var _sc_last := Vector3.ZERO
 
 
 func _init(p_env, overrides := {}) -> void:
@@ -65,6 +77,10 @@ func config_kind() -> String:
 	return str(env.config.get("kind", "combat"))
 
 
+func _parts_on() -> bool:
+	return bool(w.get("battle_shaping", false)) or env.config.has("scenario")
+
+
 func learner_team() -> int:
 	return int(env.config.get("learner_team", 0))
 
@@ -76,8 +92,9 @@ func start() -> void:
 		_spotted[t.name] = {}
 		_prev_dist[t.name] = _wp_dist(t)
 		_prev_aim[t.name] = _aim_potential(t)
-		if bool(w.get("battle_shaping", false)):
+		if _parts_on():
 			_battle_parts[t.name] = {}
+		if bool(w.get("battle_shaping", false)):
 			_battle_prev_pos[t.name] = t.global_position
 			_battle_best[t.name] = {}
 			_near_best[t.name] = {}
@@ -94,6 +111,9 @@ func start() -> void:
 			for threshold in w.get("close_distances", [150, 100, 60, 30]):
 				if closest <= threshold:
 					_battle_milestones[t.name][str(threshold)] = true
+	if env.config.has("scenario"):
+		_sc_best = _wp_dist(env.tanks[0]) if env.waypoint != Vector3.INF else INF
+		_sc_last = env.tanks[0].global_position
 	if env.config.has("terrain_course"):
 		_course_initial = _remaining_route(env.tanks[0])
 		_course_best = _course_initial
@@ -104,7 +124,7 @@ func start() -> void:
 func _add(name: String, v: float, reason := "other") -> void:
 	_pending[name] = _pending.get(name, 0.0) + v
 	_total[name] = _total.get(name, 0.0) + v
-	if bool(w.get("battle_shaping", false)) and v != 0.0:
+	if _parts_on() and v != 0.0:
 		var parts: Dictionary = _battle_parts.get(name, {})
 		parts[reason] = parts.get(reason, 0.0) + v
 		_battle_parts[name] = parts
@@ -138,6 +158,10 @@ func on_shot(shooter: Tank, r: Dictionary) -> void:
 	if bool(w.get("battle_shaping", false)) and not r.get("hit", false):
 		_near_miss(shooter, r.get("near_miss", {}))
 	var live_hit := not bool(w.combat.get("live_target_only", false)) or bool(r.get("target_was_combat_effective", true))
+	if env.config.has("scenario") and r.get("hit", false) and target == str(env.tanks[0].name) and tteam != shooter.team:
+		_sc_taken.hits += 1
+		if r.get("penetrated", false):
+			_sc_taken.pens += 1
 	if r.get("hit", false) and tteam != shooter.team and live_hit:
 		hits[shooter.name] = hits.get(shooter.name, 0) + 1
 		if r.get("penetrated", false):
@@ -152,6 +176,8 @@ func decision() -> Dictionary:
 	var dt := float(TankAgent.PERCEIVE_EVERY) / Engine.physics_ticks_per_second
 	if env.config.has("terrain_course"):
 		return _course_decision(dt)
+	if env.config.has("scenario"):
+		return _scenario_decision(dt)
 	var kind := config_kind()
 	var out := {"done": false}
 	var arrived := false
@@ -348,6 +374,97 @@ func _course_decision(dt: float) -> Dictionary:
 	if env.tick >= env.time_limit_ticks:
 		return _course_fail(t, "time_limit")
 	return {"done": false}
+
+
+## 커리큘럼 v4: 학습 전차(tanks[0]) 기준. 행동(엄폐 도착 등) 보상은 없고 결과만 본다
+##   reach    목표 지점에서 hold_s 동안 거의 정지 → 성공(objective)
+##   survive  제한 시간까지 전투 가능 → 성공(survive)
+##   destroy  적 전멸 → 성공(win)
+##   zone     목표 구역 안 누적 zone_s → 성공(objective)
+## 보조 보상: 목표까지 새로 줄인 거리 × progress × shaping_scale(Python 이 단계 진행에 따라 1→0 으로 줄임)
+func _scenario_decision(dt: float) -> Dictionary:
+	var sc: Dictionary = env.config.scenario
+	var me: Tank = env.tanks[0]
+	var goal := str(sc.get("goal", "reach"))
+	_add(me.name, float(w.time_per_s) * dt, "time")
+	_sc_path += Vector2(me.global_position.x - _sc_last.x, me.global_position.z - _sc_last.z).length()
+	var speed := Vector2(me.global_position.x - _sc_last.x, me.global_position.z - _sc_last.z).length() / dt
+	_sc_last = me.global_position
+	if env.decisions % 5 == 0:
+		_sc_exposure(me, dt * 5.0)
+	if not me.damage.is_combat_effective():
+		_add(me.name, float(w.loss), "loss")
+		return _done("learner_knocked_out", false, 1 - learner_team())
+	var enemies_alive := 0
+	for i in range(1, env.tanks.size()):
+		if env.tanks[i].team != me.team and env.tanks[i].damage.is_combat_effective():
+			enemies_alive += 1
+	if env.waypoint != Vector3.INF:
+		var d := _wp_dist(me)
+		if d < _sc_best:
+			_add(me.name, (_sc_best - d) * float(w.get("progress", 0.02)) * float(w.get("shaping_scale", 1.0)), "shaping_progress")
+			_sc_best = d
+		var radius := float(sc.get("objective", {}).get("radius", 10.0))
+		var inside := d <= radius
+		if inside:
+			_sc_zone += dt
+		_sc_hold = _sc_hold + dt if inside and speed < 1.0 else 0.0
+		if goal == "reach" and _sc_hold + 0.000001 >= float(sc.get("objective", {}).get("hold_s", 1.0)):
+			_sc_objective = true
+			_add(me.name, float(w.get("objective", 8.0)), "objective")
+			return _done("objective_reached", true, learner_team())
+		if goal == "zone" and _sc_zone + 0.000001 >= float(sc.get("zone_s", 20.0)):
+			_sc_objective = true
+			_add(me.name, float(w.get("objective", 8.0)), "objective")
+			return _done("zone_held", true, learner_team())
+	if goal == "hits" and int(hits.get(me.name, 0)) >= int(sc.get("hits", 2)):
+		_sc_objective = true
+		_add(me.name, float(w.get("objective", 8.0)), "objective")
+		return _done("target_hit", true, learner_team())
+	if enemies_alive == 0 and env.tanks.size() > 1 and goal in ["destroy", "survive", "hits"]:
+		_add(me.name, float(w.win), "win")
+		return _done("enemies_destroyed", true, learner_team())
+	if env.tick >= env.time_limit_ticks:
+		if goal == "survive":
+			_add(me.name, float(w.get("survive", 6.0)), "survive")
+			return _done("survived", true, -1)
+		_add(me.name, float(w.get("timeout_penalty", -3.0)), "timeout")
+		return _done("time_limit", false, -1)
+	return {"done": false}
+
+
+## 보고서용(정책 관측 아님): 실제 적 눈 위치에서 학습 전차가 보이는지
+func _sc_exposure(me: Tank, span: float) -> void:
+	var hull := false
+	var turret := false
+	for i in range(1, env.tanks.size()):
+		var e: Tank = env.tanks[i]
+		if e.team == me.team or not e.damage.is_combat_effective():
+			continue
+		var r := SituationObs.exposure_from(env.map, LineOfSight.eye_position(e), me, [me.get_rid(), e.get_rid()])
+		hull = hull or r.hull
+		turret = turret or r.turret
+	_sc_checks += 1
+	if hull or turret:
+		_sc_exposed += span
+	if hull:
+		_sc_hull += span
+	elif turret:
+		_sc_turret += span
+
+
+func scenario_summary() -> Dictionary:
+	var sc: Dictionary = env.config.scenario
+	var me: Tank = env.tanks[0]
+	return {"version": ScenarioLayout.VERSION, "id": sc.get("id", ""), "variant": sc.get("variant", ""),
+		"goal": sc.get("goal", ""), "objective_reached": _sc_objective,
+		"zone_s": snappedf(_sc_zone, 0.01), "exposed_s": snappedf(_sc_exposed, 0.01),
+		"hull_exposed_s": snappedf(_sc_hull, 0.01), "turret_only_s": snappedf(_sc_turret, 0.01),
+		"hits_taken": _sc_taken.hits, "pens_taken": _sc_taken.pens, "path_m": snappedf(_sc_path, 0.01),
+		"status": me.damage.status_label(), "shaping_scale": float(w.get("shaping_scale", 1.0)),
+		"best_objective_m": snappedf(_sc_best, 0.01) if _sc_best < INF else -1.0,
+		"reward_components": _battle_parts.get(str(me.name), {}).duplicate(),
+		"relocated": env.config.get("scenario_relocated", [])}
 
 
 func course_summary() -> Dictionary:

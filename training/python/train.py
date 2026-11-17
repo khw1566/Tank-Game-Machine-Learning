@@ -32,6 +32,8 @@ import numpy as np
 
 from tankrl.control import TrainController
 from tankrl.curriculum import STAGE_IDS, STAGES, Curriculum
+from tankrl import curriculum_v4
+from tankrl.curriculum_v4 import CurriculumV4
 from tankrl.godot_env import GodotVecEnv
 from tankrl.opponents import OpponentPool
 from tankrl.runtime import model_runtime, resolve_device
@@ -53,7 +55,12 @@ def parse():
     ap.add_argument("--run", default="", help="실행 이름(runs/<run>). 비우면 날짜시각")
     ap.add_argument("--runs-dir", default=str(default_runs_dir()))
     ap.add_argument("--pool-dir", default="", help="자기대전 상대 정책 풀(기본 runs/pool)")
-    ap.add_argument("--start-stage", default="", choices=[""] + STAGE_IDS, help="이 단계부터 시작")
+    ap.add_argument("--curriculum", default="v1", choices=["v1", "v4"],
+                    help="v1 = 기존 10단계, v4 = 결과 기반 보상·변형 혼합(기동·사격·전술·최종), 상황 관측 사용")
+    ap.add_argument("--entropy-boost", type=float, default=0.02, help="v4: 단계 진입 직후 탐색 계수")
+    ap.add_argument("--entropy-steps", type=int, default=300_000, help="v4: 탐색 계수를 기본값으로 줄이는 스텝 수")
+    ap.add_argument("--start-stage", default="", choices=[""] + STAGE_IDS + curriculum_v4.STAGE_IDS,
+                    help="이 단계부터 시작")
     ap.add_argument("--resume", action="store_true", help="runs/<run>/<tank>/latest.zip 과 커리큘럼 상태에서 이어서")
     ap.add_argument("--terrain-course", default="", choices=[""] + COURSE_IDS,
                     help="지형주행 단일 코스 고정 연습(생략하면 자동 승급)")
@@ -102,7 +109,9 @@ def write_manifest(run_dir: Path, args, env: GodotVecEnv, runtime: dict) -> None
                  "runtime": runtime})
     runs[-1]['preserved_runtime'] = archive_runtime(Path(shutil.which(args.godot) or args.godot).resolve(), args.project)
     path.write_text(json.dumps({"format": "tankgame-train-run", "version": 1, "sessions": runs,
-                                "stages": STAGES, "obs_labels": env.obs_labels,
+                                "stages": getattr(env.curriculum, "stages", STAGES),
+                                "curriculum_version": getattr(env.curriculum, "version", 1),
+                                "obs_labels": env.obs_labels,
                                 "action_labels": env.action_labels,
                                 "protocol": env.procs[0].hello.get("protocol"),
                                 "repeat_ticks": env.procs[0].hello.get("repeat"),
@@ -147,11 +156,17 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     cpath = tdir / "curriculum.json"
     checkpoint, cpath = checkpoint_paths(tdir)
     resume = checkpoint is not None
-    start = STAGE_IDS.index(args.start_stage) if args.start_stage else 0
+    v4 = args.curriculum == "v4"
     if cpath.exists() and (resume or args.resume or args.rotate):
-        cur = Curriculum.load(cpath, tank, review_prob=args.review_prob, seed=args.seed)
+        # 저장된 진행 상태가 v4 면 대시보드의 "이어서"도 v4 로 이어 간다
+        v4 = v4 or json.loads(cpath.read_text(encoding="utf-8")).get("curriculum_version") == curriculum_v4.VERSION
+    cls, ids = (CurriculumV4, curriculum_v4.STAGE_IDS) if v4 else (Curriculum, STAGE_IDS)
+    kw = dict(entropy_boost=args.entropy_boost, entropy_steps=args.entropy_steps) if v4 else {}
+    start = ids.index(args.start_stage) if args.start_stage else 0
+    if cpath.exists() and (resume or args.resume or args.rotate):
+        cur = cls.load(cpath, tank, review_prob=args.review_prob, seed=args.seed, **kw)
     else:
-        cur = Curriculum(tank, start_stage=start, review_prob=args.review_prob, seed=args.seed)
+        cur = cls(tank, start_stage=start, review_prob=args.review_prob, seed=args.seed, **kw)
     cur.review_prob = ctl.review_prob
     cur.terrain_fixed = args.terrain_course
     if args.terrain_course and cur.stage["id"] != "drive_terrain":
@@ -208,6 +223,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             self.next_save = (model.num_timesteps // args.save_every + 1) * args.save_every
 
         def _on_rollout_start(self) -> None:
+            if hasattr(cur, "entropy_coef"):
+                model.ent_coef = cur.entropy_coef(args.ent_coef, self.num_timesteps)
             ctl.write_status(self.num_timesteps, force=True, phase="collecting")
 
         def _on_step(self) -> bool:
@@ -224,6 +241,9 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
         def _on_rollout_end(self) -> None:
             self.logger.record("curriculum/stage_idx", cur.stage_idx)
             self.logger.record("curriculum/success_rate", cur.success_rate(cur.stage["id"], 100))
+            if hasattr(cur, "shaping_scale"):
+                self.logger.record("curriculum/shaping_scale", cur.shaping_scale(cur.stage["id"]))
+                self.logger.record("train/ent_coef_scheduled", float(model.ent_coef))
             # 이제 PPO 갱신(몇 초). 그동안 Godot 은 기다리며 CPU 를 거의 안 쓴다
             ctl.write_status(self.num_timesteps, force=True, phase="updating")
 
