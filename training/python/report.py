@@ -13,13 +13,13 @@ from collections import defaultdict
 from pathlib import Path
 
 from tankrl.curriculum import STAGE_IDS
-from tankrl.objectives import ObjectiveIndex
+from tankrl.objectives import ObjectiveIndex, objective_color
 
 COLORS = ["#2a6fdb", "#d9534f", "#3c9d4e", "#e08a1e", "#8e5bd0", "#1aa3a3", "#b5487a", "#6b7b2a", "#555"]
 TANK_LABEL = {"tiger1": "티거 I", "sherman75": "셔먼 75mm", "t34_76": "T-34/76"}
 STAGE_LABEL = {"drive": "주행", "drive_terrain": "지형 주행", "gunnery_static": "정지 표적 사격",
                "gunnery_moving": "이동 표적 사격", "gunnery_search": "수색·사격", "duel_scripted": "1대1 vs 규칙 AI",
-               "duel_selfplay": "1대1 자기대전", "team_scripted": "팀전 vs 규칙 AI", "team_selfplay": "팀 자기대전"}
+               "duel_selfplay": "1대1 자기대전", "team_scripted": "팀전 vs 규칙 AI", "team_selfplay": "팀 자기대전", "final_battle": "최종전 1 대 6"}
 
 
 def rolling(xs, w):
@@ -185,6 +185,33 @@ def build(run_dir: Path) -> Path:
                              f"<td>{'✔' if r['success'] == '1' else '–'}</td><td>{float(r['return']):.3f}</td>"
                              f"<td><a href=\"{html.escape(link)}\">report.html</a></td></tr>")
             parts.append("</table>")
+    individual_file = run_dir / 'individuals.json'
+    if individual_file.exists():
+        agents = json.loads(individual_file.read_text(encoding='utf-8'))
+        log = run_dir / 'individual_progress.jsonl'
+        records = [json.loads(line) for line in log.read_text(encoding='utf-8').splitlines() if line.strip()] if log.exists() else []
+        curves = []
+        parts.append('<h2>7개체 독립 학습</h2><p>개체마다 정책·옵티마이저·경험 버퍼와 체크포인트를 분리한다. 기존 차종 모델은 초기값으로만 복사한다.</p><table><tr><th>개체</th><th>이전 누적 스텝</th><th>개체별 추가 스텝</th><th>PPO 갱신</th><th>완료 경기</th></tr>')
+        for name, state in agents.items():
+            color = objective_color('agent/' + name)
+            own = [r for r in records if r['agent'] == name]
+            for version in sorted({r.get('reward_version', 2) for r in own}):
+                curves.append((name + f' · 보상 v{version}', objective_color('agent/' + name + '/v' + str(version)), [(r['step'], r['reward']) for r in own if r.get('reward_version', 2) == version]))
+            parts.append(f'<tr><td style="color:{color}">{html.escape(name)}</td><td>{state.get("inherited_timesteps", 0)}</td><td>{state.get("independent_steps", 0)}</td><td>{state.get("independent_updates", 0)}</td><td>{len(own)}</td></tr>')
+        parts.append('</table>')
+        parts.append(svg_chart(curves, '개체별 자기 보상 · 가로축은 각 개체의 누적 스텝', '보상'))
+        if any(r.get('reward_components') for r in records):
+            parts.append('<h3>전투 보상 구성 합계</h3><table><tr><th>개체</th><th>보상 항목</th><th>합계</th></tr>')
+            for name in agents:
+                totals = defaultdict(float)
+                for row in records:
+                    if row['agent'] == name:
+                        for reason, value in row.get('reward_components', {}).items():
+                            totals[reason] += value
+                for reason, value in sorted(totals.items()):
+                    parts.append(f'<tr><td>{html.escape(name)}</td><td>{html.escape(reason)}</td><td>{value:.4f}</td></tr>')
+            parts.append('</table>')
+
     parts.append("<h2>재현</h2><p>모든 에피소드는 <code>episodes/env*/&lt;uid&gt;.json</code> 에 설정·시드·행동이 저장되어 있어, "
                  "<code>python reproduce.py &lt;파일&gt;</code> 로 똑같이 다시 돌려 전체 리플레이(F3 뷰어)·경기 보고서·관측 기록을 만들 수 있다. "
                  "끝 상태 해시가 같으면 원래 경기와 동일하다.</p>")

@@ -44,6 +44,7 @@ const STATUS_DESTROYED := 3    # 파괴(화재·탄약 유폭)
 ## 이 시간이 지나면 무승부로 종료(0 = 제한 없음)
 @export var time_limit_s := 900.0
 @export var write_files := true
+var external_rewards := false  # TrainingReward is the sole score source when enabled.
 @export var write_report := true
 @export var log_root := "user://logs"
 ## 전멸·시간초과로 스스로 끝낼지. 학습 환경은 단계별 종료 조건을 직접 판단하므로 끈다.
@@ -126,7 +127,7 @@ func _physics_process(delta: float) -> void:
 		return
 	tick += 1
 	for t in tanks:
-		if t.damage.is_combat_effective():
+		if t.damage.is_combat_effective() and not external_rewards:
 			_add_reward(rewards.time_reward(t.name, t.team, delta), false)
 	if tick % sample_every == 0:
 		_write_frame()
@@ -161,8 +162,9 @@ func end_episode(reason: String, p_winner := -1) -> String:
 	ended = true
 	winner = p_winner
 	end_reason = reason
-	for e in rewards.end_rewards(tanks, winner):
-		_add_reward(e, true)
+	if not external_rewards:
+		for e in rewards.end_rewards(tanks, winner):
+			_add_reward(e, true)
 	var summary := summary_dict()
 	_write({"type": "end", "tick": tick, "t": snappedf(sim_time(), 0.001), "reason": reason,
 		"winner": winner, "summary": summary, "final": tanks.map(func(t): return t.state_dict())})
@@ -216,6 +218,7 @@ func _header() -> Dictionary:
 		"frame_fields": FRAME_FIELDS, "action_labels": TankControlInput.ACTION_LABELS,
 		"agent_action_labels": TankAgent.action_labels(), "observation_labels": TankPerception.labels(),
 		"teams": ["Germany", "Allies"], "reward_weights": rewards.weights, "time_limit_s": time_limit_s,
+		"score_source": "training" if external_rewards else "game",
 		"meta": meta, "map": map.to_record() if map else {}, "tanks": tl}
 
 
@@ -279,8 +282,14 @@ func _on_shot(shooter: Tank, r: Dictionary) -> void:
 	if shots.size() > 300:
 		shots.pop_front()
 	shot_recorded.emit(e)
-	for re in rewards.shot_rewards(shooter.name, shooter.team, target_name, target_team, r):
-		_add_reward(re, true)
+	if not external_rewards:
+		for re in rewards.shot_rewards(shooter.name, shooter.team, target_name, target_team, r):
+			_add_reward(re, true)
+
+
+func training_reward(tank: String, team: int, value: float, reason: String) -> void:
+	if external_rewards and not ended:
+		_add_reward({"tank": tank, "team": team, "value": value, "reason": reason}, true)
 
 
 ## 탄착 종류: penetration / non_penetration / ricochet / blocked / miss

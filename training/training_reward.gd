@@ -44,6 +44,13 @@ var _course_path := 0.0
 var _course_last := Vector3.ZERO
 var _course_parts := {}
 var _course_checkpoints := 0
+var _battle_parts := {}
+var _battle_prev_pos := {}
+var _battle_best := {}
+var _battle_milestones := {}
+var _near_best := {}
+var _near_paid := {}
+var _closing_paid := {}
 
 
 func _init(p_env, overrides := {}) -> void:
@@ -69,6 +76,24 @@ func start() -> void:
 		_spotted[t.name] = {}
 		_prev_dist[t.name] = _wp_dist(t)
 		_prev_aim[t.name] = _aim_potential(t)
+		if bool(w.get("battle_shaping", false)):
+			_battle_parts[t.name] = {}
+			_battle_prev_pos[t.name] = t.global_position
+			_battle_best[t.name] = {}
+			_near_best[t.name] = {}
+			_near_paid[t.name] = 0.0
+			_closing_paid[t.name] = 0.0
+			var closest := INF
+			for enemy in env.tanks:
+				if enemy.team == t.team or not enemy.damage.is_combat_effective():
+					continue
+				var distance := Vector2(t.global_position.x - enemy.global_position.x, t.global_position.z - enemy.global_position.z).length()
+				_battle_best[t.name][enemy.name] = distance
+				closest = minf(closest, distance)
+			_battle_milestones[t.name] = {}
+			for threshold in w.get("close_distances", [150, 100, 60, 30]):
+				if closest <= threshold:
+					_battle_milestones[t.name][str(threshold)] = true
 	if env.config.has("terrain_course"):
 		_course_initial = _remaining_route(env.tanks[0])
 		_course_best = _course_initial
@@ -76,9 +101,18 @@ func start() -> void:
 		_course_last = env.tanks[0].global_position
 
 
-func _add(name: String, v: float) -> void:
+func _add(name: String, v: float, reason := "other") -> void:
 	_pending[name] = _pending.get(name, 0.0) + v
 	_total[name] = _total.get(name, 0.0) + v
+	if bool(w.get("battle_shaping", false)) and v != 0.0:
+		var parts: Dictionary = _battle_parts.get(name, {})
+		parts[reason] = parts.get(reason, 0.0) + v
+		_battle_parts[name] = parts
+		if env.recorder != null:
+			for tank in env.tanks:
+				if str(tank.name) == name:
+					env.recorder.training_reward(name, tank.team, v, reason)
+					break
 
 
 func pending(name: String) -> float:
@@ -100,8 +134,11 @@ func on_shot(shooter: Tank, r: Dictionary) -> void:
 	var target: String = r.get("target_name", "")
 	var tteam := int(r.get("target_team", -1))
 	for e in model.shot_rewards(shooter.name, shooter.team, target, tteam, r):
-		_add(e.tank, float(e.value) * float(w.event_scale))
-	if r.get("hit", false) and tteam != shooter.team:
+		_add(e.tank, float(e.value) * float(w.event_scale), str(e.reason))
+	if bool(w.get("battle_shaping", false)) and not r.get("hit", false):
+		_near_miss(shooter, r.get("near_miss", {}))
+	var live_hit := not bool(w.combat.get("live_target_only", false)) or bool(r.get("target_was_combat_effective", true))
+	if r.get("hit", false) and tteam != shooter.team and live_hit:
 		hits[shooter.name] = hits.get(shooter.name, 0) + 1
 		if r.get("penetrated", false):
 			pens[shooter.name] = pens.get(shooter.name, 0) + 1
@@ -118,11 +155,14 @@ func decision() -> Dictionary:
 	var kind := config_kind()
 	var out := {"done": false}
 	var arrived := false
-	for i in env.ext:
+	var scoring: Array = range(env.tanks.size()) if bool(w.get("battle_shaping", false)) else env.ext
+	for i in scoring:
 		var t: Tank = env.tanks[i]
 		if not t.damage.is_combat_effective():
 			continue
-		_add(t.name, float(w.time_per_s) * dt)
+		_add(t.name, float(w.time_per_s) * dt, "time")
+		if kind == "combat" and bool(w.get("battle_shaping", false)):
+			_battle_approach(t)
 		if kind == "drive":
 			var d := _wp_dist(t)
 			_add(t.name, (float(_prev_dist[t.name]) - d) * float(w.progress))
@@ -139,7 +179,7 @@ func decision() -> Dictionary:
 				var c: Dictionary = env.agents[i].perception.contacts[n]
 				if c.enemy and c.visible_now and not _spotted[t.name].has(n):
 					_spotted[t.name][n] = true
-					_add(t.name, float(w.spot))
+					_add(t.name, float(w.spot), "spot")
 	var alive := [0, 0]
 	for t in env.tanks:
 		if t.damage.is_combat_effective():
@@ -171,15 +211,73 @@ func decision() -> Dictionary:
 				var winner := -1 if alive[0] == alive[1] else (0 if alive[0] > 0 else 1)
 				for t in env.tanks:
 					if winner >= 0:
-						_add(t.name, float(w.win) if t.team == winner else float(w.loss))
+						_add(t.name, float(w.win) if t.team == winner else float(w.loss), "win" if t.team == winner else "loss")
 				return _done("elimination", winner == lt, winner)
 	if timeout:
+		if kind == "combat" and bool(w.get("battle_shaping", false)):
+			for tank in env.tanks:
+				if tank.damage.is_combat_effective():
+					_add(tank.name, float(w.get("timeout_penalty", -4)), "timeout")
 		return _done("time_limit", false, -1)
 	return out
 
 
 func _done(reason: String, success: bool, winner: int) -> Dictionary:
 	return {"done": true, "reason": reason, "success": success, "winner": winner}
+
+
+func _near_miss(shooter: Tank, near: Dictionary) -> void:
+	if near.is_empty() or int(near.get("target_team", shooter.team)) == shooter.team or float(near.get("range_m", 0)) < 20:
+		return
+	var target := str(near.get("target_name", ""))
+	var radius := float(w.get("near_miss_radius_m", 12))
+	var quality := clampf(1.0 - float(near.get("miss_distance_m", radius)) / radius, 0.0, 1.0)
+	var previous := float(_near_best[shooter.name].get(target, 0))
+	_near_best[shooter.name][target] = maxf(previous, quality)
+	# Each enemy supplies at most one point, and all near misses together at most three.
+	var reward := minf(maxf(0, quality - previous) * float(w.get("near_miss_bonus", 1)), maxf(0, float(w.get("near_miss_budget", 3)) - float(_near_paid[shooter.name])))
+	_near_paid[shooter.name] += reward
+	_add(shooter.name, reward, "near_miss")
+
+
+func _battle_approach(t: Tank) -> void:
+	var before: Vector3 = _battle_prev_pos[t.name]
+	var movement := Vector2(t.global_position.x - before.x, t.global_position.z - before.z)
+	_battle_prev_pos[t.name] = t.global_position
+	var closest: Tank = null
+	var nearest := INF
+	for enemy in env.tanks:
+		if enemy.team == t.team or not enemy.damage.is_combat_effective():
+			continue
+		var distance := Vector2(t.global_position.x - enemy.global_position.x, t.global_position.z - enemy.global_position.z).length()
+		if distance < nearest:
+			nearest = distance
+			closest = enemy
+	if closest == null:
+		return
+	var direction := Vector2(closest.global_position.x - t.global_position.x, closest.global_position.z - t.global_position.z).normalized()
+	var own_closing := maxf(0, movement.dot(direction))
+	var best: Dictionary = _battle_best[t.name]
+	var previous := float(best.get(closest.name, nearest))
+	var improvement := maxf(0, maxf(previous, 25) - maxf(nearest, 25))
+	best[closest.name] = minf(previous, nearest)
+	var progress := minf(own_closing, improvement)
+	var reward := minf(progress * float(w.get("closing_per_m", 0.03)), maxf(0, float(w.get("closing_budget", 4)) - float(_closing_paid[t.name])))
+	_closing_paid[t.name] += reward
+	_add(t.name, reward, "closing")
+	if progress <= 0.001:
+		return
+	var values: Array = w.get("close_bonuses", [0.5, 0.75, 1.0, 1.5])
+	var thresholds: Array = w.get("close_distances", [150, 100, 60, 30])
+	for i in thresholds.size():
+		var key := str(thresholds[i])
+		if nearest <= float(thresholds[i]) and not _battle_milestones[t.name].has(key):
+			_battle_milestones[t.name][key] = true
+			_add(t.name, values[i], "close_" + key + "m")
+
+
+func battle_summary() -> Dictionary:
+	return _battle_parts.duplicate(true)
 
 
 func _course_add(t: Tank, component: String, value: float) -> void:

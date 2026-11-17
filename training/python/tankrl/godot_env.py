@@ -164,6 +164,8 @@ class GodotVecEnv(VecEnv):
         stage = self.curriculum.pick_stage()
         have = set(self.opponents.available()) if self.opponents else set()
         lu = lineup(stage, self.learner, self.rng, have)
+        if stage['lineup'] in ('team_scripted', 'team_policy', 'final_policy'):
+            raise RuntimeError('공유 정책 팀 학습은 중단되었습니다. 대시보드의 7개체 독립 학습 또는 train_individuals.py를 사용하세요.')
         names = tank_names(lu)
         self.episode_count += 1
         uid = f"{self.run_name}_{self.learner}_{self.episode_count:07d}_{stage['id']}"

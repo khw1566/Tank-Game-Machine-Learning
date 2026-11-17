@@ -9,7 +9,8 @@
   6 duel_scripted    1대1 vs 규칙 AI
   7 duel_selfplay    1대1 vs 상대 전차 종류의 학습된 정책(없으면 규칙 AI)
   8 team_scripted    티거 1 vs 연합군 3(학습 전차 외는 규칙 AI / 같은 종류 아군은 현재 정책 복사)
-  9 team_selfplay    원래 목표: 티거 1 vs 셔먼 3 + T-34 2, 전원 학습 정책(자기대전)
+  9 team_selfplay    티거 1 vs 셔먼 3 + T-34 2, 자기대전
+ 10 final_battle     최종 목표: 티거 1 vs 셔먼 3 + T-34 3, 자기대전
 
 스폰 거리는 단계별로 짧게 시작해 점점 늘린다(원래 게임은 900m).
 """
@@ -25,6 +26,7 @@ TEAM_OF = {"tiger1": 0, "sherman75": 1, "t34_76": 1}
 ENEMIES_OF = {"tiger1": ["sherman75", "t34_76"], "sherman75": ["tiger1"], "t34_76": ["tiger1"]}
 ALLIED_TEAM = ["sherman75", "sherman75", "t34_76"]
 FULL_ALLIED = ["sherman75", "sherman75", "sherman75", "t34_76", "t34_76"]
+FINAL_ALLIED = ["sherman75"] * 3 + ["t34_76"] * 3
 
 STAGES = [
     {
@@ -97,7 +99,24 @@ STAGES = [
         "spawn": {"distance": [600, 900], "axis_jitter_deg": 10, "yaw_jitter_deg": 15, "spacing": 25,
                   "center_jitter": 80},
         "lineup": "team_policy",
-        "promote": None,   # 마지막 단계
+        "promote": {"window": 200, "threshold": 0.5, "min_episodes": 400, "max_episodes": None},
+    },
+    {
+        "id": "final_battle", "kind": "combat", "time_limit_s": 180, "view_lock": -1,
+        "map": {"features": False, "profile": "battle_compact", "amplitude": 0.0,
+                "size_m": 360, "cell_m": 4, "ridge_count": 0, "seeds": list(range(61, 121))},
+        "spawn": {"distance": [200, 200], "axis_jitter_deg": 5, "yaw_jitter_deg": 8,
+                  "spacing": 18, "center_jitter": 10},
+        "lineup": "final_policy",
+        "learning_objective": {"id": "tiger1_vs_allies6", "label": "독립 개체 1 대 6 · 빠른 교전", "version": 3},
+        "reward": {"battle_shaping": True, "fast_combat_version": 1,
+                   "time_per_s": -0.02, "spot": 0.3, "win": 15.0, "loss": -10.0, "timeout_penalty": -4.0,
+                   "near_miss_radius_m": 12.0, "near_miss_bonus": 1.0, "near_miss_budget": 3.0,
+                   "closing_per_m": 0.03, "closing_budget": 4.0,
+                   "close_distances": [150, 100, 60, 30], "close_bonuses": [0.5, 0.75, 1.0, 1.5],
+                   "combat": {"hit": 5.0, "penetration": 3.0, "knockout": 12.0,
+                              "miss": -0.05, "live_target_only": True}},
+        "promote": None,
     },
 ]
 STAGES[0] = lesson(STAGES[0], 0)  # Review must teach the same stop-at-target rule.
@@ -137,8 +156,8 @@ def lineup(stage: dict, learner: str, rng: random.Random, have_policy: set[str])
     elif kind == "duel_policy":
         add(learner, me_team, "learner")
         add(enemy, 1 - me_team, policy_or_scripted(enemy))
-    elif kind in ("team_scripted", "team_policy"):
-        allies = ALLIED_TEAM if kind == "team_scripted" else FULL_ALLIED
+    elif kind in ("team_scripted", "team_policy", "final_policy"):
+        allies = ALLIED_TEAM if kind == "team_scripted" else (FINAL_ALLIED if kind == "final_policy" else FULL_ALLIED)
         teams = {0: ["tiger1"], 1: list(allies)}
         placed = False
         for team in (0, 1):

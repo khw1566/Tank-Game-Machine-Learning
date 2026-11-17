@@ -1,0 +1,105 @@
+{
+  "captured_at": "2026-11-17T16:53:19.999086+09:00",
+  "training_state": {
+    "pid": 18572,
+    "updated": 1794901341.02,
+    "started": 1794898426.4,
+    "phase": "paused",
+    "paused": true,
+    "stop_requested": false,
+    "num_timesteps": 2965902,
+    "episodes": 2204,
+    "steps_per_s": 0.0,
+    "episodes_per_s": 0.0,
+    "realtime_x": 0.0,
+    "record_every": 100,
+    "review_prob": 0.1,
+    "speed_cap": 0.0,
+    "last_save": {
+      "t": 1794900962.2,
+      "version": "terrain_v2_20261117/tiger1/step_002965902",
+      "snapshot": true,
+      "stage": "gunnery_static"
+    },
+    "log": [
+      {
+        "t": 1794900962.0,
+        "text": "일시정지"
+      },
+      {
+        "t": 1794900962.2,
+        "text": "체크포인트 저장 terrain_v2_20261117/tiger1/step_002965902"
+      }
+    ],
+    "tank": "tiger1",
+    "target_timesteps": 5218242,
+    "runtime": {
+      "requested_device": "cpu",
+      "device": "cpu",
+      "gpu_name": null,
+      "torch": "2.15.0+cpu",
+      "cuda_version": null,
+      "torch_threads": 2,
+      "n_steps": 1024,
+      "batch_size": 2048,
+      "n_epochs": 8,
+      "rollout_size": 6144,
+      "rollout_buffer": "RolloutBuffer",
+      "mode": "cpu",
+      "inference_device": "cpu",
+      "update_device": "cpu",
+      "start_timesteps": 2640264,
+      "resumed_from": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\terrain_v2_20261117\\tiger1\\checkpoints\\step_002640264_20261117_155152_745217_98a71e\\model.zip"
+    },
+    "n_envs": 6,
+    "learner_policy": "terrain_v2_20261117/tiger1/step_002965902",
+    "gpu_memory": {},
+    "curriculum": {
+      "stage_idx": 2,
+      "stage": "gunnery_static",
+      "episodes_in_stage": 527,
+      "success_rate": 0.0,
+      "window": 100,
+      "threshold": 0.7,
+      "min_episodes": 200,
+      "max_episodes": 8000
+    }
+  },
+  "checkpoint": {
+    "generation": "checkpoints/step_002965902_20261117_164221_548778_e87f5d",
+    "sha256": "08795bfe7d5158725fe9990fcd28705e875d552fc031180ae327f6797a3e624a",
+    "num_timesteps": 2965902,
+    "created": "2026-11-17T16:42:21.684964+09:00"
+  },
+  "source_base_commit": "7f226d69f16bc5b6b6a0f0dec2db902813b75fc6",
+  "runtime_sha256": "eabe484a194d356c2a379aaff36fd011faf28c54f430407d774d039984a3997b",
+  "resume_run": "terrain_v2_20261117",
+  "captured_runs": [
+    "20261117_063506",
+    "20261117_063521",
+    "eval_smoke_final_20261117",
+    "eval_smoke_isolated_20261117",
+    "evaluation_compact_individuals_20261117",
+    "evaluation_final_20261117_1v6",
+    "evaluation_final_isolated_20261117_1v6",
+    "gpu_hybrid_validation_20261117",
+    "gpu_integration_20261117",
+    "gpu_validation_20261117",
+    "human_graphics_smoke",
+    "independent_20261117_141925_385870",
+    "independent_su1117_02",
+    "pool",
+    "su1117_02",
+    "terrain_diagnostics_20261117",
+    "terrain_final_checks",
+    "terrain_safety_checks",
+    "terrain_v2_20261117",
+    "terrain_v2_checks",
+    "root_metadata",
+    "runtimes"
+  ],
+  "paused_for_snapshot": [
+    "terrain_v2_20261117"
+  ],
+  "mutable_files_frozen_at": "2026-11-17T16:42:21.684964+09:00"
+}

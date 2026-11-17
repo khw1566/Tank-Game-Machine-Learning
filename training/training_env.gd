@@ -119,7 +119,8 @@ func _ready() -> void:
 		"obs_size": obs_size(), "act_size": ACT_SIZE, "obs_labels": obs_labels(),
 		"action_labels": TankAgent.action_labels(), "physics_hz": Engine.physics_ticks_per_second,
 		"repeat": REPEAT, "engine": Engine.get_version_info().string,
-		"terrain_course_version": TerrainCourse.VERSION, "spawn_safety_version": 1, "destruction_version": 1})
+		"terrain_course_version": TerrainCourse.VERSION, "spawn_safety_version": 1, "destruction_version": 1,
+		"compact_battle_version": 1, "fast_combat_reward_version": 1})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 
 
@@ -137,31 +138,12 @@ func _send(header: Dictionary, bin := PackedByteArray()) -> void:
 
 
 func _read_exact(n: int) -> PackedByteArray:
-	var out := PackedByteArray()
-	var idle := 0
-	while out.size() < n:
-		_peer.poll()
-		if _peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
-			return PackedByteArray()
-		var avail := _peer.get_available_bytes()
-		if avail <= 0:
-			# 처음 ~60ms 는 촘촘히(결정 사이 지연 최소). 그보다 오래 기다리면(PPO 갱신·일시정지) 15ms 씩 잠들어
-			# CPU 를 Python 쪽에 양보한다 — 기다리는 동안 Godot 여러 개가 코어를 다 쓰면 PPO 갱신이 느려진다.
-			# (Windows 의 delay_usec 는 1ms 미만이면 바쁜 대기라 짧은 값으로는 CPU 가 쉬지 않는다)
-			idle += 1
-			if idle < 100:
-				OS.delay_usec(20)
-			elif idle < 400:
-				OS.delay_usec(200)
-			else:
-				OS.delay_msec(15)
-			continue
-		idle = 0
-		var r := _peer.get_partial_data(mini(avail, n - out.size()))
-		if r[0] != OK:
-			return PackedByteArray()
-		out.append_array(r[1])
-	return out
+	# Wait on the socket itself. Polling with micro-sleeps adds Windows timer
+	# latency to every action and needlessly spins during PPO updates/pauses.
+	if n <= 0:
+		return PackedByteArray()
+	var received := _peer.get_data(n)
+	return received[1] if received[0] == OK else PackedByteArray()
 
 
 func _u32(b: PackedByteArray) -> int:
@@ -337,6 +319,8 @@ func _ensure_map(mc: Dictionary) -> void:
 	map.cell_m = float(mc.get("cell_m", 5.0))
 	map.ridge_count = int(mc.get("ridge_count", 3))
 	add_child(map)
+	if mc.get("profile", "") == "battle_compact":
+		CompactBattle.populate(map)
 	if config.has("terrain_layout"):
 		TerrainCourse.populate(map, config.terrain_layout)
 	_map_key = key
@@ -453,6 +437,7 @@ func _pick_waypoint(rng: RandomNumberGenerator) -> Vector3:
 
 func _start_recorder() -> void:
 	recorder = MatchRecorder.new()
+	recorder.external_rewards = bool(config.get("reward", {}).get("battle_shaping", false))
 	recorder.auto_end = false
 	recorder.time_limit_s = 0.0
 	recorder.log_root = _record_root()
@@ -515,6 +500,8 @@ func _evaluate() -> void:
 		_end["stage"] = str(config.get("stage", ""))
 		_end["seed"] = int(config.get("seed", 0))
 		_end["destroyed_obstacles"] = map.destruction.destroyed_ids()
+		if bool(config.get("reward", {}).get("battle_shaping", false)):
+			_end["combat_rewards"] = rewarder.battle_summary()
 		if config.has("terrain_course"):
 			_end["terrain"] = rewarder.course_summary()
 		_end["spawn_distance_m"] = config.get("spawn_distance_m", 0.0)
@@ -522,6 +509,9 @@ func _evaluate() -> void:
 			"status": t.damage.status_label(), "return": snappedf(rewarder.total(t.name), 0.0001),
 			"shots": t.shots_fired, "hits": rewarder.hits.get(t.name, 0), "pens": rewarder.pens.get(t.name, 0),
 			"kills": rewarder.kills.get(t.name, 0)})
+		if _end.has("combat_rewards"):
+			for tank in _end.tanks:
+				tank["reward_components"] = _end.combat_rewards.get(tank.name, {})
 
 
 func _apply_external(bin: PackedByteArray) -> void:
@@ -656,6 +646,8 @@ func _on_shot(shooter: Tank, r: Dictionary) -> void:
 			"events": r.get("events", [])})
 	else:
 		e["blocked_by"] = r.get("blocked_by", "")
+		if r.has("near_miss"):
+			e["near_miss"] = r.near_miss
 	_shots.append(e)
 
 

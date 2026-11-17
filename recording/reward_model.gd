@@ -36,6 +36,9 @@ func shot_rewards(shooter: String, shooter_team: int, target: String, target_tea
 	if not r.get("hit", false):
 		out.append(_e(shooter, shooter_team, weights.miss, "miss"))
 		return out
+	if bool(weights.get("live_target_only", false)) and not bool(r.get("target_was_combat_effective", true)):
+		out.append(_e(shooter, shooter_team, weights.miss, "wreck_hit"))
+		return out
 	var dmg := 0.0
 	var reasons := []
 	dmg += weights.hit
@@ -98,6 +101,8 @@ static func short_reason(reason: String) -> String:
 	var names := {"knockout": "격파", "crew_kia": "승무원 전사", "penetration": "관통", "module_destroyed": "모듈 파괴",
 		"crew_wounded": "승무원 부상", "module_damaged": "모듈 손상", "hit": "명중", "miss": "빗나감",
 		"win": "승리", "loss": "패배", "time": "시간"}
+	names.merge({"near_miss": "지근탄", "closing": "거리 단축", "close_150m": "150m 접근", "close_100m": "100m 접근",
+		"close_60m": "60m 접근", "close_30m": "30m 접근", "timeout": "교전 시간 초과", "wreck_hit": "잔해 사격"})
 	var prefix := ""
 	var body := reason
 	if body.begins_with("took_"):

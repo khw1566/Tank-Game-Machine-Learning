@@ -44,6 +44,8 @@ const harness = [
   'f.terrain_course.value = "gates";',
   'await $("btnGo").onclick({ preventDefault() {} });',
   '$("trainDevice").value = "hybrid"; await $("btnDevice").onclick();',
+  '$("evalEpisodes").value = 2; await $("btnEvaluate").onclick();',
+  '$("independentSteps").value = 64; await $("btnIndependent").onclick();',
   '\n    EPCOL = {objective: 0, success: 1, global_step: 2};\n    EPS = [["a", 1, 10], ["b", 0, 20], ["a", 1, 30]];\n    S.objectives = {a: {stage: "drive_terrain", label: "Approach", color: "#2563eb"},\n                    b: {stage: "drive_terrain", label: "Slope", color: "#9333ea"}};\n    $("xSel").value = "step";\n    window.goalCurves = objectiveSeries(EPS.map((e,i) => [e,i]), "success", 100);\n  ',
   '})();'
 ].join('\n');
@@ -56,6 +58,13 @@ w.eval(script + '\n' + harness);
   assert.deepEqual(Array.from(w.goalCurves[1].pts, p => p[1]), [0]);
   const start = calls.find(c => c.url === '/api/start');
   const restart = calls.find(c => c.url === '/api/restart');
+  const evaluation = calls.find(c => c.url === '/api/evaluate');
+  assert.equal(evaluation.body.run, 'sample');
+  assert.equal(evaluation.body.episodes, 2);
+  assert.equal(evaluation.body.modes, 'mixed');
+  const independent = calls.find(c => c.url === '/api/train_individuals');
+  assert.equal(independent.body.run, 'sample');
+  assert.equal(independent.body.timesteps, 64);
   assert.equal(start.body.device, 'hybrid');
   assert.equal(start.body.n_steps, 1024);
   assert.equal(start.body.batch_size, 2048);

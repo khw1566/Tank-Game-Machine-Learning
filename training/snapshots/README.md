@@ -1,6 +1,29 @@
-# 환경 변경 전 학습 데이터 스냅샷
+# 학습 데이터 스냅샷
 
-현재 보존본: **[20261117_083446_before_environment_change](20261117_083446_before_environment_change)**
+최신 보존본: **[20261117_164221_learning_progress](20261117_164221_learning_progress)**
+
+- `terrain_v2_20261117`의 Tiger I **2,965,902스텝** 체크포인트를 기준으로 저장했다.
+- 전체 실행의 모델·저장 세대·정책 풀·학습 통계·평가·리플레이와 7개체 독립 모델, 실행 파일 9개 버전을 포함한다.
+- 가변 파일을 별도로 고정한 뒤 압축 중 학습을 재개했다. 이후 진행분은 실행 중인 원본에 계속 저장된다.
+- 실행별 ZIP은 Git LFS로 보관한다. 파일별 크기와 SHA-256은 `content_manifest.json`, 압축 파일의 검증값은 `manifest.json`에 있다.
+
+저장소 루트에서 다운로드하고 검증한다. 복원 대상 폴더는 존재하지 않아야 한다.
+
+```powershell
+git lfs install
+git lfs pull
+python training/snapshots/restore_archives.py training/snapshots/20261117_164221_learning_progress
+python training/snapshots/restore_archives.py training/snapshots/20261117_164221_learning_progress --dest C:/TankGameML-restored-20261117
+training/python/dashboard.bat --runs-dir C:/TankGameML-restored-20261117/runs
+```
+
+다른 PC에서는 게임 실행 파일과 Python 경로를 현재 환경에 맞게 지정한다.
+`runtimes/<SHA-256>/TankGame.exe`에 보관된 버전으로 당시 환경을 선택할 수 있다.
+기록 속 절대 경로와 프로세스 ID는 당시 이력이며 자동으로 현재 경로로 바뀌지 않는다.
+
+## 이전 환경 보존본
+
+**[20261117_083446_before_environment_change](20261117_083446_before_environment_change)**
 
 - 캡처: 2026-11-17 08:34:46 KST. 학습이 저장 후 중지된 상태에서 복사했다.
 - 실행: `20261117_063521`, Tiger I, **2,097,312스텝**, `drive_terrain` 단계.

@@ -84,7 +84,13 @@ static func build_html(d: ReplayData, episodes: Array) -> String:
 	s.append(_shot_table(d))
 
 	s.append("<h2>부록. 보상 가중치</h2><table class='small'><tr><th>항목</th><th>값</th></tr>")
-	var w: Dictionary = h.get("reward_weights", {})
+	var w: Dictionary = h.get("reward_weights", {}).duplicate(true)
+	if h.get("score_source", "game") == "training":
+		var training: Dictionary = h.get("meta", {}).get("training", {}).get("reward", {})
+		w.merge(training, true)
+		w.merge(training.get("combat", {}), true)
+		w.erase("combat")
+		s.append("<tr><td colspan='2'>점수는 각 개체의 실제 PPO 훈련 보상입니다. 지근탄·접근·시간·승패 보상을 포함하며 중복 합산하지 않습니다.</td></tr>")
 	for k in w:
 		s.append("<tr><td>%s</td><td>%s</td></tr>" % [k, w[k]])
 	s.append("</table><p class='note'>원본: %s</p></body></html>" % _esc(ProjectSettings.globalize_path(d.path)))

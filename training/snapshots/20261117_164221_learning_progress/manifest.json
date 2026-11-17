@@ -1,0 +1,206 @@
+{
+  "format": "tankgame-archive-snapshot",
+  "version": 1,
+  "files": [
+    {
+      "path": "archives/20261117_063506.zip",
+      "bytes": 590,
+      "sha256": "2bf25e4afeb8fa022979f2435fba82b751403b0345c862dd6d98d37404f964c8"
+    },
+    {
+      "path": "archives/20261117_063521.zip",
+      "bytes": 147883877,
+      "sha256": "b63e14517f71be87a982c8e146f29726c6bbdae75db9497350cf0726454dc4cd"
+    },
+    {
+      "path": "archives/eval_smoke_final_20261117.zip",
+      "bytes": 7296490,
+      "sha256": "2a5b7298e04bf74985bbcb5d7cd552f8694260334fb7e4aac5c147697ec8cdeb"
+    },
+    {
+      "path": "archives/eval_smoke_isolated_20261117.zip",
+      "bytes": 7296816,
+      "sha256": "b98875b64bb34d62164839ea1fbf2275198735b0eb867473b524d56a5f38f729"
+    },
+    {
+      "path": "archives/evaluation_compact_individuals_20261117.zip",
+      "bytes": 30453130,
+      "sha256": "749947cacbabda2a4ea6f28a6f748fc3b215da79f342eb6531424d8f3ca6163f"
+    },
+    {
+      "path": "archives/evaluation_final_20261117_1v6.zip",
+      "bytes": 8379236,
+      "sha256": "3cba1bf12a007c93886870fad90c896e404f9ca7083458082ebec13eccdaecca"
+    },
+    {
+      "path": "archives/evaluation_final_isolated_20261117_1v6.zip",
+      "bytes": 18466425,
+      "sha256": "4ca47701594950668a0d100da7ab6cf2d14dbceed0874cedac2addc4ccaabfd3"
+    },
+    {
+      "path": "archives/gpu_hybrid_validation_20261117.zip",
+      "bytes": 1607570,
+      "sha256": "337481aab3bdd3566f01ede2c57a83dce7cb9f5da33460c8374bae6cf73d6aae"
+    },
+    {
+      "path": "archives/gpu_integration_20261117.zip",
+      "bytes": 10390557,
+      "sha256": "0f0dbb63171add5c583b4c8cd67e75324fdafd18475f17ee691bef8ade77c018"
+    },
+    {
+      "path": "archives/gpu_validation_20261117.zip",
+      "bytes": 352911,
+      "sha256": "ef06e5fa555390b52937790c0978d8af2e14f6b4cd4f3884711667c3167bba3b"
+    },
+    {
+      "path": "archives/human_graphics_smoke.zip",
+      "bytes": 2961,
+      "sha256": "29511bfeac20da98f4c189475393b947a4ca067b3ebcb78d4e033c9571d65cc5"
+    },
+    {
+      "path": "archives/independent_20261117_141925_385870.zip",
+      "bytes": 70024282,
+      "sha256": "8f918aa59d22f3097da07216e99e69297cd2898dadf1c29e8a41ed5141d38dca"
+    },
+    {
+      "path": "archives/independent_su1117_02.zip",
+      "bytes": 71227725,
+      "sha256": "cbed3c5b2704f3e0bb9045e5432078609bc38b9febfc25f9b84d27fdefb2856e"
+    },
+    {
+      "path": "archives/pool.zip",
+      "bytes": 179109813,
+      "sha256": "0ca67ed78eb063ac34797b260154e6aa0bd73f587364c0885003688ade333876"
+    },
+    {
+      "path": "archives/root_metadata.zip",
+      "bytes": 3865,
+      "sha256": "76a40ef04dafe7296d430775c2c934cc5dbca00da6ef753c94f10f37f9e3e570"
+    },
+    {
+      "path": "archives/runtimes.zip",
+      "bytes": 303884554,
+      "sha256": "15ee3900d6cbad9faeb418dfaf04b38c03569e4fb1dd713074337545ba9de8d5"
+    },
+    {
+      "path": "archives/su1117_02.zip",
+      "bytes": 249525566,
+      "sha256": "daeaa1e86eb885914fd331dd79762f3a98b9fc92a4789b18542bf75a9fafa8fe"
+    },
+    {
+      "path": "archives/terrain_diagnostics_20261117.zip",
+      "bytes": 1044329,
+      "sha256": "6ce430c977e282190506f584ded67edf78894a68830ae0f84da90a1b7d79ccbe"
+    },
+    {
+      "path": "archives/terrain_final_checks.zip",
+      "bytes": 318203,
+      "sha256": "aa1c50dbbe584968b754a98a6b3ed021e4a1f12837ee51259c33f83417e1bdad"
+    },
+    {
+      "path": "archives/terrain_safety_checks.zip",
+      "bytes": 319138,
+      "sha256": "e18755760a2ca3718dce45224ddc12fc582227e25debe58f70d0eb9f32c08fe8"
+    },
+    {
+      "path": "archives/terrain_v2_20261117.zip",
+      "bytes": 173739324,
+      "sha256": "bdeedae57c0688ab2df2bd89e5c1a5e752325793af88c46a5e2c12aee5b325a6"
+    },
+    {
+      "path": "archives/terrain_v2_checks.zip",
+      "bytes": 317851,
+      "sha256": "156eabf13146eff93bd072a7c2fcec61e2739f74b36ab4dd5ba81e695e3e124f"
+    },
+    {
+      "path": "content_manifest.json",
+      "bytes": 6025409,
+      "sha256": "47fbf00d3c48f4cbe8476759c9c36df85069a4589825b9e25e80d63898574426"
+    },
+    {
+      "path": "environment/pip-freeze.txt",
+      "bytes": 269,
+      "sha256": "2615980504c297daf686cef8e7b2a5a2176939ee40ca4446fde104afe9b5d867"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2029,
+      "sha256": "b482a984ea80b27ac27515d9b9ac01fa46b415dad94735b6ea40edb318ce9319"
+    },
+    {
+      "path": "training_state.json",
+      "bytes": 3106,
+      "sha256": "d759469c4eb52178a3fb4501d2f3b75550617ddfbe2af2d25af1df4964bab6ea"
+    }
+  ],
+  "file_count": 26,
+  "total_bytes": 1287676026,
+  "training_state": {
+    "pid": 18572,
+    "updated": 1794901341.02,
+    "started": 1794898426.4,
+    "phase": "paused",
+    "paused": true,
+    "stop_requested": false,
+    "num_timesteps": 2965902,
+    "episodes": 2204,
+    "steps_per_s": 0.0,
+    "episodes_per_s": 0.0,
+    "realtime_x": 0.0,
+    "record_every": 100,
+    "review_prob": 0.1,
+    "speed_cap": 0.0,
+    "last_save": {
+      "t": 1794900962.2,
+      "version": "terrain_v2_20261117/tiger1/step_002965902",
+      "snapshot": true,
+      "stage": "gunnery_static"
+    },
+    "log": [
+      {
+        "t": 1794900962.0,
+        "text": "일시정지"
+      },
+      {
+        "t": 1794900962.2,
+        "text": "체크포인트 저장 terrain_v2_20261117/tiger1/step_002965902"
+      }
+    ],
+    "tank": "tiger1",
+    "target_timesteps": 5218242,
+    "runtime": {
+      "requested_device": "cpu",
+      "device": "cpu",
+      "gpu_name": null,
+      "torch": "2.15.0+cpu",
+      "cuda_version": null,
+      "torch_threads": 2,
+      "n_steps": 1024,
+      "batch_size": 2048,
+      "n_epochs": 8,
+      "rollout_size": 6144,
+      "rollout_buffer": "RolloutBuffer",
+      "mode": "cpu",
+      "inference_device": "cpu",
+      "update_device": "cpu",
+      "start_timesteps": 2640264,
+      "resumed_from": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\terrain_v2_20261117\\tiger1\\checkpoints\\step_002640264_20261117_155152_745217_98a71e\\model.zip"
+    },
+    "n_envs": 6,
+    "learner_policy": "terrain_v2_20261117/tiger1/step_002965902",
+    "gpu_memory": {},
+    "curriculum": {
+      "stage_idx": 2,
+      "stage": "gunnery_static",
+      "episodes_in_stage": 527,
+      "success_rate": 0.0,
+      "window": 100,
+      "threshold": 0.7,
+      "min_episodes": 200,
+      "max_episodes": 8000
+    }
+  },
+  "latest_checkpoint_sha256": "08795bfe7d5158725fe9990fcd28705e875d552fc031180ae327f6797a3e624a",
+  "archived_file_count": 22457,
+  "uncompressed_bytes": 2583963896
+}

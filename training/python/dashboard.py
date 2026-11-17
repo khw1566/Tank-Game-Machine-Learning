@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime as dt
 import io
 import json
 import os
@@ -35,7 +36,7 @@ from tankrl.curriculum import STAGE_IDS, STAGES  # noqa: E402
 from tankrl.runtime import select_device  # noqa: E402
 from tankrl.terrain import COURSES
 from tankrl.storage import default_runs_dir
-from tankrl.objectives import ObjectiveIndex
+from tankrl.objectives import ObjectiveIndex, objective_color
 from tankrl.control import write_json_atomic
 
 TANKS = ["tiger1", "sherman75", "t34_76"]
@@ -99,13 +100,16 @@ class CsvTail:
         if size == self.offset:
             return 0
         with open(self.path, "rb") as f:
+            first = next(csv.reader([f.readline().decode('utf-8-sig', 'replace')]), [])
+            if self.header is not None and first != self.header:
+                self.offset, self.header, self.rows = 0, None, []
             f.seek(self.offset)
             data = f.read()
         end = data.rfind(b"\n") + 1
         if end == 0:
             return 0
         self.offset += end
-        text = data[:end].decode("utf-8", "replace")
+        text = data[:end].decode("utf-8-sig", "replace")
         lines = list(csv.reader(io.StringIO(text)))
         if self.header is None and lines:
             self.header = lines.pop(0)
@@ -199,6 +203,12 @@ class RunWatch:
         out['history_sources'] = [directory.name for directory in self.imports]
         out["terrain_recent"] = ([r for tail in self.imported_terrain for r in tail.rows] + self.terrain.rows)[-20:]
         out["status"] = read_json(self.run_dir / "status.json")
+        out["evaluation"] = read_json(self.run_dir / 'evaluation.json').get('groups', {})
+        out['individuals'] = read_json(self.run_dir / 'individuals.json')
+        out['individual_progress'] = read_jsonl(self.run_dir / 'individual_progress.jsonl')
+        out['individual_colors'] = {name: objective_color('agent/' + name) for name in out['individuals']}
+        out['individual_curve_colors'] = {r['agent'] + '/v' + str(r.get('reward_version', 2)):
+            objective_color('agent/' + r['agent'] + '/v' + str(r.get('reward_version', 2))) for r in out['individual_progress']}
         out["curriculum_log"] = read_jsonl(self.run_dir / "curriculum_log.jsonl")[-200:]
         out["tanks"] = self.tank_info()
         out["run_json"] = self.run_summary()
@@ -472,6 +482,10 @@ class Dashboard:
         run = a.get("run") or time.strftime("%Y%m%d_%H%M%S")
         a["run"] = run
         d = self.run_dir(run)
+        if read_json(d / 'status.json').get('mode') == 'evaluation':
+            raise ValueError('평가 결과 폴더에서는 학습을 시작할 수 없습니다. 원래 학습 실행을 선택하세요.')
+        if a.get('start_stage') == 'final_battle' or read_json(d / 'status.json').get('mode') == 'independent':
+            return self.train_individuals(run, int(a.get('timesteps', 10000)))
         st = read_json(d / "status.json")
         if self.alive(run, st):
             raise ValueError(f"{run} 은 이미 학습 중")
@@ -578,6 +592,64 @@ class Dashboard:
         return self.background(f"{run}: 다시 시작({', '.join(f'{k}={v}' for k, v in overrides.items())})", job)
 
     # ------------------------------------------------------------ 리플레이·보고서
+
+    def train_individuals(self, source_run: str, timesteps: int = 10000) -> dict:
+        source = self.run_dir(source_run)
+        status = read_json(source / 'status.json')
+        if not 1 <= timesteps <= 10000000 or status.get('mode') == 'evaluation':
+            raise ValueError('학습 모델이 있는 실행과 올바른 추가 스텝 수를 선택하세요.')
+        if status.get('mode') == 'independent':
+            if self.alive(source_run, status):
+                raise ValueError('이미 독립 학습 중입니다.')
+            run = source_run
+            origin = read_json(source / 'independent_run.json')['source_run']
+        else:
+            run = 'independent_' + dt.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+            origin = source_run
+        directory = self.run_dir(run)
+        directory.mkdir(exist_ok=True)
+        game = self.game_cmd()
+        cmd = [self.train_python(), '-u', str(HERE / 'train_individuals.py'), '--godot', game[0],
+               '--runs-dir', str(self.runs_dir), '--run', run, '--source-run', origin, '--timesteps', str(timesteps)]
+        if self.settings.get('project'):
+            cmd += ['--project', self.settings['project']]
+        with (directory / 'train_log.txt').open('a', encoding='utf-8') as log:
+            flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            process = subprocess.Popen(cmd, cwd=str(HERE), stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
+        self.procs[run] = process
+
+        def wait():
+            if process.wait() != 0:
+                raise RuntimeError(tail_text(directory / 'train_log.txt', 1400))
+            return run + ': 7개체 저장 완료'
+        return self.background(source_run + ': 7개체 독립 학습', wait) | {'run': run}
+
+    def evaluate(self, source_run: str, episodes: int = 1, modes: str = 'mixed') -> dict:
+        from tankrl.evaluation import MODES
+        source = self.run_dir(source_run)
+        if read_json(source / 'status.json').get('mode') == 'evaluation':
+            raise ValueError('학습 모델이 있는 원래 실행을 선택하세요.')
+        if not 1 <= episodes <= 100 or any(mode not in MODES for mode in modes.split(',')):
+            raise ValueError('잘못된 평가 설정')
+        run = 'evaluation_' + dt.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        directory = self.run_dir(run)
+        directory.mkdir()
+        game = self.game_cmd()
+        cmd = [self.train_python(), '-u', str(HERE / 'evaluate.py'), '--godot', game[0],
+               '--runs-dir', str(self.runs_dir), '--source-run', source_run,
+               '--out', str(directory), '--episodes', str(episodes), '--modes', modes]
+        if self.settings.get('project'):
+            cmd += ['--project', self.settings['project']]
+        with (directory / 'train_log.txt').open('a', encoding='utf-8') as log:
+            flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            process = subprocess.Popen(cmd, cwd=str(HERE), stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
+        self.procs[run] = process
+
+        def wait():
+            if process.wait() != 0:
+                raise RuntimeError(tail_text(directory / 'train_log.txt', 1400))
+            return run + '/evaluation_report.html'
+        return self.background(source_run + ': 10단계 최종전 평가', wait) | {'run': run}
 
     def game_cmd(self) -> list[str]:
         g = self.settings.get("godot", "")
@@ -724,6 +796,10 @@ def make_handler(dash: Dashboard):
                     return self.send_json(dash.reproduce(a["run"], a["episode_file"], bool(a.get("view", True))))
                 if u.path == "/api/report":
                     return self.send_json(dash.report(a["run"]))
+                if u.path == '/api/evaluate':
+                    return self.send_json(dash.evaluate(a['run'], int(a.get('episodes', 1)), a.get('modes', 'mixed')))
+                if u.path == '/api/train_individuals':
+                    return self.send_json(dash.train_individuals(a['run'], int(a.get('timesteps', 10000))))
                 if u.path == "/api/install":
                     return self.send_json(dash.install_deps())
                 if u.path == "/api/settings":

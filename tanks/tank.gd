@@ -668,15 +668,17 @@ func fire() -> Dictionary:
 		result["blocked_by"] = "none"
 	elif hit.has("tank"):
 		var target: Tank = hit.tank
+		var target_was_alive := target.damage.is_combat_effective()
 		var r := DamageModel.resolve_shot(target.damage, target.turret_yaw, hit.local_origin, hit.local_dir,
 			hit.distance, shell, rng, target.gun_pitch)
 		r.merge(result, false)
 		r["target_name"] = target.name
 		r["target_team"] = target.team
+		r["target_was_combat_effective"] = target_was_alive
 		r["flight_time_s"] = snappedf(hit.time, 0.01)
 		r["hit_pos"] = TankSpec._v(hit.world_pos)
 		result = r
-	else:
+	elif hit.has("blocked_by"):
 		result["blocked_by"] = hit.blocked_by
 		result["hit_pos"] = TankSpec._v(hit.position)
 		var collider: Object = hit.get("collider")
@@ -685,6 +687,10 @@ func fire() -> Dictionary:
 			result["obstacle_damage"] = hill.destruction.damage(collider, int(hit.get("shape", -1)),
 				0.5 * shell.shell_mass_kg * shell.muzzle_velocity_ms * shell.muzzle_velocity_ms / 1000.0 + shell.filler_g * 2.0,
 				"shell:" + str(name))
+	else:
+		result["blocked_by"] = "none"
+	if hit.has("near_miss"):
+		result["near_miss"] = hit.near_miss
 	# 조준 오차는 발사 반동으로 다시 커진다(연속 사격 시 재조준 필요)
 	aim_error_mrad = maxf(aim_error_mrad, shell.dispersion_mrad * damage.dispersion_factor() * 2.0)
 	shot_fired.emit(self, result)
@@ -700,6 +706,7 @@ func _trace_shell(from: Vector3, vel: Vector3) -> Dictionary:
 	var v := vel
 	var traveled := 0.0
 	var time := 0.0
+	var near := {}
 	while traveled < MAX_SHOT_RANGE:
 		var p1 := p + v * SHELL_STEP_S + Vector3.DOWN * (0.5 * GRAVITY * SHELL_STEP_S * SHELL_STEP_S)
 		var v1 := v + Vector3.DOWN * GRAVITY * SHELL_STEP_S
@@ -730,10 +737,31 @@ func _trace_shell(from: Vector3, vel: Vector3) -> Dictionary:
 			if tr.hit and float(tr.t) <= best_t:
 				best_t = tr.t
 				best = {"tank": tk, "local_origin": lo, "local_dir": ld, "world_pos": p + d * float(tr.t)}
+		# Measure only the part of the actual ballistic segment before its first collision.
+		var visible_end := p + d * best_t
+		for t in tanks:
+			var enemy := t as Tank
+			if enemy == null or enemy == self or enemy.team == team or not enemy.damage.is_combat_effective():
+				continue
+			var center := enemy.global_position + Vector3.UP * (enemy.spec.hull_bottom_y + enemy.spec.hull_size.y * 0.5)
+			var point := Geometry3D.get_closest_point_to_segment(center, p, visible_end)
+			var miss := point.distance_to(center)
+			if miss > 12.0 or miss >= float(near.get("miss_distance_m", INF)):
+				continue
+			# A shell stopping near the far side of a wall is not useful near-miss practice.
+			var start := point + (point - center).normalized() * 0.02
+			var visibility := PhysicsRayQueryParameters3D.create(start, center, 1 | 2, [get_rid(), enemy.get_rid()])
+			visibility.hit_from_inside = true
+			if not space.intersect_ray(visibility).is_empty():
+				continue
+			near = {"target_name": enemy.name, "target_team": enemy.team, "miss_distance_m": miss,
+				"range_m": from.distance_to(center), "point": TankSpec._v(point)}
 		if not best.is_empty():
 			if best.has("tank"):
 				best["distance"] = traveled + best_t
 				best["time"] = time + SHELL_STEP_S * best_t / seg_len
+			if not near.is_empty():
+				best["near_miss"] = near
 			return best
 		traveled += seg_len
 		time += SHELL_STEP_S
@@ -741,7 +769,7 @@ func _trace_shell(from: Vector3, vel: Vector3) -> Dictionary:
 		v = v1
 		if p.y < -200.0:
 			break
-	return {}
+	return {"near_miss": near} if not near.is_empty() else {}
 
 
 ## 리플레이용: 물리 없이 기록된 자세를 그대로 적용(외형만 움직이는 꼭두각시)

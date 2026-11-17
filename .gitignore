@@ -2,3 +2,6 @@
 *.import
 build/
 _sync/
+.playwright-cli/
+__pycache__/
+*.pyc

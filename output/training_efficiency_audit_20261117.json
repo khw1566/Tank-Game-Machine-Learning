@@ -1,0 +1,4725 @@
+{
+  "captured_kst": "2026-11-17T13:14:47.622615+09:00",
+  "runs": {
+    "su1117_02": {
+      "status": {
+        "tank": "sherman75",
+        "phase": "stopped",
+        "num_timesteps": 1168888,
+        "updated": 1794887974.98,
+        "steps_per_s": 0.0,
+        "runtime": {
+          "requested_device": "cpu",
+          "device": "cpu",
+          "gpu_name": null,
+          "torch": "2.15.0+cpu",
+          "cuda_version": null,
+          "torch_threads": 4,
+          "n_steps": 1024,
+          "batch_size": 2048,
+          "n_epochs": 8,
+          "rollout_size": 4096,
+          "rollout_buffer": "RolloutBuffer",
+          "mode": "cpu",
+          "inference_device": "cpu",
+          "update_device": "cpu",
+          "start_timesteps": 887432,
+          "resumed_from": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\su1117_02\\sherman75\\checkpoints\\step_000887432_20261117_124418_182161_839a0b\\model.zip"
+        }
+      },
+      "stage_counts": {
+        "drive": 2395,
+        "drive_terrain": 1978
+      },
+      "sessions": [
+        {
+          "started": "2026-11-17T11:11:23",
+          "tank": "sherman75",
+          "terrain_version": 3,
+          "start_timesteps": null,
+          "resumed_from": null,
+          "n_envs": 4,
+          "speed_cap": 0.0
+        },
+        {
+          "started": "2026-11-17T12:02:12",
+          "tank": "sherman75",
+          "terrain_version": 3,
+          "start_timesteps": 408356,
+          "resumed_from": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\su1117_02\\sherman75\\latest.zip",
+          "n_envs": 4,
+          "speed_cap": 20.0
+        },
+        {
+          "started": "2026-11-17T12:19:24",
+          "tank": "sherman75",
+          "terrain_version": 3,
+          "start_timesteps": 589736,
+          "resumed_from": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\su1117_02\\sherman75\\checkpoints\\step_000589736_20261117_121726_920409_537b6f\\model.zip",
+          "n_envs": 4,
+          "speed_cap": 20.0
+        },
+        {
+          "started": "2026-11-17T12:44:37",
+          "tank": "sherman75",
+          "terrain_version": 3,
+          "start_timesteps": 887432,
+          "resumed_from": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\su1117_02\\sherman75\\checkpoints\\step_000887432_20261117_124418_182161_839a0b\\model.zip",
+          "n_envs": 4,
+          "speed_cap": 0.0
+        }
+      ],
+      "models": {
+        "tiger1": {
+          "path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\su1117_02\\tiger1\\latest.zip",
+          "parameters": {
+            "num_timesteps": 2218242,
+            "gamma": 0.99,
+            "gae_lambda": 0.95,
+            "n_steps": 1024,
+            "batch_size": 2048,
+            "n_epochs": 8,
+            "learning_rate": 0.0003,
+            "ent_coef": 0.005,
+            "use_sde": true,
+            "sde_sample_freq": 20
+          },
+          "stage": "drive_terrain",
+          "history": [
+            {
+              "tank": "tiger1",
+              "from": "drive",
+              "to": "drive_terrain",
+              "episodes": 2389,
+              "success_rate": 0.8,
+              "reason": "threshold",
+              "global_step": 1275672,
+              "wall_time": 1794870493.99,
+              "learner_policy": "20261117_063521/tiger1/step_001275672"
+            }
+          ],
+          "terrain": {
+            "version": 2,
+            "index": 0,
+            "fixed": "",
+            "course": "approach",
+            "history": [],
+            "results": {
+              "approach": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1
+              ],
+              "detour": [],
+              "gates": [],
+              "rough": [],
+              "mixed": []
+            }
+          },
+          "previous_assessments": null
+        },
+        "sherman75": {
+          "path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\su1117_02\\sherman75\\checkpoints\\step_001168888_20261117_125933_251289_556ff8\\model.zip",
+          "parameters": {
+            "num_timesteps": 1168888,
+            "gamma": 0.99,
+            "gae_lambda": 0.95,
+            "n_steps": 1024,
+            "batch_size": 2048,
+            "n_epochs": 8,
+            "learning_rate": 0.0003,
+            "ent_coef": 0.005,
+            "use_sde": true,
+            "sde_sample_freq": 20
+          },
+          "stage": "drive_terrain",
+          "history": [
+            {
+              "tank": "sherman75",
+              "from": "drive",
+              "to": "drive_terrain",
+              "episodes": 40,
+              "success_rate": 0.95,
+              "reason": "threshold",
+              "global_step": 592488,
+              "wall_time": 1794885578.58,
+              "learner_policy": "su1117_02/sherman75/step_000592488"
+            }
+          ],
+          "terrain": {
+            "version": 3,
+            "index": 6,
+            "fixed": "",
+            "course": "one_tree",
+            "history": [
+              {
+                "course": "approach",
+                "global_step": 595196,
+                "success_rate": 1.0
+              },
+              {
+                "course": "turn_gentle",
+                "global_step": 601748,
+                "success_rate": 0.875
+              },
+              {
+                "course": "turn_wide",
+                "global_step": 679348,
+                "success_rate": 0.8
+              },
+              {
+                "course": "parking",
+                "global_step": 962592,
+                "success_rate": 0.8
+              },
+              {
+                "course": "slope",
+                "global_step": 976680,
+                "success_rate": 0.85
+              },
+              {
+                "course": "low_step",
+                "global_step": 989772,
+                "success_rate": 1.0
+              }
+            ],
+            "results": {
+              "approach": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              "turn_gentle": [
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              "turn_wide": [
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1
+              ],
+              "parking": [
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              "slope": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              "low_step": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              "one_tree": [
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "detour": [],
+              "gate_wide": [],
+              "gates": [],
+              "grove": [],
+              "rough": [],
+              "mixed": []
+            }
+          },
+          "previous_assessments": [
+            {
+              "terrain": {
+                "version": 2,
+                "index": 0,
+                "fixed": "",
+                "course": "approach",
+                "history": [],
+                "results": {
+                  "approach": [],
+                  "detour": [],
+                  "gates": [],
+                  "rough": [],
+                  "mixed": []
+                }
+              },
+              "results": {
+                "drive": [
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1
+                ],
+                "drive_terrain": [],
+                "gunnery_static": [],
+                "gunnery_moving": [],
+                "gunnery_search": [],
+                "duel_scripted": [],
+                "duel_selfplay": [],
+                "team_scripted": [],
+                "team_selfplay": []
+              },
+              "episodes_in_stage": 2176,
+              "stage": "drive"
+            }
+          ]
+        }
+      },
+      "objectives": [
+        {
+          "tank": "sherman75",
+          "objective": "drive/terrain:v2/approach",
+          "overall": {
+            "n": 2176,
+            "successes": 674,
+            "success_rate": 0.3097,
+            "mean_return": 3.3989,
+            "mean_duration_s": 27.05,
+            "mean_shots": 5.4177,
+            "first_step": 796,
+            "last_step": 589548,
+            "reasons": {
+              "no_progress": 663,
+              "time_limit": 287,
+              "arrived_stopped": 674,
+              "out_of_bounds": 552
+            },
+            "mean_progress_fraction": 0.7274,
+            "successful_path_ratio": 1.258
+          },
+          "first100": {
+            "n": 100,
+            "successes": 3,
+            "success_rate": 0.03,
+            "mean_return": -0.8063,
+            "mean_duration_s": 34.949,
+            "mean_shots": 6.12,
+            "first_step": 796,
+            "last_step": 35512,
+            "reasons": {
+              "no_progress": 57,
+              "time_limit": 35,
+              "arrived_stopped": 3,
+              "out_of_bounds": 5
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 69,
+            "success_rate": 0.69,
+            "mean_return": 7.6505,
+            "mean_duration_s": 24.02,
+            "mean_shots": 5.07,
+            "first_step": 565852,
+            "last_step": 589548,
+            "reasons": {
+              "arrived_stopped": 69,
+              "no_progress": 20,
+              "time_limit": 11
+            },
+            "mean_progress_fraction": 0.8535,
+            "successful_path_ratio": 1.2185
+          },
+          "last40": {
+            "n": 40,
+            "successes": 27,
+            "success_rate": 0.675,
+            "mean_return": 7.4204,
+            "mean_duration_s": 24.69,
+            "mean_shots": 5.175,
+            "first_step": 579836,
+            "last_step": 589548,
+            "reasons": {
+              "no_progress": 8,
+              "arrived_stopped": 27,
+              "time_limit": 5
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 3,
+              "success_rate": 0.03,
+              "mean_return": -0.8063,
+              "mean_duration_s": 34.949,
+              "mean_shots": 6.12,
+              "first_step": 796,
+              "last_step": 35512,
+              "reasons": {
+                "no_progress": 57,
+                "time_limit": 35,
+                "arrived_stopped": 3,
+                "out_of_bounds": 5
+              }
+            },
+            {
+              "n": 100,
+              "successes": 3,
+              "success_rate": 0.03,
+              "mean_return": -0.1173,
+              "mean_duration_s": 31.514,
+              "mean_shots": 5.89,
+              "first_step": 35880,
+              "last_step": 66804,
+              "reasons": {
+                "no_progress": 32,
+                "time_limit": 18,
+                "out_of_bounds": 47,
+                "arrived_stopped": 3
+              }
+            },
+            {
+              "n": 100,
+              "successes": 3,
+              "success_rate": 0.03,
+              "mean_return": 0.0737,
+              "mean_duration_s": 27.94,
+              "mean_shots": 5.27,
+              "first_step": 66936,
+              "last_step": 95004,
+              "reasons": {
+                "out_of_bounds": 65,
+                "no_progress": 29,
+                "arrived_stopped": 3,
+                "time_limit": 3
+              }
+            },
+            {
+              "n": 100,
+              "successes": 3,
+              "success_rate": 0.03,
+              "mean_return": 0.267,
+              "mean_duration_s": 23.479,
+              "mean_shots": 4.72,
+              "first_step": 95276,
+              "last_step": 118372,
+              "reasons": {
+                "out_of_bounds": 77,
+                "no_progress": 18,
+                "time_limit": 2,
+                "arrived_stopped": 3
+              }
+            },
+            {
+              "n": 100,
+              "successes": 2,
+              "success_rate": 0.02,
+              "mean_return": 0.2865,
+              "mean_duration_s": 22.593,
+              "mean_shots": 4.59,
+              "first_step": 118796,
+              "last_step": 141044,
+              "reasons": {
+                "no_progress": 23,
+                "out_of_bounds": 72,
+                "time_limit": 3,
+                "arrived_stopped": 2
+              }
+            },
+            {
+              "n": 100,
+              "successes": 2,
+              "success_rate": 0.02,
+              "mean_return": 0.1681,
+              "mean_duration_s": 23.693,
+              "mean_shots": 4.79,
+              "first_step": 141068,
+              "last_step": 164264,
+              "reasons": {
+                "out_of_bounds": 67,
+                "no_progress": 26,
+                "time_limit": 5,
+                "arrived_stopped": 2
+              }
+            },
+            {
+              "n": 100,
+              "successes": 2,
+              "success_rate": 0.02,
+              "mean_return": 0.2963,
+              "mean_duration_s": 22.951,
+              "mean_shots": 4.69,
+              "first_step": 164844,
+              "last_step": 187540,
+              "reasons": {
+                "out_of_bounds": 64,
+                "no_progress": 28,
+                "time_limit": 6,
+                "arrived_stopped": 2
+              }
+            },
+            {
+              "n": 100,
+              "successes": 6,
+              "success_rate": 0.06,
+              "mean_return": 0.6331,
+              "mean_duration_s": 24.005,
+              "mean_shots": 5.02,
+              "first_step": 187868,
+              "last_step": 211492,
+              "reasons": {
+                "out_of_bounds": 52,
+                "arrived_stopped": 6,
+                "no_progress": 39,
+                "time_limit": 3
+              }
+            },
+            {
+              "n": 100,
+              "successes": 5,
+              "success_rate": 0.05,
+              "mean_return": 0.7209,
+              "mean_duration_s": 26.141,
+              "mean_shots": 5.3,
+              "first_step": 211660,
+              "last_step": 237820,
+              "reasons": {
+                "no_progress": 39,
+                "out_of_bounds": 49,
+                "time_limit": 7,
+                "arrived_stopped": 5
+              }
+            },
+            {
+              "n": 100,
+              "successes": 13,
+              "success_rate": 0.13,
+              "mean_return": 1.6361,
+              "mean_duration_s": 30.349,
+              "mean_shots": 5.95,
+              "first_step": 237968,
+              "last_step": 268220,
+              "reasons": {
+                "out_of_bounds": 26,
+                "no_progress": 45,
+                "time_limit": 16,
+                "arrived_stopped": 13
+              }
+            },
+            {
+              "n": 100,
+              "successes": 17,
+              "success_rate": 0.17,
+              "mean_return": 2.0468,
+              "mean_duration_s": 29.408,
+              "mean_shots": 5.76,
+              "first_step": 268640,
+              "last_step": 297224,
+              "reasons": {
+                "time_limit": 12,
+                "no_progress": 50,
+                "out_of_bounds": 21,
+                "arrived_stopped": 17
+              }
+            },
+            {
+              "n": 100,
+              "successes": 30,
+              "success_rate": 0.3,
+              "mean_return": 3.5226,
+              "mean_duration_s": 29.883,
+              "mean_shots": 5.69,
+              "first_step": 297296,
+              "last_step": 327452,
+              "reasons": {
+                "arrived_stopped": 30,
+                "no_progress": 51,
+                "out_of_bounds": 5,
+                "time_limit": 14
+              }
+            },
+            {
+              "n": 100,
+              "successes": 32,
+              "success_rate": 0.32,
+              "mean_return": 3.6422,
+              "mean_duration_s": 31.571,
+              "mean_shots": 6.19,
+              "first_step": 327968,
+              "last_step": 359244,
+              "reasons": {
+                "arrived_stopped": 32,
+                "time_limit": 22,
+                "no_progress": 44,
+                "out_of_bounds": 2
+              }
+            },
+            {
+              "n": 100,
+              "successes": 40,
+              "success_rate": 0.4,
+              "mean_return": 4.5763,
+              "mean_duration_s": 31.105,
+              "mean_shots": 6.26,
+              "first_step": 359280,
+              "last_step": 389896,
+              "reasons": {
+                "arrived_stopped": 40,
+                "time_limit": 25,
+                "no_progress": 35
+              }
+            },
+            {
+              "n": 100,
+              "successes": 58,
+              "success_rate": 0.58,
+              "mean_return": 6.5367,
+              "mean_duration_s": 29.74,
+              "mean_shots": 6.11,
+              "first_step": 390600,
+              "last_step": 420884,
+              "reasons": {
+                "arrived_stopped": 58,
+                "time_limit": 27,
+                "no_progress": 15
+              }
+            },
+            {
+              "n": 100,
+              "successes": 68,
+              "success_rate": 0.68,
+              "mean_return": 7.6233,
+              "mean_duration_s": 27.496,
+              "mean_shots": 5.63,
+              "first_step": 421068,
+              "last_step": 448000,
+              "reasons": {
+                "time_limit": 19,
+                "arrived_stopped": 68,
+                "no_progress": 13
+              }
+            },
+            {
+              "n": 100,
+              "successes": 65,
+              "success_rate": 0.65,
+              "mean_return": 7.1477,
+              "mean_duration_s": 27.486,
+              "mean_shots": 5.76,
+              "first_step": 448364,
+              "last_step": 475540,
+              "reasons": {
+                "arrived_stopped": 65,
+                "time_limit": 18,
+                "no_progress": 17
+              }
+            },
+            {
+              "n": 100,
+              "successes": 72,
+              "success_rate": 0.72,
+              "mean_return": 8.1147,
+              "mean_duration_s": 24.625,
+              "mean_shots": 5.22,
+              "first_step": 475604,
+              "last_step": 499580,
+              "reasons": {
+                "no_progress": 16,
+                "arrived_stopped": 72,
+                "time_limit": 12
+              }
+            },
+            {
+              "n": 100,
+              "successes": 67,
+              "success_rate": 0.67,
+              "mean_return": 7.3683,
+              "mean_duration_s": 24.793,
+              "mean_shots": 5.22,
+              "first_step": 500068,
+              "last_step": 524480,
+              "reasons": {
+                "arrived_stopped": 67,
+                "no_progress": 17,
+                "time_limit": 16
+              }
+            },
+            {
+              "n": 100,
+              "successes": 62,
+              "success_rate": 0.62,
+              "mean_return": 6.7824,
+              "mean_duration_s": 24.308,
+              "mean_shots": 5.11,
+              "first_step": 525196,
+              "last_step": 549004,
+              "reasons": {
+                "arrived_stopped": 62,
+                "no_progress": 29,
+                "time_limit": 9
+              }
+            },
+            {
+              "n": 100,
+              "successes": 67,
+              "success_rate": 0.67,
+              "mean_return": 7.434,
+              "mean_duration_s": 22.96,
+              "mean_shots": 4.88,
+              "first_step": 549016,
+              "last_step": 571780,
+              "reasons": {
+                "arrived_stopped": 67,
+                "no_progress": 26,
+                "time_limit": 7
+              }
+            },
+            {
+              "n": 76,
+              "successes": 54,
+              "success_rate": 0.7105,
+              "mean_return": 7.9054,
+              "mean_duration_s": 23.1829,
+              "mean_shots": 4.8947,
+              "first_step": 571796,
+              "last_step": 589548,
+              "reasons": {
+                "arrived_stopped": 54,
+                "no_progress": 14,
+                "time_limit": 8
+              }
+            }
+          ]
+        },
+        {
+          "tank": "sherman75",
+          "objective": "drive/terrain:v3/approach",
+          "overall": {
+            "n": 219,
+            "successes": 216,
+            "success_rate": 0.9863,
+            "mean_return": 11.4262,
+            "mean_duration_s": 6.0425,
+            "mean_shots": 1.6484,
+            "first_step": 589936,
+            "last_step": 1168272,
+            "reasons": {
+              "arrived_stopped": 216,
+              "no_progress": 3
+            },
+            "mean_progress_fraction": 0.9225,
+            "successful_path_ratio": 1.1371
+          },
+          "first100": {
+            "n": 100,
+            "successes": 97,
+            "success_rate": 0.97,
+            "mean_return": 11.2231,
+            "mean_duration_s": 6.343,
+            "mean_shots": 1.7,
+            "first_step": 589936,
+            "last_step": 733788,
+            "reasons": {
+              "arrived_stopped": 97,
+              "no_progress": 3
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 100,
+            "success_rate": 1.0,
+            "mean_return": 11.5891,
+            "mean_duration_s": 5.817,
+            "mean_shots": 1.63,
+            "first_step": 791660,
+            "last_step": 1168272,
+            "reasons": {
+              "arrived_stopped": 100
+            },
+            "mean_progress_fraction": 0.9264,
+            "successful_path_ratio": 1.1415
+          },
+          "last40": {
+            "n": 40,
+            "successes": 40,
+            "success_rate": 1.0,
+            "mean_return": 11.5317,
+            "mean_duration_s": 6.0875,
+            "mean_shots": 1.825,
+            "first_step": 971632,
+            "last_step": 1168272,
+            "reasons": {
+              "arrived_stopped": 40
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 97,
+              "success_rate": 0.97,
+              "mean_return": 11.2231,
+              "mean_duration_s": 6.343,
+              "mean_shots": 1.7,
+              "first_step": 589936,
+              "last_step": 733788,
+              "reasons": {
+                "arrived_stopped": 97,
+                "no_progress": 3
+              }
+            },
+            {
+              "n": 100,
+              "successes": 100,
+              "success_rate": 1.0,
+              "mean_return": 11.6157,
+              "mean_duration_s": 5.663,
+              "mean_shots": 1.54,
+              "first_step": 737384,
+              "last_step": 1045780,
+              "reasons": {
+                "arrived_stopped": 100
+              }
+            },
+            {
+              "n": 19,
+              "successes": 19,
+              "success_rate": 1.0,
+              "mean_return": 11.4977,
+              "mean_duration_s": 6.4579,
+              "mean_shots": 1.9474,
+              "first_step": 1056468,
+              "last_step": 1168272,
+              "reasons": {
+                "arrived_stopped": 19
+              }
+            }
+          ]
+        },
+        {
+          "tank": "sherman75",
+          "objective": "drive_terrain/terrain:v3/approach",
+          "overall": {
+            "n": 187,
+            "successes": 185,
+            "success_rate": 0.9893,
+            "mean_return": 11.4721,
+            "mean_duration_s": 6.3053,
+            "mean_shots": 1.7219,
+            "first_step": 592728,
+            "last_step": 1166160,
+            "reasons": {
+              "arrived_stopped": 185,
+              "no_progress": 2
+            },
+            "mean_progress_fraction": 0.9287,
+            "successful_path_ratio": 1.1439
+          },
+          "first100": {
+            "n": 100,
+            "successes": 98,
+            "success_rate": 0.98,
+            "mean_return": 11.3522,
+            "mean_duration_s": 6.638,
+            "mean_shots": 1.71,
+            "first_step": 592728,
+            "last_step": 680036,
+            "reasons": {
+              "arrived_stopped": 98,
+              "no_progress": 2
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 100,
+            "success_rate": 1.0,
+            "mean_return": 11.6139,
+            "mean_duration_s": 5.882,
+            "mean_shots": 1.72,
+            "first_step": 660672,
+            "last_step": 1166160,
+            "reasons": {
+              "arrived_stopped": 100
+            },
+            "mean_progress_fraction": 0.9329,
+            "successful_path_ratio": 1.144
+          },
+          "last40": {
+            "n": 40,
+            "successes": 40,
+            "success_rate": 1.0,
+            "mean_return": 11.5916,
+            "mean_duration_s": 6.0325,
+            "mean_shots": 1.75,
+            "first_step": 860420,
+            "last_step": 1166160,
+            "reasons": {
+              "arrived_stopped": 40
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 98,
+              "success_rate": 0.98,
+              "mean_return": 11.3522,
+              "mean_duration_s": 6.638,
+              "mean_shots": 1.71,
+              "first_step": 592728,
+              "last_step": 680036,
+              "reasons": {
+                "arrived_stopped": 98,
+                "no_progress": 2
+              }
+            },
+            {
+              "n": 87,
+              "successes": 87,
+              "success_rate": 1.0,
+              "mean_return": 11.6098,
+              "mean_duration_s": 5.923,
+              "mean_shots": 1.7356,
+              "first_step": 681752,
+              "last_step": 1166160,
+              "reasons": {
+                "arrived_stopped": 87
+              }
+            }
+          ]
+        },
+        {
+          "tank": "sherman75",
+          "objective": "drive_terrain/terrain:v3/turn_gentle",
+          "overall": {
+            "n": 177,
+            "successes": 138,
+            "success_rate": 0.7797,
+            "mean_return": 8.6958,
+            "mean_duration_s": 15.1785,
+            "mean_shots": 3.4633,
+            "first_step": 595580,
+            "last_step": 1151940,
+            "reasons": {
+              "arrived_stopped": 138,
+              "no_progress": 35,
+              "time_limit": 4
+            },
+            "mean_progress_fraction": 0.8404,
+            "successful_path_ratio": 1.1798
+          },
+          "first100": {
+            "n": 100,
+            "successes": 71,
+            "success_rate": 0.71,
+            "mean_return": 7.8793,
+            "mean_duration_s": 15.825,
+            "mean_shots": 3.6,
+            "first_step": 595580,
+            "last_step": 709972,
+            "reasons": {
+              "arrived_stopped": 71,
+              "no_progress": 25,
+              "time_limit": 4
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 83,
+            "success_rate": 0.83,
+            "mean_return": 9.2817,
+            "mean_duration_s": 14.736,
+            "mean_shots": 3.34,
+            "first_step": 653920,
+            "last_step": 1151940,
+            "reasons": {
+              "arrived_stopped": 83,
+              "no_progress": 17
+            },
+            "mean_progress_fraction": 0.8466,
+            "successful_path_ratio": 1.1967
+          },
+          "last40": {
+            "n": 40,
+            "successes": 39,
+            "success_rate": 0.975,
+            "mean_return": 10.8932,
+            "mean_duration_s": 14.1725,
+            "mean_shots": 3.225,
+            "first_step": 867812,
+            "last_step": 1151940,
+            "reasons": {
+              "arrived_stopped": 39,
+              "no_progress": 1
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 71,
+              "success_rate": 0.71,
+              "mean_return": 7.8793,
+              "mean_duration_s": 15.825,
+              "mean_shots": 3.6,
+              "first_step": 595580,
+              "last_step": 709972,
+              "reasons": {
+                "arrived_stopped": 71,
+                "no_progress": 25,
+                "time_limit": 4
+              }
+            },
+            {
+              "n": 77,
+              "successes": 67,
+              "success_rate": 0.8701,
+              "mean_return": 9.7563,
+              "mean_duration_s": 14.339,
+              "mean_shots": 3.2857,
+              "first_step": 718320,
+              "last_step": 1151940,
+              "reasons": {
+                "no_progress": 10,
+                "arrived_stopped": 67
+              }
+            }
+          ]
+        },
+        {
+          "tank": "sherman75",
+          "objective": "drive_terrain/terrain:v3/turn_wide",
+          "overall": {
+            "n": 363,
+            "successes": 228,
+            "success_rate": 0.6281,
+            "mean_return": 6.6787,
+            "mean_duration_s": 22.4972,
+            "mean_shots": 4.843,
+            "first_step": 602040,
+            "last_step": 1137104,
+            "reasons": {
+              "arrived_stopped": 228,
+              "no_progress": 111,
+              "time_limit": 24
+            },
+            "mean_progress_fraction": 0.7597,
+            "successful_path_ratio": 1.329
+          },
+          "first100": {
+            "n": 100,
+            "successes": 63,
+            "success_rate": 0.63,
+            "mean_return": 6.6568,
+            "mean_duration_s": 22.766,
+            "mean_shots": 4.91,
+            "first_step": 602040,
+            "last_step": 629872,
+            "reasons": {
+              "arrived_stopped": 63,
+              "no_progress": 35,
+              "time_limit": 2
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 69,
+            "success_rate": 0.69,
+            "mean_return": 7.461,
+            "mean_duration_s": 21.614,
+            "mean_shots": 4.66,
+            "first_step": 675972,
+            "last_step": 1137104,
+            "reasons": {
+              "no_progress": 24,
+              "arrived_stopped": 69,
+              "time_limit": 7
+            },
+            "mean_progress_fraction": 0.788,
+            "successful_path_ratio": 1.2806
+          },
+          "last40": {
+            "n": 40,
+            "successes": 26,
+            "success_rate": 0.65,
+            "mean_return": 7.0084,
+            "mean_duration_s": 24.74,
+            "mean_shots": 5.2,
+            "first_step": 815876,
+            "last_step": 1137104,
+            "reasons": {
+              "arrived_stopped": 26,
+              "no_progress": 8,
+              "time_limit": 6
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 63,
+              "success_rate": 0.63,
+              "mean_return": 6.6568,
+              "mean_duration_s": 22.766,
+              "mean_shots": 4.91,
+              "first_step": 602040,
+              "last_step": 629872,
+              "reasons": {
+                "arrived_stopped": 63,
+                "no_progress": 35,
+                "time_limit": 2
+              }
+            },
+            {
+              "n": 100,
+              "successes": 60,
+              "success_rate": 0.6,
+              "mean_return": 6.3836,
+              "mean_duration_s": 22.839,
+              "mean_shots": 4.9,
+              "first_step": 629944,
+              "last_step": 659008,
+              "reasons": {
+                "arrived_stopped": 60,
+                "no_progress": 31,
+                "time_limit": 9
+              }
+            },
+            {
+              "n": 100,
+              "successes": 62,
+              "success_rate": 0.62,
+              "mean_return": 6.5237,
+              "mean_duration_s": 21.89,
+              "mean_shots": 4.74,
+              "first_step": 659444,
+              "last_step": 739940,
+              "reasons": {
+                "no_progress": 32,
+                "arrived_stopped": 62,
+                "time_limit": 6
+              }
+            },
+            {
+              "n": 63,
+              "successes": 43,
+              "success_rate": 0.6825,
+              "mean_return": 7.4279,
+              "mean_duration_s": 22.4921,
+              "mean_shots": 4.8095,
+              "first_step": 740484,
+              "last_step": 1137104,
+              "reasons": {
+                "no_progress": 13,
+                "arrived_stopped": 43,
+                "time_limit": 7
+              }
+            }
+          ]
+        },
+        {
+          "tank": "sherman75",
+          "objective": "drive_terrain/terrain:v3/parking",
+          "overall": {
+            "n": 874,
+            "successes": 492,
+            "success_rate": 0.5629,
+            "mean_return": 5.7954,
+            "mean_duration_s": 29.0182,
+            "mean_shots": 6.0915,
+            "first_step": 679816,
+            "last_step": 1158760,
+            "reasons": {
+              "arrived_stopped": 492,
+              "no_progress": 269,
+              "time_limit": 113
+            },
+            "mean_progress_fraction": 0.735,
+            "successful_path_ratio": 1.332
+          },
+          "first100": {
+            "n": 100,
+            "successes": 45,
+            "success_rate": 0.45,
+            "mean_return": 4.3905,
+            "mean_duration_s": 26.702,
+            "mean_shots": 5.62,
+            "first_step": 679816,
+            "last_step": 711036,
+            "reasons": {
+              "arrived_stopped": 45,
+              "no_progress": 45,
+              "time_limit": 10
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 72,
+            "success_rate": 0.72,
+            "mean_return": 7.7166,
+            "mean_duration_s": 31.924,
+            "mean_shots": 6.65,
+            "first_step": 935588,
+            "last_step": 1158760,
+            "reasons": {
+              "arrived_stopped": 72,
+              "no_progress": 15,
+              "time_limit": 13
+            },
+            "mean_progress_fraction": 0.8138,
+            "successful_path_ratio": 1.4277
+          },
+          "last40": {
+            "n": 40,
+            "successes": 34,
+            "success_rate": 0.85,
+            "mean_return": 9.2319,
+            "mean_duration_s": 31.9025,
+            "mean_shots": 6.75,
+            "first_step": 956664,
+            "last_step": 1158760,
+            "reasons": {
+              "arrived_stopped": 34,
+              "time_limit": 3,
+              "no_progress": 3
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 45,
+              "success_rate": 0.45,
+              "mean_return": 4.3905,
+              "mean_duration_s": 26.702,
+              "mean_shots": 5.62,
+              "first_step": 679816,
+              "last_step": 711036,
+              "reasons": {
+                "arrived_stopped": 45,
+                "no_progress": 45,
+                "time_limit": 10
+              }
+            },
+            {
+              "n": 100,
+              "successes": 46,
+              "success_rate": 0.46,
+              "mean_return": 4.3698,
+              "mean_duration_s": 27.164,
+              "mean_shots": 5.73,
+              "first_step": 711112,
+              "last_step": 743096,
+              "reasons": {
+                "no_progress": 44,
+                "arrived_stopped": 46,
+                "time_limit": 10
+              }
+            },
+            {
+              "n": 100,
+              "successes": 62,
+              "success_rate": 0.62,
+              "mean_return": 6.4214,
+              "mean_duration_s": 28.295,
+              "mean_shots": 5.96,
+              "first_step": 743108,
+              "last_step": 775452,
+              "reasons": {
+                "no_progress": 24,
+                "time_limit": 14,
+                "arrived_stopped": 62
+              }
+            },
+            {
+              "n": 100,
+              "successes": 55,
+              "success_rate": 0.55,
+              "mean_return": 5.7283,
+              "mean_duration_s": 27.265,
+              "mean_shots": 5.77,
+              "first_step": 775676,
+              "last_step": 806132,
+              "reasons": {
+                "arrived_stopped": 55,
+                "time_limit": 10,
+                "no_progress": 35
+              }
+            },
+            {
+              "n": 100,
+              "successes": 45,
+              "success_rate": 0.45,
+              "mean_return": 4.4806,
+              "mean_duration_s": 28.467,
+              "mean_shots": 6.02,
+              "first_step": 807096,
+              "last_step": 839264,
+              "reasons": {
+                "arrived_stopped": 45,
+                "no_progress": 44,
+                "time_limit": 11
+              }
+            },
+            {
+              "n": 100,
+              "successes": 60,
+              "success_rate": 0.6,
+              "mean_return": 6.2597,
+              "mean_duration_s": 31.13,
+              "mean_shots": 6.49,
+              "first_step": 839516,
+              "last_step": 873588,
+              "reasons": {
+                "arrived_stopped": 60,
+                "no_progress": 23,
+                "time_limit": 17
+              }
+            },
+            {
+              "n": 100,
+              "successes": 60,
+              "success_rate": 0.6,
+              "mean_return": 6.3291,
+              "mean_duration_s": 30.067,
+              "mean_shots": 6.27,
+              "first_step": 873732,
+              "last_step": 908412,
+              "reasons": {
+                "time_limit": 15,
+                "arrived_stopped": 60,
+                "no_progress": 25
+              }
+            },
+            {
+              "n": 100,
+              "successes": 62,
+              "success_rate": 0.62,
+              "mean_return": 6.4576,
+              "mean_duration_s": 30.974,
+              "mean_shots": 6.45,
+              "first_step": 908688,
+              "last_step": 943628,
+              "reasons": {
+                "arrived_stopped": 62,
+                "time_limit": 16,
+                "no_progress": 22
+              }
+            },
+            {
+              "n": 74,
+              "successes": 57,
+              "success_rate": 0.7703,
+              "mean_return": 8.3978,
+              "mean_duration_s": 31.8311,
+              "mean_shots": 6.6622,
+              "first_step": 943984,
+              "last_step": 1158760,
+              "reasons": {
+                "arrived_stopped": 57,
+                "no_progress": 7,
+                "time_limit": 10
+              }
+            }
+          ]
+        },
+        {
+          "tank": "sherman75",
+          "objective": "drive_terrain/terrain:v3/slope",
+          "overall": {
+            "n": 64,
+            "successes": 56,
+            "success_rate": 0.875,
+            "mean_return": 9.7744,
+            "mean_duration_s": 27.1406,
+            "mean_shots": 5.7656,
+            "first_step": 963168,
+            "last_step": 1168068,
+            "reasons": {
+              "arrived_stopped": 56,
+              "no_progress": 4,
+              "time_limit": 4
+            },
+            "mean_progress_fraction": 0.9132,
+            "successful_path_ratio": 1.2538
+          },
+          "first100": {
+            "n": 64,
+            "successes": 56,
+            "success_rate": 0.875,
+            "mean_return": 9.7744,
+            "mean_duration_s": 27.1406,
+            "mean_shots": 5.7656,
+            "first_step": 963168,
+            "last_step": 1168068,
+            "reasons": {
+              "arrived_stopped": 56,
+              "no_progress": 4,
+              "time_limit": 4
+            }
+          },
+          "last100": {
+            "n": 64,
+            "successes": 56,
+            "success_rate": 0.875,
+            "mean_return": 9.7744,
+            "mean_duration_s": 27.1406,
+            "mean_shots": 5.7656,
+            "first_step": 963168,
+            "last_step": 1168068,
+            "reasons": {
+              "arrived_stopped": 56,
+              "no_progress": 4,
+              "time_limit": 4
+            },
+            "mean_progress_fraction": 0.9132,
+            "successful_path_ratio": 1.2538
+          },
+          "last40": {
+            "n": 40,
+            "successes": 35,
+            "success_rate": 0.875,
+            "mean_return": 9.7491,
+            "mean_duration_s": 29.5925,
+            "mean_shots": 6.175,
+            "first_step": 970612,
+            "last_step": 1168068,
+            "reasons": {
+              "arrived_stopped": 35,
+              "no_progress": 2,
+              "time_limit": 3
+            }
+          },
+          "blocks": [
+            {
+              "n": 64,
+              "successes": 56,
+              "success_rate": 0.875,
+              "mean_return": 9.7744,
+              "mean_duration_s": 27.1406,
+              "mean_shots": 5.7656,
+              "first_step": 963168,
+              "last_step": 1168068,
+              "reasons": {
+                "arrived_stopped": 56,
+                "no_progress": 4,
+                "time_limit": 4
+              }
+            }
+          ]
+        },
+        {
+          "tank": "sherman75",
+          "objective": "drive_terrain/terrain:v3/low_step",
+          "overall": {
+            "n": 52,
+            "successes": 51,
+            "success_rate": 0.9808,
+            "mean_return": 10.8833,
+            "mean_duration_s": 27.2962,
+            "mean_shots": 5.8269,
+            "first_step": 977748,
+            "last_step": 1150968,
+            "reasons": {
+              "arrived_stopped": 51,
+              "no_progress": 1
+            },
+            "mean_progress_fraction": 0.9239,
+            "successful_path_ratio": 1.3135
+          },
+          "first100": {
+            "n": 52,
+            "successes": 51,
+            "success_rate": 0.9808,
+            "mean_return": 10.8833,
+            "mean_duration_s": 27.2962,
+            "mean_shots": 5.8269,
+            "first_step": 977748,
+            "last_step": 1150968,
+            "reasons": {
+              "arrived_stopped": 51,
+              "no_progress": 1
+            }
+          },
+          "last100": {
+            "n": 52,
+            "successes": 51,
+            "success_rate": 0.9808,
+            "mean_return": 10.8833,
+            "mean_duration_s": 27.2962,
+            "mean_shots": 5.8269,
+            "first_step": 977748,
+            "last_step": 1150968,
+            "reasons": {
+              "arrived_stopped": 51,
+              "no_progress": 1
+            },
+            "mean_progress_fraction": 0.9239,
+            "successful_path_ratio": 1.3135
+          },
+          "last40": {
+            "n": 40,
+            "successes": 39,
+            "success_rate": 0.975,
+            "mean_return": 10.8412,
+            "mean_duration_s": 26.875,
+            "mean_shots": 5.725,
+            "first_step": 981748,
+            "last_step": 1150968,
+            "reasons": {
+              "arrived_stopped": 39,
+              "no_progress": 1
+            }
+          },
+          "blocks": [
+            {
+              "n": 52,
+              "successes": 51,
+              "success_rate": 0.9808,
+              "mean_return": 10.8833,
+              "mean_duration_s": 27.2962,
+              "mean_shots": 5.8269,
+              "first_step": 977748,
+              "last_step": 1150968,
+              "reasons": {
+                "arrived_stopped": 51,
+                "no_progress": 1
+              }
+            }
+          ]
+        },
+        {
+          "tank": "sherman75",
+          "objective": "drive_terrain/terrain:v3/one_tree",
+          "overall": {
+            "n": 261,
+            "successes": 126,
+            "success_rate": 0.4828,
+            "mean_return": 6.7068,
+            "mean_duration_s": 60.877,
+            "mean_shots": 12.2912,
+            "first_step": 992312,
+            "last_step": 1168280,
+            "reasons": {
+              "no_progress": 17,
+              "time_limit": 118,
+              "arrived_stopped": 126
+            },
+            "mean_progress_fraction": 0.846,
+            "successful_path_ratio": 1.3942
+          },
+          "first100": {
+            "n": 100,
+            "successes": 36,
+            "success_rate": 0.36,
+            "mean_return": 5.1688,
+            "mean_duration_s": 61.403,
+            "mean_shots": 12.36,
+            "first_step": 992312,
+            "last_step": 1059972,
+            "reasons": {
+              "no_progress": 9,
+              "time_limit": 55,
+              "arrived_stopped": 36
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 66,
+            "success_rate": 0.66,
+            "mean_return": 8.9067,
+            "mean_duration_s": 60.535,
+            "mean_shots": 12.21,
+            "first_step": 1101084,
+            "last_step": 1168280,
+            "reasons": {
+              "time_limit": 32,
+              "arrived_stopped": 66,
+              "no_progress": 2
+            },
+            "mean_progress_fraction": 0.9068,
+            "successful_path_ratio": 1.406
+          },
+          "last40": {
+            "n": 40,
+            "successes": 29,
+            "success_rate": 0.725,
+            "mean_return": 9.6244,
+            "mean_duration_s": 58.355,
+            "mean_shots": 11.825,
+            "first_step": 1141916,
+            "last_step": 1168280,
+            "reasons": {
+              "arrived_stopped": 29,
+              "time_limit": 10,
+              "no_progress": 1
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 36,
+              "success_rate": 0.36,
+              "mean_return": 5.1688,
+              "mean_duration_s": 61.403,
+              "mean_shots": 12.36,
+              "first_step": 992312,
+              "last_step": 1059972,
+              "reasons": {
+                "no_progress": 9,
+                "time_limit": 55,
+                "arrived_stopped": 36
+              }
+            },
+            {
+              "n": 100,
+              "successes": 50,
+              "success_rate": 0.5,
+              "mean_return": 6.9483,
+              "mean_duration_s": 60.687,
+              "mean_shots": 12.28,
+              "first_step": 1060396,
+              "last_step": 1126216,
+              "reasons": {
+                "time_limit": 44,
+                "arrived_stopped": 50,
+                "no_progress": 6
+              }
+            },
+            {
+              "n": 61,
+              "successes": 40,
+              "success_rate": 0.6557,
+              "mean_return": 8.8323,
+              "mean_duration_s": 60.3262,
+              "mean_shots": 12.1967,
+              "first_step": 1126616,
+              "last_step": 1168280,
+              "reasons": {
+                "arrived_stopped": 40,
+                "time_limit": 19,
+                "no_progress": 2
+              }
+            }
+          ]
+        }
+      ],
+      "ppo": [
+        {
+          "path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\su1117_02\\sb3\\sherman75\\progress.csv",
+          "rows": 99,
+          "last": [
+            {
+              "time/total_timesteps": "397312",
+              "time/fps": "167",
+              "train/approx_kl": "0.02682982",
+              "train/clip_fraction": "0.160614013671875",
+              "train/explained_variance": "0.5612841844558716",
+              "train/entropy_loss": "-38.812899112701416",
+              "train/std": "0.6010035872459412",
+              "train/value_loss": "0.697309248149395",
+              "train/policy_gradient_loss": "-0.016203580438741483"
+            },
+            {
+              "time/total_timesteps": "401408",
+              "time/fps": "167",
+              "train/approx_kl": "0.009536896",
+              "train/clip_fraction": "0.11322021484375",
+              "train/explained_variance": "0.339206337928772",
+              "train/entropy_loss": "-38.48809480667114",
+              "train/std": "0.6010891199111938",
+              "train/value_loss": "1.1551558673381805",
+              "train/policy_gradient_loss": "-0.01049505813716678"
+            },
+            {
+              "time/total_timesteps": "405504",
+              "time/fps": "167",
+              "train/approx_kl": "0.019049224",
+              "train/clip_fraction": "0.11285400390625",
+              "train/explained_variance": "0.6307902932167053",
+              "train/entropy_loss": "-38.54329466819763",
+              "train/std": "0.6008954644203186",
+              "train/value_loss": "0.6089653261005878",
+              "train/policy_gradient_loss": "-0.019152276712702587"
+            }
+          ]
+        },
+        {
+          "path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\su1117_02\\sb3\\sherman75\\20261117_120212_910572_ca1ab6\\progress.csv",
+          "rows": 44,
+          "last": [
+            {
+              "time/total_timesteps": "580388",
+              "time/fps": "198",
+              "train/approx_kl": "0.015547291",
+              "train/clip_fraction": "0.0965576171875",
+              "train/explained_variance": "0.7630521059036255",
+              "train/entropy_loss": "-38.516555309295654",
+              "train/std": "0.5971704125404358",
+              "train/value_loss": "0.7835164926946163",
+              "train/policy_gradient_loss": "-0.010214408859610558"
+            },
+            {
+              "time/total_timesteps": "584484",
+              "time/fps": "198",
+              "train/approx_kl": "0.039502032",
+              "train/clip_fraction": "0.201812744140625",
+              "train/explained_variance": "0.8212840557098389",
+              "train/entropy_loss": "-38.34300708770752",
+              "train/std": "0.5966868996620178",
+              "train/value_loss": "0.6752454303205013",
+              "train/policy_gradient_loss": "-0.016865783924004063"
+            },
+            {
+              "time/total_timesteps": "588580",
+              "time/fps": "198",
+              "train/approx_kl": "0.006208701",
+              "train/clip_fraction": "0.159088134765625",
+              "train/explained_variance": "0.8506019115447998",
+              "train/entropy_loss": "-37.955162048339844",
+              "train/std": "0.5963398218154907",
+              "train/value_loss": "0.5202811807394028",
+              "train/policy_gradient_loss": "-0.004474774614209309"
+            }
+          ]
+        },
+        {
+          "path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\su1117_02\\sb3\\sherman75\\20261117_121924_744986_ba3fca\\progress.csv",
+          "rows": 72,
+          "last": [
+            {
+              "time/total_timesteps": "876456",
+              "time/fps": "199",
+              "train/approx_kl": "0.03667842",
+              "train/clip_fraction": "0.185028076171875",
+              "train/explained_variance": "0.9045711159706116",
+              "train/entropy_loss": "-38.32734799385071",
+              "train/std": "0.6002823114395142",
+              "train/value_loss": "0.43694020062685013",
+              "train/policy_gradient_loss": "-0.018994089026818983"
+            },
+            {
+              "time/total_timesteps": "880552",
+              "time/fps": "199",
+              "train/approx_kl": "0.037174292",
+              "train/clip_fraction": "0.1639404296875",
+              "train/explained_variance": "0.8911926746368408",
+              "train/entropy_loss": "-38.57955551147461",
+              "train/std": "0.6007594466209412",
+              "train/value_loss": "0.6649429835379124",
+              "train/policy_gradient_loss": "-0.010251901025185362"
+            },
+            {
+              "time/total_timesteps": "884648",
+              "time/fps": "199",
+              "train/approx_kl": "0.011932153",
+              "train/clip_fraction": "0.103057861328125",
+              "train/explained_variance": "0.8849537968635559",
+              "train/entropy_loss": "-38.4823944568634",
+              "train/std": "0.6008923649787903",
+              "train/value_loss": "0.49574582464993",
+              "train/policy_gradient_loss": "-0.01413975894683972"
+            }
+          ]
+        },
+        {
+          "path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\su1117_02\\sb3\\sherman75\\20261117_124437_975568_2f0ef7\\progress.csv",
+          "rows": 68,
+          "last": [
+            {
+              "time/total_timesteps": "1157768",
+              "time/fps": "315",
+              "train/approx_kl": "0.01985047",
+              "train/clip_fraction": "0.141204833984375",
+              "train/explained_variance": "0.7848629951477051",
+              "train/entropy_loss": "-39.3593213558197",
+              "train/std": "0.6021890044212341",
+              "train/value_loss": "0.5008980259299278",
+              "train/policy_gradient_loss": "-0.005772529446403496"
+            },
+            {
+              "time/total_timesteps": "1161864",
+              "time/fps": "313",
+              "train/approx_kl": "0.017631851",
+              "train/clip_fraction": "0.145416259765625",
+              "train/explained_variance": "0.7261440753936768",
+              "train/entropy_loss": "-39.500388860702515",
+              "train/std": "0.602112889289856",
+              "train/value_loss": "0.42797656543552876",
+              "train/policy_gradient_loss": "-0.013997129230119754"
+            },
+            {
+              "time/total_timesteps": "1165960",
+              "time/fps": "315",
+              "train/approx_kl": "0.04022371",
+              "train/clip_fraction": "0.198455810546875",
+              "train/explained_variance": "0.7277107238769531",
+              "train/entropy_loss": "-39.44562602043152",
+              "train/std": "0.6020612716674805",
+              "train/value_loss": "0.42116212472319603",
+              "train/policy_gradient_loss": "-0.01996215680264868"
+            }
+          ]
+        }
+      ]
+    },
+    "20261117_063521": {
+      "status": {
+        "tank": "sherman75",
+        "phase": "collecting",
+        "num_timesteps": 261346,
+        "updated": 1794888969.14,
+        "steps_per_s": 217.9,
+        "runtime": {
+          "requested_device": "cpu",
+          "device": "cpu",
+          "gpu_name": null,
+          "torch": "2.15.0+cpu",
+          "cuda_version": null,
+          "torch_threads": 4,
+          "n_steps": 1024,
+          "batch_size": 2048,
+          "n_epochs": 8,
+          "rollout_size": 4096,
+          "rollout_buffer": "RolloutBuffer",
+          "mode": "cpu",
+          "inference_device": "cpu",
+          "update_device": "cpu",
+          "start_timesteps": 6,
+          "resumed_from": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\20261117_063521\\sherman75\\checkpoints\\step_000000006_20261117_130249_247051_c79e76\\model.zip"
+        }
+      },
+      "stage_counts": {
+        "drive": 3041,
+        "drive_terrain": 2155
+      },
+      "sessions": [
+        {
+          "started": "2026-11-17T06:45:01",
+          "tank": "tiger1",
+          "terrain_version": 3,
+          "start_timesteps": null,
+          "resumed_from": null,
+          "n_envs": 8,
+          "speed_cap": 0.0
+        },
+        {
+          "started": "2026-11-17T06:52:31",
+          "tank": "tiger1",
+          "terrain_version": 3,
+          "start_timesteps": null,
+          "resumed_from": null,
+          "n_envs": 8,
+          "speed_cap": 0.0
+        },
+        {
+          "started": "2026-11-17T08:07:47",
+          "tank": "tiger1",
+          "terrain_version": 3,
+          "start_timesteps": null,
+          "resumed_from": null,
+          "n_envs": 8,
+          "speed_cap": 0.0
+        },
+        {
+          "started": "2026-11-17T09:27:23",
+          "tank": "tiger1",
+          "terrain_version": 3,
+          "start_timesteps": null,
+          "resumed_from": null,
+          "n_envs": 2,
+          "speed_cap": 0.0
+        },
+        {
+          "started": "2026-11-17T09:44:05",
+          "tank": "tiger1",
+          "terrain_version": 3,
+          "start_timesteps": null,
+          "resumed_from": null,
+          "n_envs": 2,
+          "speed_cap": 0.0
+        },
+        {
+          "started": "2026-11-17T10:03:18",
+          "tank": "tiger1",
+          "terrain_version": 3,
+          "start_timesteps": null,
+          "resumed_from": null,
+          "n_envs": 2,
+          "speed_cap": 0.0
+        },
+        {
+          "started": "2026-11-17T13:01:39",
+          "tank": "sherman75",
+          "terrain_version": 3,
+          "start_timesteps": 0,
+          "resumed_from": null,
+          "n_envs": 6,
+          "speed_cap": 0.0
+        },
+        {
+          "started": "2026-11-17T13:03:15",
+          "tank": "sherman75",
+          "terrain_version": 3,
+          "start_timesteps": 6,
+          "resumed_from": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\20261117_063521\\sherman75\\checkpoints\\step_000000006_20261117_130249_247051_c79e76\\model.zip",
+          "n_envs": 4,
+          "speed_cap": 0.0
+        }
+      ],
+      "models": {
+        "tiger1": {
+          "path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\20261117_063521\\tiger1\\latest.zip",
+          "parameters": {
+            "num_timesteps": 2214144,
+            "gamma": 0.99,
+            "gae_lambda": 0.95,
+            "n_steps": 1024,
+            "batch_size": 2048,
+            "n_epochs": 8,
+            "learning_rate": 0.0003,
+            "ent_coef": 0.005,
+            "use_sde": true,
+            "sde_sample_freq": 20
+          },
+          "stage": "drive_terrain",
+          "history": [
+            {
+              "tank": "tiger1",
+              "from": "drive",
+              "to": "drive_terrain",
+              "episodes": 2389,
+              "success_rate": 0.8,
+              "reason": "threshold",
+              "global_step": 1275672,
+              "wall_time": 1794870493.99,
+              "learner_policy": "20261117_063521/tiger1/step_001275672"
+            }
+          ],
+          "terrain": {
+            "version": 2,
+            "index": 0,
+            "fixed": "",
+            "course": "approach",
+            "history": [],
+            "results": {
+              "approach": [],
+              "detour": [],
+              "gates": [],
+              "rough": [],
+              "mixed": []
+            }
+          },
+          "previous_assessments": null
+        },
+        "sherman75": {
+          "path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\20261117_063521\\sherman75\\checkpoints\\step_000200002_20261117_131221_048200_11a7b0\\model.zip",
+          "parameters": {
+            "num_timesteps": 200002,
+            "gamma": 0.99,
+            "gae_lambda": 0.95,
+            "n_steps": 1024,
+            "batch_size": 2048,
+            "n_epochs": 8,
+            "learning_rate": 0.0003,
+            "ent_coef": 0.005,
+            "use_sde": true,
+            "sde_sample_freq": 20
+          },
+          "stage": "drive_terrain",
+          "history": [
+            {
+              "tank": "sherman75",
+              "from": "drive",
+              "to": "drive_terrain",
+              "episodes": 422,
+              "success_rate": 0.85,
+              "reason": "threshold",
+              "global_step": 86702,
+              "wall_time": 1794888507.97,
+              "learner_policy": "20261117_063521/sherman75/step_000086702"
+            }
+          ],
+          "terrain": {
+            "version": 3,
+            "index": 1,
+            "fixed": "",
+            "course": "turn_gentle",
+            "history": [
+              {
+                "course": "approach",
+                "global_step": 95446,
+                "success_rate": 0.85
+              }
+            ],
+            "results": {
+              "approach": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1
+              ],
+              "turn_gentle": [
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1
+              ],
+              "turn_wide": [],
+              "parking": [],
+              "slope": [],
+              "low_step": [],
+              "one_tree": [],
+              "detour": [],
+              "gate_wide": [],
+              "gates": [],
+              "grove": [],
+              "rough": [],
+              "mixed": []
+            }
+          },
+          "previous_assessments": []
+        }
+      },
+      "objectives": [
+        {
+          "tank": "tiger1",
+          "objective": "drive/unspecified",
+          "overall": {
+            "n": 2538,
+            "successes": 1021,
+            "success_rate": 0.4023,
+            "mean_return": 2.8032,
+            "mean_duration_s": 52.4266,
+            "mean_shots": 5.6749,
+            "first_step": 4792,
+            "last_step": 2205608,
+            "reasons": {
+              "time_limit": 1517,
+              "arrived": 1021
+            }
+          },
+          "first100": {
+            "n": 100,
+            "successes": 0,
+            "success_rate": 0.0,
+            "mean_return": -0.5604,
+            "mean_duration_s": 60.0,
+            "mean_shots": 6.63,
+            "first_step": 4792,
+            "last_step": 62392,
+            "reasons": {
+              "time_limit": 100
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 78,
+            "success_rate": 0.78,
+            "mean_return": 5.5301,
+            "mean_duration_s": 41.278,
+            "mean_shots": 4.08,
+            "first_step": 1563256,
+            "last_step": 2205608,
+            "reasons": {
+              "arrived": 78,
+              "time_limit": 22
+            }
+          },
+          "last40": {
+            "n": 40,
+            "successes": 32,
+            "success_rate": 0.8,
+            "mean_return": 5.5964,
+            "mean_duration_s": 38.225,
+            "mean_shots": 3.55,
+            "first_step": 1938936,
+            "last_step": 2205608,
+            "reasons": {
+              "arrived": 32,
+              "time_limit": 8
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 0,
+              "success_rate": 0.0,
+              "mean_return": -0.5604,
+              "mean_duration_s": 60.0,
+              "mean_shots": 6.63,
+              "first_step": 4792,
+              "last_step": 62392,
+              "reasons": {
+                "time_limit": 100
+              }
+            },
+            {
+              "n": 100,
+              "successes": 1,
+              "success_rate": 0.01,
+              "mean_return": -0.2818,
+              "mean_duration_s": 59.793,
+              "mean_shots": 6.77,
+              "first_step": 62392,
+              "last_step": 119992,
+              "reasons": {
+                "time_limit": 99,
+                "arrived": 1
+              }
+            },
+            {
+              "n": 100,
+              "successes": 2,
+              "success_rate": 0.02,
+              "mean_return": 0.0468,
+              "mean_duration_s": 59.555,
+              "mean_shots": 6.97,
+              "first_step": 123136,
+              "last_step": 183944,
+              "reasons": {
+                "time_limit": 98,
+                "arrived": 2
+              }
+            },
+            {
+              "n": 100,
+              "successes": 10,
+              "success_rate": 0.1,
+              "mean_return": 0.627,
+              "mean_duration_s": 57.916,
+              "mean_shots": 6.78,
+              "first_step": 183944,
+              "last_step": 240608,
+              "reasons": {
+                "time_limit": 90,
+                "arrived": 10
+              }
+            },
+            {
+              "n": 100,
+              "successes": 16,
+              "success_rate": 0.16,
+              "mean_return": 1.0775,
+              "mean_duration_s": 57.314,
+              "mean_shots": 6.86,
+              "first_step": 241544,
+              "last_step": 298328,
+              "reasons": {
+                "time_limit": 84,
+                "arrived": 16
+              }
+            },
+            {
+              "n": 100,
+              "successes": 22,
+              "success_rate": 0.22,
+              "mean_return": 1.718,
+              "mean_duration_s": 55.835,
+              "mean_shots": 6.83,
+              "first_step": 298424,
+              "last_step": 354824,
+              "reasons": {
+                "arrived": 22,
+                "time_limit": 78
+              }
+            },
+            {
+              "n": 100,
+              "successes": 23,
+              "success_rate": 0.23,
+              "mean_return": 1.745,
+              "mean_duration_s": 56.682,
+              "mean_shots": 6.69,
+              "first_step": 355120,
+              "last_step": 411656,
+              "reasons": {
+                "time_limit": 77,
+                "arrived": 23
+              }
+            },
+            {
+              "n": 100,
+              "successes": 33,
+              "success_rate": 0.33,
+              "mean_return": 2.4183,
+              "mean_duration_s": 54.785,
+              "mean_shots": 6.54,
+              "first_step": 412056,
+              "last_step": 466352,
+              "reasons": {
+                "time_limit": 67,
+                "arrived": 33
+              }
+            },
+            {
+              "n": 100,
+              "successes": 41,
+              "success_rate": 0.41,
+              "mean_return": 2.9056,
+              "mean_duration_s": 52.608,
+              "mean_shots": 6.36,
+              "first_step": 466400,
+              "last_step": 517272,
+              "reasons": {
+                "time_limit": 59,
+                "arrived": 41
+              }
+            },
+            {
+              "n": 100,
+              "successes": 50,
+              "success_rate": 0.5,
+              "mean_return": 3.4833,
+              "mean_duration_s": 51.049,
+              "mean_shots": 6.23,
+              "first_step": 517600,
+              "last_step": 568792,
+              "reasons": {
+                "arrived": 50,
+                "time_limit": 50
+              }
+            },
+            {
+              "n": 100,
+              "successes": 47,
+              "success_rate": 0.47,
+              "mean_return": 3.4076,
+              "mean_duration_s": 52.203,
+              "mean_shots": 5.84,
+              "first_step": 569248,
+              "last_step": 620648,
+              "reasons": {
+                "time_limit": 53,
+                "arrived": 47
+              }
+            },
+            {
+              "n": 100,
+              "successes": 40,
+              "success_rate": 0.4,
+              "mean_return": 2.8229,
+              "mean_duration_s": 54.092,
+              "mean_shots": 6.08,
+              "first_step": 620768,
+              "last_step": 675576,
+              "reasons": {
+                "time_limit": 60,
+                "arrived": 40
+              }
+            },
+            {
+              "n": 100,
+              "successes": 43,
+              "success_rate": 0.43,
+              "mean_return": 2.9438,
+              "mean_duration_s": 51.672,
+              "mean_shots": 5.72,
+              "first_step": 676296,
+              "last_step": 726240,
+              "reasons": {
+                "time_limit": 57,
+                "arrived": 43
+              }
+            },
+            {
+              "n": 100,
+              "successes": 45,
+              "success_rate": 0.45,
+              "mean_return": 3.2073,
+              "mean_duration_s": 51.239,
+              "mean_shots": 5.48,
+              "first_step": 726968,
+              "last_step": 778192,
+              "reasons": {
+                "arrived": 45,
+                "time_limit": 55
+              }
+            },
+            {
+              "n": 100,
+              "successes": 52,
+              "success_rate": 0.52,
+              "mean_return": 3.4427,
+              "mean_duration_s": 49.827,
+              "mean_shots": 5.75,
+              "first_step": 778232,
+              "last_step": 828784,
+              "reasons": {
+                "time_limit": 48,
+                "arrived": 52
+              }
+            },
+            {
+              "n": 100,
+              "successes": 48,
+              "success_rate": 0.48,
+              "mean_return": 3.2742,
+              "mean_duration_s": 51.622,
+              "mean_shots": 5.4,
+              "first_step": 828832,
+              "last_step": 879704,
+              "reasons": {
+                "time_limit": 52,
+                "arrived": 48
+              }
+            },
+            {
+              "n": 100,
+              "successes": 53,
+              "success_rate": 0.53,
+              "mean_return": 3.6869,
+              "mean_duration_s": 51.707,
+              "mean_shots": 5.06,
+              "first_step": 880184,
+              "last_step": 931624,
+              "reasons": {
+                "time_limit": 47,
+                "arrived": 53
+              }
+            },
+            {
+              "n": 100,
+              "successes": 52,
+              "success_rate": 0.52,
+              "mean_return": 3.5745,
+              "mean_duration_s": 50.323,
+              "mean_shots": 4.79,
+              "first_step": 931728,
+              "last_step": 981912,
+              "reasons": {
+                "arrived": 52,
+                "time_limit": 48
+              }
+            },
+            {
+              "n": 100,
+              "successes": 45,
+              "success_rate": 0.45,
+              "mean_return": 3.3671,
+              "mean_duration_s": 52.029,
+              "mean_shots": 4.64,
+              "first_step": 982336,
+              "last_step": 1034056,
+              "reasons": {
+                "arrived": 45,
+                "time_limit": 55
+              }
+            },
+            {
+              "n": 100,
+              "successes": 44,
+              "success_rate": 0.44,
+              "mean_return": 3.3117,
+              "mean_duration_s": 52.435,
+              "mean_shots": 4.93,
+              "first_step": 1034056,
+              "last_step": 1086368,
+              "reasons": {
+                "arrived": 44,
+                "time_limit": 56
+              }
+            },
+            {
+              "n": 100,
+              "successes": 48,
+              "success_rate": 0.48,
+              "mean_return": 3.4145,
+              "mean_duration_s": 52.701,
+              "mean_shots": 5.02,
+              "first_step": 1086760,
+              "last_step": 1139064,
+              "reasons": {
+                "time_limit": 52,
+                "arrived": 48
+              }
+            },
+            {
+              "n": 100,
+              "successes": 54,
+              "success_rate": 0.54,
+              "mean_return": 3.7759,
+              "mean_duration_s": 50.822,
+              "mean_shots": 4.63,
+              "first_step": 1139440,
+              "last_step": 1189224,
+              "reasons": {
+                "arrived": 54,
+                "time_limit": 46
+              }
+            },
+            {
+              "n": 100,
+              "successes": 61,
+              "success_rate": 0.61,
+              "mean_return": 4.2401,
+              "mean_duration_s": 48.114,
+              "mean_shots": 4.58,
+              "first_step": 1190912,
+              "last_step": 1239960,
+              "reasons": {
+                "time_limit": 39,
+                "arrived": 61
+              }
+            },
+            {
+              "n": 100,
+              "successes": 80,
+              "success_rate": 0.8,
+              "mean_return": 5.6514,
+              "mean_duration_s": 39.996,
+              "mean_shots": 3.89,
+              "first_step": 1240792,
+              "last_step": 1321264,
+              "reasons": {
+                "arrived": 80,
+                "time_limit": 20
+              }
+            },
+            {
+              "n": 100,
+              "successes": 81,
+              "success_rate": 0.81,
+              "mean_return": 5.7359,
+              "mean_duration_s": 41.703,
+              "mean_shots": 4.19,
+              "first_step": 1322784,
+              "last_step": 1942096,
+              "reasons": {
+                "arrived": 81,
+                "time_limit": 19
+              }
+            },
+            {
+              "n": 38,
+              "successes": 30,
+              "success_rate": 0.7895,
+              "mean_return": 5.5525,
+              "mean_duration_s": 38.3289,
+              "mean_shots": 3.6053,
+              "first_step": 1946112,
+              "last_step": 2205608,
+              "reasons": {
+                "arrived": 30,
+                "time_limit": 8
+              }
+            }
+          ]
+        },
+        {
+          "tank": "tiger1",
+          "objective": "drive_terrain/unspecified",
+          "overall": {
+            "n": 1238,
+            "successes": 620,
+            "success_rate": 0.5008,
+            "mean_return": 4.2563,
+            "mean_duration_s": 70.6353,
+            "mean_shots": 6.9491,
+            "first_step": 1279280,
+            "last_step": 2213052,
+            "reasons": {
+              "arrived": 620,
+              "time_limit": 618
+            }
+          },
+          "first100": {
+            "n": 100,
+            "successes": 44,
+            "success_rate": 0.44,
+            "mean_return": 3.7234,
+            "mean_duration_s": 72.641,
+            "mean_shots": 6.74,
+            "first_step": 1279280,
+            "last_step": 1357032,
+            "reasons": {
+              "arrived": 44,
+              "time_limit": 56
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 47,
+            "success_rate": 0.47,
+            "mean_return": 3.9911,
+            "mean_duration_s": 71.672,
+            "mean_shots": 6.39,
+            "first_step": 2137520,
+            "last_step": 2213052,
+            "reasons": {
+              "arrived": 47,
+              "time_limit": 53
+            }
+          },
+          "last40": {
+            "n": 40,
+            "successes": 22,
+            "success_rate": 0.55,
+            "mean_return": 4.2763,
+            "mean_duration_s": 71.8275,
+            "mean_shots": 6.625,
+            "first_step": 2184130,
+            "last_step": 2213052,
+            "reasons": {
+              "time_limit": 18,
+              "arrived": 22
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 44,
+              "success_rate": 0.44,
+              "mean_return": 3.7234,
+              "mean_duration_s": 72.641,
+              "mean_shots": 6.74,
+              "first_step": 1279280,
+              "last_step": 1357032,
+              "reasons": {
+                "arrived": 44,
+                "time_limit": 56
+              }
+            },
+            {
+              "n": 100,
+              "successes": 48,
+              "success_rate": 0.48,
+              "mean_return": 4.0742,
+              "mean_duration_s": 69.005,
+              "mean_shots": 7.02,
+              "first_step": 1357480,
+              "last_step": 1431120,
+              "reasons": {
+                "time_limit": 52,
+                "arrived": 48
+              }
+            },
+            {
+              "n": 100,
+              "successes": 47,
+              "success_rate": 0.47,
+              "mean_return": 4.1572,
+              "mean_duration_s": 71.989,
+              "mean_shots": 6.99,
+              "first_step": 1431336,
+              "last_step": 1508160,
+              "reasons": {
+                "time_limit": 53,
+                "arrived": 47
+              }
+            },
+            {
+              "n": 100,
+              "successes": 38,
+              "success_rate": 0.38,
+              "mean_return": 3.2238,
+              "mean_duration_s": 75.071,
+              "mean_shots": 7.82,
+              "first_step": 1509264,
+              "last_step": 1588448,
+              "reasons": {
+                "time_limit": 62,
+                "arrived": 38
+              }
+            },
+            {
+              "n": 100,
+              "successes": 50,
+              "success_rate": 0.5,
+              "mean_return": 4.3114,
+              "mean_duration_s": 69.31,
+              "mean_shots": 7.73,
+              "first_step": 1588496,
+              "last_step": 1661880,
+              "reasons": {
+                "time_limit": 50,
+                "arrived": 50
+              }
+            },
+            {
+              "n": 100,
+              "successes": 54,
+              "success_rate": 0.54,
+              "mean_return": 4.4069,
+              "mean_duration_s": 70.673,
+              "mean_shots": 7.3,
+              "first_step": 1663608,
+              "last_step": 1737624,
+              "reasons": {
+                "time_limit": 46,
+                "arrived": 54
+              }
+            },
+            {
+              "n": 100,
+              "successes": 56,
+              "success_rate": 0.56,
+              "mean_return": 4.7051,
+              "mean_duration_s": 68.621,
+              "mean_shots": 6.56,
+              "first_step": 1737696,
+              "last_step": 1810928,
+              "reasons": {
+                "arrived": 56,
+                "time_limit": 44
+              }
+            },
+            {
+              "n": 100,
+              "successes": 59,
+              "success_rate": 0.59,
+              "mean_return": 4.8868,
+              "mean_duration_s": 68.168,
+              "mean_shots": 6.53,
+              "first_step": 1811608,
+              "last_step": 1883464,
+              "reasons": {
+                "time_limit": 41,
+                "arrived": 59
+              }
+            },
+            {
+              "n": 100,
+              "successes": 49,
+              "success_rate": 0.49,
+              "mean_return": 4.4555,
+              "mean_duration_s": 71.99,
+              "mean_shots": 6.82,
+              "first_step": 1885376,
+              "last_step": 1960512,
+              "reasons": {
+                "time_limit": 51,
+                "arrived": 49
+              }
+            },
+            {
+              "n": 100,
+              "successes": 53,
+              "success_rate": 0.53,
+              "mean_return": 4.4186,
+              "mean_duration_s": 68.588,
+              "mean_shots": 6.88,
+              "first_step": 1961008,
+              "last_step": 2035064,
+              "reasons": {
+                "arrived": 53,
+                "time_limit": 47
+              }
+            },
+            {
+              "n": 100,
+              "successes": 52,
+              "success_rate": 0.52,
+              "mean_return": 4.3916,
+              "mean_duration_s": 71.026,
+              "mean_shots": 6.87,
+              "first_step": 2035752,
+              "last_step": 2110182,
+              "reasons": {
+                "arrived": 52,
+                "time_limit": 48
+              }
+            },
+            {
+              "n": 100,
+              "successes": 49,
+              "success_rate": 0.49,
+              "mean_return": 4.3233,
+              "mean_duration_s": 69.69,
+              "mean_shots": 6.2,
+              "first_step": 2110656,
+              "last_step": 2184406,
+              "reasons": {
+                "time_limit": 51,
+                "arrived": 49
+              }
+            },
+            {
+              "n": 38,
+              "successes": 21,
+              "success_rate": 0.5526,
+              "mean_return": 4.2505,
+              "mean_duration_s": 72.8763,
+              "mean_shots": 6.7632,
+              "first_step": 2185188,
+              "last_step": 2213052,
+              "reasons": {
+                "arrived": 21,
+                "time_limit": 17
+              }
+            }
+          ]
+        },
+        {
+          "tank": "sherman75",
+          "objective": "drive/terrain:v3/approach",
+          "overall": {
+            "n": 503,
+            "successes": 277,
+            "success_rate": 0.5507,
+            "mean_return": 5.9862,
+            "mean_duration_s": 18.6616,
+            "mean_shots": 3.5249,
+            "first_step": 286,
+            "last_step": 257398,
+            "reasons": {
+              "arrived_stopped": 277,
+              "no_progress": 128,
+              "time_limit": 71,
+              "out_of_bounds": 27
+            },
+            "mean_progress_fraction": 0.7163,
+            "successful_path_ratio": 1.0605
+          },
+          "first100": {
+            "n": 100,
+            "successes": 25,
+            "success_rate": 0.25,
+            "mean_return": 2.1782,
+            "mean_duration_s": 24.427,
+            "mean_shots": 4.21,
+            "first_step": 286,
+            "last_step": 25150,
+            "reasons": {
+              "arrived_stopped": 25,
+              "no_progress": 40,
+              "time_limit": 24,
+              "out_of_bounds": 11
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 88,
+            "success_rate": 0.88,
+            "mean_return": 10.0061,
+            "mean_duration_s": 9.703,
+            "mean_shots": 2.05,
+            "first_step": 84514,
+            "last_step": 257398,
+            "reasons": {
+              "arrived_stopped": 88,
+              "no_progress": 10,
+              "time_limit": 2
+            },
+            "mean_progress_fraction": 0.8582,
+            "successful_path_ratio": 1.0629
+          },
+          "last40": {
+            "n": 40,
+            "successes": 40,
+            "success_rate": 1.0,
+            "mean_return": 11.5545,
+            "mean_duration_s": 5.9125,
+            "mean_shots": 1.4,
+            "first_step": 172922,
+            "last_step": 257398,
+            "reasons": {
+              "arrived_stopped": 40
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 25,
+              "success_rate": 0.25,
+              "mean_return": 2.1782,
+              "mean_duration_s": 24.427,
+              "mean_shots": 4.21,
+              "first_step": 286,
+              "last_step": 25150,
+              "reasons": {
+                "arrived_stopped": 25,
+                "no_progress": 40,
+                "time_limit": 24,
+                "out_of_bounds": 11
+              }
+            },
+            {
+              "n": 100,
+              "successes": 38,
+              "success_rate": 0.38,
+              "mean_return": 4.0166,
+              "mean_duration_s": 23.494,
+              "mean_shots": 4.49,
+              "first_step": 25154,
+              "last_step": 48102,
+              "reasons": {
+                "time_limit": 24,
+                "arrived_stopped": 38,
+                "no_progress": 28,
+                "out_of_bounds": 10
+              }
+            },
+            {
+              "n": 100,
+              "successes": 58,
+              "success_rate": 0.58,
+              "mean_return": 6.5265,
+              "mean_duration_s": 17.968,
+              "mean_shots": 3.45,
+              "first_step": 48910,
+              "last_step": 66206,
+              "reasons": {
+                "no_progress": 25,
+                "out_of_bounds": 6,
+                "time_limit": 11,
+                "arrived_stopped": 58
+              }
+            },
+            {
+              "n": 100,
+              "successes": 66,
+              "success_rate": 0.66,
+              "mean_return": 7.1722,
+              "mean_duration_s": 17.744,
+              "mean_shots": 3.43,
+              "first_step": 66546,
+              "last_step": 84062,
+              "reasons": {
+                "no_progress": 25,
+                "arrived_stopped": 66,
+                "time_limit": 9
+              }
+            },
+            {
+              "n": 100,
+              "successes": 87,
+              "success_rate": 0.87,
+              "mean_return": 9.8711,
+              "mean_duration_s": 10.066,
+              "mean_shots": 2.1,
+              "first_step": 84090,
+              "last_step": 250962,
+              "reasons": {
+                "time_limit": 3,
+                "arrived_stopped": 87,
+                "no_progress": 10
+              }
+            },
+            {
+              "n": 3,
+              "successes": 3,
+              "success_rate": 1.0,
+              "mean_return": 11.5286,
+              "mean_duration_s": 5.6333,
+              "mean_shots": 1.6667,
+              "first_step": 253790,
+              "last_step": 257398,
+              "reasons": {
+                "arrived_stopped": 3
+              }
+            }
+          ]
+        },
+        {
+          "tank": "sherman75",
+          "objective": "drive_terrain/terrain:v3/approach",
+          "overall": {
+            "n": 253,
+            "successes": 219,
+            "success_rate": 0.8656,
+            "mean_return": 9.8498,
+            "mean_duration_s": 9.6937,
+            "mean_shots": 2.0395,
+            "first_step": 87194,
+            "last_step": 257250,
+            "reasons": {
+              "arrived_stopped": 219,
+              "no_progress": 27,
+              "time_limit": 7
+            },
+            "mean_progress_fraction": 0.8513,
+            "successful_path_ratio": 1.0509
+          },
+          "first100": {
+            "n": 100,
+            "successes": 79,
+            "success_rate": 0.79,
+            "mean_return": 8.869,
+            "mean_duration_s": 12.393,
+            "mean_shots": 2.47,
+            "first_step": 87194,
+            "last_step": 131274,
+            "reasons": {
+              "arrived_stopped": 79,
+              "no_progress": 18,
+              "time_limit": 3
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 93,
+            "success_rate": 0.93,
+            "mean_return": 10.6722,
+            "mean_duration_s": 7.354,
+            "mean_shots": 1.62,
+            "first_step": 169698,
+            "last_step": 257250,
+            "reasons": {
+              "arrived_stopped": 93,
+              "no_progress": 6,
+              "time_limit": 1
+            },
+            "mean_progress_fraction": 0.8843,
+            "successful_path_ratio": 1.0599
+          },
+          "last40": {
+            "n": 40,
+            "successes": 40,
+            "success_rate": 1.0,
+            "mean_return": 11.5031,
+            "mean_duration_s": 5.66,
+            "mean_shots": 1.275,
+            "first_step": 226454,
+            "last_step": 257250,
+            "reasons": {
+              "arrived_stopped": 40
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 79,
+              "success_rate": 0.79,
+              "mean_return": 8.869,
+              "mean_duration_s": 12.393,
+              "mean_shots": 2.47,
+              "first_step": 87194,
+              "last_step": 131274,
+              "reasons": {
+                "arrived_stopped": 79,
+                "no_progress": 18,
+                "time_limit": 3
+              }
+            },
+            {
+              "n": 100,
+              "successes": 88,
+              "success_rate": 0.88,
+              "mean_return": 10.0768,
+              "mean_duration_s": 8.915,
+              "mean_shots": 1.94,
+              "first_step": 132242,
+              "last_step": 209830,
+              "reasons": {
+                "arrived_stopped": 88,
+                "time_limit": 4,
+                "no_progress": 8
+              }
+            },
+            {
+              "n": 53,
+              "successes": 52,
+              "success_rate": 0.9811,
+              "mean_return": 11.272,
+              "mean_duration_s": 6.0698,
+              "mean_shots": 1.4151,
+              "first_step": 210930,
+              "last_step": 257250,
+              "reasons": {
+                "arrived_stopped": 52,
+                "no_progress": 1
+              }
+            }
+          ]
+        },
+        {
+          "tank": "sherman75",
+          "objective": "drive_terrain/terrain:v3/turn_gentle",
+          "overall": {
+            "n": 664,
+            "successes": 311,
+            "success_rate": 0.4684,
+            "mean_return": 5.1975,
+            "mean_duration_s": 20.8788,
+            "mean_shots": 4.0015,
+            "first_step": 96130,
+            "last_step": 257174,
+            "reasons": {
+              "arrived_stopped": 311,
+              "no_progress": 295,
+              "time_limit": 58
+            },
+            "mean_progress_fraction": 0.7626,
+            "successful_path_ratio": 1.0571
+          },
+          "first100": {
+            "n": 100,
+            "successes": 42,
+            "success_rate": 0.42,
+            "mean_return": 4.5712,
+            "mean_duration_s": 23.394,
+            "mean_shots": 4.3,
+            "first_step": 96130,
+            "last_step": 124358,
+            "reasons": {
+              "arrived_stopped": 42,
+              "no_progress": 43,
+              "time_limit": 15
+            }
+          },
+          "last100": {
+            "n": 100,
+            "successes": 48,
+            "success_rate": 0.48,
+            "mean_return": 5.421,
+            "mean_duration_s": 19.831,
+            "mean_shots": 3.8,
+            "first_step": 235938,
+            "last_step": 257174,
+            "reasons": {
+              "no_progress": 44,
+              "arrived_stopped": 48,
+              "time_limit": 8
+            },
+            "mean_progress_fraction": 0.7898,
+            "successful_path_ratio": 1.0436
+          },
+          "last40": {
+            "n": 40,
+            "successes": 18,
+            "success_rate": 0.45,
+            "mean_return": 5.0365,
+            "mean_duration_s": 20.6125,
+            "mean_shots": 4.0,
+            "first_step": 248294,
+            "last_step": 257174,
+            "reasons": {
+              "arrived_stopped": 18,
+              "no_progress": 18,
+              "time_limit": 4
+            }
+          },
+          "blocks": [
+            {
+              "n": 100,
+              "successes": 42,
+              "success_rate": 0.42,
+              "mean_return": 4.5712,
+              "mean_duration_s": 23.394,
+              "mean_shots": 4.3,
+              "first_step": 96130,
+              "last_step": 124358,
+              "reasons": {
+                "arrived_stopped": 42,
+                "no_progress": 43,
+                "time_limit": 15
+              }
+            },
+            {
+              "n": 100,
+              "successes": 48,
+              "success_rate": 0.48,
+              "mean_return": 5.2872,
+              "mean_duration_s": 21.553,
+              "mean_shots": 4.01,
+              "first_step": 124510,
+              "last_step": 151262,
+              "reasons": {
+                "time_limit": 10,
+                "arrived_stopped": 48,
+                "no_progress": 42
+              }
+            },
+            {
+              "n": 100,
+              "successes": 44,
+              "success_rate": 0.44,
+              "mean_return": 4.7273,
+              "mean_duration_s": 21.704,
+              "mean_shots": 4.28,
+              "first_step": 151366,
+              "last_step": 176274,
+              "reasons": {
+                "no_progress": 50,
+                "time_limit": 6,
+                "arrived_stopped": 44
+              }
+            },
+            {
+              "n": 100,
+              "successes": 48,
+              "success_rate": 0.48,
+              "mean_return": 5.3596,
+              "mean_duration_s": 20.3,
+              "mean_shots": 4.02,
+              "first_step": 176526,
+              "last_step": 199378,
+              "reasons": {
+                "no_progress": 43,
+                "arrived_stopped": 48,
+                "time_limit": 9
+              }
+            },
+            {
+              "n": 100,
+              "successes": 49,
+              "success_rate": 0.49,
+              "mean_return": 5.5483,
+              "mean_duration_s": 19.417,
+              "mean_shots": 3.72,
+              "first_step": 199418,
+              "last_step": 221930,
+              "reasons": {
+                "arrived_stopped": 49,
+                "no_progress": 45,
+                "time_limit": 6
+              }
+            },
+            {
+              "n": 100,
+              "successes": 53,
+              "success_rate": 0.53,
+              "mean_return": 5.9756,
+              "mean_duration_s": 18.732,
+              "mean_shots": 3.64,
+              "first_step": 222114,
+              "last_step": 242910,
+              "reasons": {
+                "no_progress": 41,
+                "arrived_stopped": 53,
+                "time_limit": 6
+              }
+            },
+            {
+              "n": 64,
+              "successes": 27,
+              "success_rate": 0.4219,
+              "mean_return": 4.7532,
+              "mean_duration_s": 21.1484,
+              "mean_shots": 4.0625,
+              "first_step": 242914,
+              "last_step": 257174,
+              "reasons": {
+                "arrived_stopped": 27,
+                "no_progress": 31,
+                "time_limit": 6
+              }
+            }
+          ]
+        }
+      ],
+      "ppo": [
+        {
+          "path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\20261117_063521\\sb3\\sherman75\\20261117_130315_550608_9f8b12\\progress.csv",
+          "rows": 63,
+          "last": [
+            {
+              "time/total_timesteps": "249862",
+              "time/fps": "350",
+              "train/approx_kl": "0.019861266",
+              "train/clip_fraction": "0.144775390625",
+              "train/explained_variance": "0.9243997931480408",
+              "train/entropy_loss": "-35.67504549026489",
+              "train/std": "0.6036261916160583",
+              "train/value_loss": "0.5865503009408712",
+              "train/policy_gradient_loss": "-0.008645408466691151"
+            },
+            {
+              "time/total_timesteps": "253958",
+              "time/fps": "344",
+              "train/approx_kl": "0.025913345",
+              "train/clip_fraction": "0.1929931640625",
+              "train/explained_variance": "0.8627529740333557",
+              "train/entropy_loss": "-35.82646298408508",
+              "train/std": "0.6033426523208618",
+              "train/value_loss": "1.1133825369179249",
+              "train/policy_gradient_loss": "-0.01353291938721668"
+            },
+            {
+              "time/total_timesteps": "258054",
+              "time/fps": "340",
+              "train/approx_kl": "0.017461952",
+              "train/clip_fraction": "0.115234375",
+              "train/explained_variance": "0.8861931562423706",
+              "train/entropy_loss": "-35.61873388290405",
+              "train/std": "0.6031405925750732",
+              "train/value_loss": "0.9031171388924122",
+              "train/policy_gradient_loss": "-0.009702759474748746"
+            }
+          ]
+        }
+      ]
+    },
+    "terrain_v2_20261117": {
+      "status": {
+        "tank": "sherman75",
+        "phase": "stopped",
+        "num_timesteps": 3868,
+        "updated": 1794888107.96,
+        "steps_per_s": 0.0,
+        "runtime": {
+          "requested_device": "cpu",
+          "device": "cpu",
+          "gpu_name": null,
+          "torch": "2.15.0+cpu",
+          "cuda_version": null,
+          "torch_threads": 4,
+          "n_steps": 1024,
+          "batch_size": 2048,
+          "n_epochs": 8,
+          "rollout_size": 4096,
+          "rollout_buffer": "RolloutBuffer",
+          "mode": "cpu",
+          "inference_device": "cpu",
+          "update_device": "cpu",
+          "start_timesteps": 0,
+          "resumed_from": null
+        }
+      },
+      "stage_counts": {
+        "drive_terrain": 21
+      },
+      "sessions": [
+        {
+          "started": "2026-11-17T10:28:49",
+          "tank": "tiger1",
+          "terrain_version": 3,
+          "start_timesteps": null,
+          "resumed_from": null,
+          "n_envs": 2,
+          "speed_cap": 0.0
+        },
+        {
+          "started": "2026-11-17T11:10:41",
+          "tank": "tiger1",
+          "terrain_version": 3,
+          "start_timesteps": null,
+          "resumed_from": null,
+          "n_envs": 2,
+          "speed_cap": 0.0
+        },
+        {
+          "started": "2026-11-17T13:00:46",
+          "tank": "sherman75",
+          "terrain_version": 3,
+          "start_timesteps": 0,
+          "resumed_from": null,
+          "n_envs": 4,
+          "speed_cap": 0.0
+        }
+      ],
+      "models": {
+        "tiger1": {
+          "path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\terrain_v2_20261117\\tiger1\\latest.zip",
+          "parameters": {
+            "num_timesteps": 2218242,
+            "gamma": 0.99,
+            "gae_lambda": 0.95,
+            "n_steps": 1024,
+            "batch_size": 2048,
+            "n_epochs": 8,
+            "learning_rate": 0.0003,
+            "ent_coef": 0.005,
+            "use_sde": true,
+            "sde_sample_freq": 20
+          },
+          "stage": "drive_terrain",
+          "history": [
+            {
+              "tank": "tiger1",
+              "from": "drive",
+              "to": "drive_terrain",
+              "episodes": 2389,
+              "success_rate": 0.8,
+              "reason": "threshold",
+              "global_step": 1275672,
+              "wall_time": 1794870493.99,
+              "learner_policy": "20261117_063521/tiger1/step_001275672"
+            }
+          ],
+          "terrain": {
+            "version": 2,
+            "index": 0,
+            "fixed": "",
+            "course": "approach",
+            "history": [],
+            "results": {
+              "approach": [
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                1
+              ],
+              "detour": [],
+              "gates": [],
+              "rough": [],
+              "mixed": []
+            }
+          },
+          "previous_assessments": null
+        },
+        "sherman75": {
+          "path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\terrain_v2_20261117\\sherman75\\checkpoints\\step_000003868_20261117_130146_619673_85d909\\model.zip",
+          "parameters": {
+            "num_timesteps": 3868,
+            "gamma": 0.99,
+            "gae_lambda": 0.95,
+            "n_steps": 1024,
+            "batch_size": 2048,
+            "n_epochs": 8,
+            "learning_rate": 0.0003,
+            "ent_coef": 0.005,
+            "use_sde": true,
+            "sde_sample_freq": 20
+          },
+          "stage": "duel_selfplay",
+          "history": [],
+          "terrain": {
+            "version": 3,
+            "index": 0,
+            "fixed": "",
+            "course": "approach",
+            "history": [],
+            "results": {
+              "approach": [],
+              "turn_gentle": [],
+              "turn_wide": [],
+              "parking": [],
+              "slope": [],
+              "low_step": [],
+              "one_tree": [],
+              "detour": [],
+              "gate_wide": [],
+              "gates": [],
+              "grove": [],
+              "rough": [],
+              "mixed": []
+            }
+          },
+          "previous_assessments": []
+        }
+      },
+      "objectives": [
+        {
+          "tank": "tiger1",
+          "objective": "drive_terrain/terrain:v2/approach",
+          "overall": {
+            "n": 21,
+            "successes": 20,
+            "success_rate": 0.9524,
+            "mean_return": 10.9469,
+            "mean_duration_s": 17.7286,
+            "mean_shots": 1.5238,
+            "first_step": 2214478,
+            "last_step": 2218152,
+            "reasons": {
+              "arrived_stopped": 20,
+              "no_progress": 1
+            },
+            "mean_progress_fraction": 0.9444,
+            "successful_path_ratio": 1.2998
+          },
+          "first100": {
+            "n": 21,
+            "successes": 20,
+            "success_rate": 0.9524,
+            "mean_return": 10.9469,
+            "mean_duration_s": 17.7286,
+            "mean_shots": 1.5238,
+            "first_step": 2214478,
+            "last_step": 2218152,
+            "reasons": {
+              "arrived_stopped": 20,
+              "no_progress": 1
+            }
+          },
+          "last100": {
+            "n": 21,
+            "successes": 20,
+            "success_rate": 0.9524,
+            "mean_return": 10.9469,
+            "mean_duration_s": 17.7286,
+            "mean_shots": 1.5238,
+            "first_step": 2214478,
+            "last_step": 2218152,
+            "reasons": {
+              "arrived_stopped": 20,
+              "no_progress": 1
+            },
+            "mean_progress_fraction": 0.9444,
+            "successful_path_ratio": 1.2998
+          },
+          "last40": {
+            "n": 21,
+            "successes": 20,
+            "success_rate": 0.9524,
+            "mean_return": 10.9469,
+            "mean_duration_s": 17.7286,
+            "mean_shots": 1.5238,
+            "first_step": 2214478,
+            "last_step": 2218152,
+            "reasons": {
+              "arrived_stopped": 20,
+              "no_progress": 1
+            }
+          },
+          "blocks": [
+            {
+              "n": 21,
+              "successes": 20,
+              "success_rate": 0.9524,
+              "mean_return": 10.9469,
+              "mean_duration_s": 17.7286,
+              "mean_shots": 1.5238,
+              "first_step": 2214478,
+              "last_step": 2218152,
+              "reasons": {
+                "arrived_stopped": 20,
+                "no_progress": 1
+              }
+            }
+          ]
+        }
+      ],
+      "ppo": []
+    }
+  }
+}

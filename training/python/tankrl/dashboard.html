@@ -49,7 +49,7 @@ button.danger { color: var(--bad); }
 .bar { height: 6px; background: var(--soft); border-radius: 3px; margin-top: 6px; position: relative; overflow: visible; }
 .bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; }
 .bar > b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); opacity: .55; }
-.stages { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; }
+.stages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .stage { border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; background: var(--soft); min-width: 0; }
 .stage .n { font-size: 11.5px; color: var(--muted); }
 .stage .t { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -150,6 +150,21 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
     <div id="terrainLessons" style="margin-top:12px"></div>
   </section>
 
+  <section class="panel">
+    <h2>10단계 최종 시험 · 티거 1 대 연합군 6</h2>
+    <p class="hint">선택한 실행의 저장 모델을 복사해 평가합니다. 셔먼 3대 + T-34 3대, 360m 맵, 200m 출발, 3분 제한. 7개체는 서로 다른 모델을 사용하며, 기존 모델이 없는 개체는 새 정책으로 초기화합니다.</p>
+    <div class="controls"><div class="ctl"><label>평가 방식</label><select id="evalModes">
+      <option value="mixed">7개체 독립 모델 대전</option>
+      <option value="mixed,scripted">독립 모델 대전 + 규칙 AI 기준선 비교</option>
+      <option value="tiger_vs_scripted">학습 티거 대 규칙 연합군</option>
+      <option value="allies_vs_scripted">규칙 티거 대 학습 연합군</option>
+    </select></div><div class="ctl"><label>방식별 경기 수</label><input id="evalEpisodes" type="number" min="1" max="100" value="1"></div>
+    <button id="btnEvaluate">모델 고정 후 시험 시작</button></div>
+    <div class="controls"><div class="ctl"><label>추가 학습 결정 수(전장 기준)</label><input id="independentSteps" type="number" min="1" value="10000"></div><button id="btnIndependent">7개체 독립 학습 / 이어서</button></div>
+    <p class="hint">빠른 교전 보상 v3: 명중 +5 · 관통 추가 +3 · 격파 추가 +12 · 지근탄 개선 최대 +1 · 거리 단축·근접 보너스.</p>
+    <div id="evalSummary" class="hint"></div>
+  </section>
+
   <section class="panel" style="padding-bottom:6px">
     <h2>학습 곡선
       <span class="spacer"></span>
@@ -234,9 +249,9 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 "use strict";
 const $ = (id) => document.getElementById(id);
 const STAGE_LABEL = {drive: "주행", drive_terrain: "지형 주행", gunnery_static: "정지 표적 사격", gunnery_moving: "이동 표적 사격",
-  gunnery_search: "수색·사격", duel_scripted: "1대1 vs 규칙 AI", duel_selfplay: "1대1 자기대전", team_scripted: "팀전 vs 규칙 AI", team_selfplay: "팀 자기대전"};
+  gunnery_search: "수색·사격", duel_scripted: "1대1 vs 규칙 AI", duel_selfplay: "1대1 자기대전", team_scripted: "팀전 vs 규칙 AI", team_selfplay: "팀 자기대전", final_battle: "최종전 1 대 6"};
 const TANK_LABEL = {tiger1: "티거 I", sherman75: "셔먼 75mm", t34_76: "T-34/76"};
-const PHASE = {starting: "시작 중", collecting: "학습 중(수집)", updating: "학습 중(PPO 갱신)", paused: "일시정지", saving: "저장 중", stopped: "중지됨"};
+const PHASE = {starting: "시작 중", collecting: "학습 중(수집)", updating: "학습 중(PPO 갱신)", paused: "일시정지", saving: "저장 중", stopped: "중지됨", evaluating: "평가 중(학습 없음)"};
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const COLORS = () => [1,2,3,4,5,6,7,8,9].map(i => css("--c" + i));
 
@@ -303,6 +318,7 @@ function hookTip(cv) {
 }
 
 const CHARTS = [
+  {id: "agent_return", title: "개체별 독립 학습 보상", note: "서로 다른 모델 · 각 개체의 누적 스텝"},
   {id: "succ", title: "성공률 (세부 목표별, 이동평균)", note: "점선 = 현재 단계 승급 기준"},
   {id: "ret", title: "에피소드 보상 합 (이동평균)", note: "목표별로 별도 집계 · 색상은 보고서와 동일"},
   {id: "acc", title: "명중률 · 관통률 (사격·전투 단계)", note: "목표별 색상 · 실선 명중 / 점선 관통"},
@@ -349,6 +365,13 @@ function objectiveSeries(list, metric, win, predicate = () => true) {
 
 function drawCharts() {
   if (!INFO || !S) return;
+  const agents = Object.keys(S.individuals || {});
+  const agentCurves = agents.flatMap(agent => {
+    const records = (S.individual_progress || []).filter(r => r.agent === agent);
+    return [...new Set(records.map(r => r.reward_version || 2))].map(version => ({name: `${agent} · 보상 v${version}`, color: S.individual_curve_colors?.[agent + '/v' + version] || S.individual_colors[agent], pts: records.filter(r => (r.reward_version || 2) === version).map(r => [r.step, r.reward])}));
+  });
+  $("cv_agent_return").closest(".chart").hidden = !agentCurves.some(s => s.pts.length);
+  lineChart($("cv_agent_return"), agentCurves); legend("agent_return", agentCurves);
   const C = COLORS(), win = +$("winSel").value, list = tankEps(), xf = xfmt();
   const vlines = (S.curriculum_log || []).filter(p => !$("tankSel").value || p.tank === $("tankSel").value)
     .map(p => ({x: $("xSel").value === "step" ? p.global_step : $("xSel").value === "time" && EPS.length ? p.wall_time - EPS[0][col("wall_time")] : EPS.findIndex(e => e[col("global_step")] >= p.global_step) + 1}));
@@ -364,6 +387,7 @@ function drawCharts() {
     ...objectiveSeries(list, e => e[col("shots")] > 0 ? e[col("hits")] / e[col("shots")] : null, win, shoot).map(s => ({...s, name: s.name + " · 명중률"})),
     ...objectiveSeries(list, e => e[col("hits")] > 0 ? e[col("pens")] / e[col("hits")] : null, win, shoot).map(s => ({...s, name: s.name + " · 관통률", dash: [5, 3]})),
   ];
+  $("cv_acc").closest(".chart").hidden = !acc.some(s => s.pts.length);
   lineChart($("cv_acc"), acc, {ymin: 0, xfmt: xf, vlines, yfmt: v => v.toFixed(2)}); legend("acc", acc);
   const len = objectiveSeries(list, "decisions", win);
   lineChart($("cv_len"), len, {ymin: 0, xfmt: xf, vlines}); legend("len", len);
@@ -420,7 +444,7 @@ function render() {
   const tc = cs.terrain, rate = tc?.success_rate ?? cs.success_rate, threshold = tc?.threshold ?? cs.threshold;
   $("kpis").innerHTML = [
     kpi("학습 전차", TANK_LABEL[st.tank] || st.tank || "-", (st.learner_policy || "").split("/").pop() + rot),
-    kpi("현재 단계", cs.stage ? `${cs.stage_idx + 1}/9 ${STAGE_LABEL[cs.stage]}` : "-", tc ? `${tc.index + 1}/${tc.count} ${esc(tc.label)} · ${tc.fixed ? "고정 연습" : "자동 승급"}` : cs.stage ? `단계 안 ${fmt(cs.episodes_in_stage)}판 (최소 ${fmt(cs.min_episodes)}, 최대 ${fmt(cs.max_episodes)})` : ""),
+    kpi("현재 단계", cs.stage ? `${cs.stage_idx + 1}/${INFO.stages.length} ${STAGE_LABEL[cs.stage]}` : "-", tc ? `${tc.index + 1}/${tc.count} ${esc(tc.label)} · ${tc.fixed ? "고정 연습" : "자동 승급"}` : cs.stage ? `단계 안 ${fmt(cs.episodes_in_stage)}판 (최소 ${fmt(cs.min_episodes)}, 최대 ${fmt(cs.max_episodes)})` : ""),
     kpi("성공률 / 승급 기준", cs.stage ? `${pct(rate)} / ${threshold ? pct(threshold) : "마지막"}` : "-", tc ? `${tc.label} 최근 ${tc.episodes}/${tc.window}판` : cs.window ? `최근 ${cs.window}판` : "", cs.stage ? {v: rate, mark: threshold, color: threshold && rate >= threshold ? css("--ok") : null} : null),
     kpi("초당 결정 수", fmt(st.steps_per_s, 0), `환경 ${st.n_envs ?? "-"}개 · 환경당 ${st.n_envs ? fmt(st.steps_per_s / st.n_envs, 0) : "-"}`),
     kpi("실시간 대비", st.realtime_x ? `×${fmt(st.realtime_x, 0)}` : "-", st.speed_cap ? `제한 ×${st.speed_cap}` : "제한 없음(최대 속도)"),
@@ -449,9 +473,27 @@ function render() {
     const requested = st.runtime?.requested_device || INFO.settings.device || "auto";
     $("trainDevice").value = requested.startsWith("cuda") ? "cuda" : requested;
   }
+  const evaluation = st.mode === "evaluation";
+  $("btnEvaluate").disabled = evaluation;
+  $("btnIndependent").disabled = evaluation || st.mode === "independent" && alive;
+  if (st.mode === "independent") ["btnStage", "btnReview", "btnEnvs", "btnDevice"].forEach(id => $(id).disabled = true);
+  if (evaluation) {
+    ["btnPause", "btnResume", "btnStop", "btnCkpt", "btnRec", "btnReview", "btnStage", "btnEnvs", "btnDevice"].forEach(id => $(id).disabled = true);
+    $("ctlNote").textContent = "모델을 갱신하지 않는 별도 평가 실행입니다.";
+  }
+  const evaluationStatus = st.evaluation;
+  $("evalSummary").innerHTML = evaluationStatus ? `완료 ${evaluationStatus.completed}/${evaluationStatus.total}판 · 원본 ${esc(evaluationStatus.source_run)} · <a target="_blank" href="/files/${encodeURIComponent(RUN)}/evaluation_report.html">최종 시험 보고서</a>` + Object.entries(S.evaluation || {}).map(([mode, r]) => `<p>${esc(mode)}: 티거 ${r.tiger_wins}승 / 연합군 ${r.allied_wins}승 / 무승부 ${r.draws}</p>`).join("") : "학습·원본 기록을 변경하지 않고 별도 평가 실행에 결과와 리플레이를 저장합니다.";
+  if (evaluation && st.error) $("evalSummary").innerHTML = `<p class="bad">${esc(st.error)}</p>` + $("evalSummary").innerHTML;
   drawCharts();
 }
 function renderTanks() {
+  if (Object.keys(S.individuals || {}).length) {
+    $("tankTable").innerHTML = '<tr><th>독립 개체</th><th>차종</th><th>누적 스텝</th><th>개체별 추가 학습</th><th>추가 학습 epoch</th></tr>' + Object.entries(S.individuals).map(([name, d]) => {
+      const live = S.status?.individuals?.[name] || d;
+      return `<tr><td style="color:${S.individual_colors[name]}">${esc(name)}</td><td>${TANK_LABEL[d.tank] || d.tank}</td><td>${fmt(live.steps ?? d.inherited_timesteps + d.independent_steps)}</td><td>${fmt(live.independent_steps)}</td><td>${fmt(d.independent_updates)}</td></tr>`;
+    }).join("");
+    return;
+  }
   const rows = Object.entries(S.tanks || {});
   $("tankTable").innerHTML = `<tr><th>전차</th><th>단계</th><th class="num">누적 저장 스텝</th><th class="num">단계 안 판수</th><th class="num">최근 성공률</th><th class="num">스냅숏</th><th>정책 최종 저장</th><th>상대 풀(자기대전용)</th></tr>` +
     (rows.length ? rows.map(([t, d]) => { const c = d.curriculum || {}, rs = (c.recent_success || {})[c.stage];
@@ -553,6 +595,22 @@ function wire() {
       if (b.dataset.a === "view") { await api("/api/open_replay", {replay_dir: b.dataset.p}); toast("게임 리플레이 뷰어를 엽니다(1~6 시점, 스페이스 = 재생/정지)", 4000); }
       else { await api("/api/reproduce", {run: RUN, episode_file: b.dataset.p, view: true}); toast("재현 중… 끝나면 리플레이 뷰어가 열립니다", 4000); }
     } catch (err) { toast("실패: " + err.message, 6000); }
+  };
+  $("btnIndependent").onclick = async () => {
+    try {
+      const r = await api("/api/train_individuals", {run: RUN, timesteps: +$("independentSteps").value});
+      toast("7개체 독립 학습 시작: " + r.run, 4000);
+      setTimeout(() => loadRuns(r.run), 1500);
+    } catch (e) { toast("독립 학습 시작 실패: " + e.message, 5000); }
+  };
+  $("btnEvaluate").onclick = async () => {
+    try {
+      $("btnEvaluate").disabled = true;
+      const r = await api("/api/evaluate", {run: RUN, episodes: +$("evalEpisodes").value, modes: $("evalModes").value});
+      toast("최종 시험 시작: " + r.run, 4000);
+      setTimeout(() => loadRuns(r.run), 1500);
+    } catch (e) { toast("시험 시작 실패: " + e.message, 5000); }
+    finally { $("btnEvaluate").disabled = false; }
   };
   $("btnReport").onclick = async () => { try { await api("/api/report", {run: RUN}); toast("보고서 만드는 중…"); } catch (e) { toast("실패: " + e.message, 5000); } };
   $("btnNew").onclick = openStart;

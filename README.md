@@ -128,7 +128,7 @@ Windows의 기본 기록 위치는 `%APPDATA%/Godot/app_userdata/Tank Game Machi
 ## 학습 결과를 확인하는 방법
 
 프로젝트에는 PPO·커리큘럼·상대 정책 풀·대시보드·HTML 학습 보고서 기능이 구현되어 있다.
-목표는 티거 1 vs 셔먼 3 + T-34 2 자기대전이지만, 위 예시 경기만으로 목표 전술의 학습 완료를 주장할 수 없다.
+10단계 최종 목표는 티거 1 vs 셔먼 3 + T-34 3(연합군 6대) 자기대전이지만, 위 예시 경기만으로 목표 전술의 학습 완료를 주장할 수 없다.
 지형주행 v3의 13개 코스도 제어기 완주·재현 검증과 학습 정책의 습득 여부를 구분한다.
 
 `training/python/dashboard.bat`로 대시보드를 열어 실행별 단계, 성공률, 보상, 처리량,
@@ -155,7 +155,9 @@ python training/python/report.py "$env:LOCALAPPDATA/TankGameML/training/runs/<ru
 
 자세한 사용법은 [강화학습 안내](training/README.md), 현재 주행 과제는
 [지형주행 v3](training/TERRAIN_V3.md), 저장·복구 규칙은 [로컬 학습 안내](training/LOCAL_TRAINING.md)를 참고한다.
-과거 환경의 모델과 기록은 [보존 스냅샷](training/snapshots/README.md)에서 확인할 수 있다.
+현재 학습의 **2,965,902스텝 체크포인트**, 7개체 독립 모델과 전체 기록은
+[학습 데이터 스냅샷·복원 안내](training/snapshots/README.md)에서 내려받을 수 있다(`git lfs pull`).
+이전 환경의 보존본도 함께 유지한다.
 
 ## 폴더 구성
 
@@ -167,7 +169,7 @@ python training/python/report.py "$env:LOCALAPPDATA/TankGameML/training/runs/<ru
 | `tanks/lab/` | 장갑 시험장(시각화 + 관통 시험) |
 | `recording/` | 경기 기록·점수(보상)·보고서·리플레이 뷰어·관찰 오버레이·규칙 AI → [recording/README.md](recording/README.md) |
 | `training/` | 강화학습: 헤드리스 학습 환경(`training_env.tscn`), 단계별 보상, Python PPO·커리큘럼·자기대전·학습 보고서·지난 판 재현 → [training/README.md](training/README.md) |
-| `training/snapshots/` | 환경 변경 전 모델·학습 데이터·경기 기록 보존본. 다운로드는 `git lfs pull` → [복원·검증 안내](training/snapshots/README.md) |
+| `training/snapshots/` | 현재·이전 모델·학습 데이터·경기 기록 보존본. 다운로드는 `git lfs pull` → [복원·검증 안내](training/snapshots/README.md) |
 | `build/` | Windows 실행 파일 출력 위치 |
 | `main.tscn` / `main.gd` | 메인 씬: 티거 1 vs 셔먼 3 + T-34 2, 경기 기록·보고서 자동 생성 |
 
@@ -292,6 +294,11 @@ map.cover_at(pos)                                              # 그 지점을 �
 1 = 지형·바위·나무줄기·건물·흙둑·돌담(포탄·시야 차단), 2 = 전차, 4 = 숲·덤불·수관(시야만 차단, 포탄 통과)
 
 ## 학습과 기록 보존
+
+최종전은 [빠른 교전 보상 v3](training/COMBAT_REWARDS.md)를 사용한다. 명중 +5, 관통 추가 +3,
+격파 추가 +12와 지근탄·접근 보상을 개체별로 기록한다.
+
+10단계는 **티거 1대 대 연합군 6대**, **7개체 각각의 독립 PPO 모델**을 사용하는 최종전이다. 360m 맵·200m 출발·3분 제한으로 짧게 시험한다. [최종 시험 안내](training/FINAL_BATTLE.md)에 모델 고정 평가, 규칙 AI 비교와 결과 확인 방법을 정리했다.
 
 지형주행은 짧은 직진부터 회전·경사·턱·나무 우회·바위·통로·숲길·복합 주행까지
 13개 시험공간을 순서대로 연습한다. [지형주행 v3 안내](training/TERRAIN_V3.md)를 참고한다.
