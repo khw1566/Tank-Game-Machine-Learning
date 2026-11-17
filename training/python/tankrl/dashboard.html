@@ -306,6 +306,9 @@ const STAGE_LABEL = {drive: "주행", drive_terrain: "지형 주행", gunnery_st
   gunnery_search: "수색·사격", duel_scripted: "1대1 vs 규칙 AI", duel_selfplay: "1대1 자기대전", team_scripted: "팀전 vs 규칙 AI", team_selfplay: "팀 자기대전", final_battle: "최종전 1 대 6",
   m1_move_basic: "v4 기동·기본 주행", m2_move_obstacles: "v4 기동·장애물 지대", m3_move_under_fire: "v4 기동·포화 속 이동", m4_ambush: "v4 기동·기습 대응", m5_crossing: "v4 기동·개활지 횡단",
   g1_gunnery: "v4 사격·정지/은폐 표적", g2_gunnery_moving: "v4 사격·이동 표적", g4_return_fire: "v4 사격·반격 대결", g6_close_front: "v4 사격·근거리 정면",
+  m1_drive: "v4 기동·주행/정지", m2_route: "v4 기동·경로 선택", m3_under_fire: "v4 기동·노출과 피격", g1_aim: "v4 사격·조준 사격",
+  g2_posture: "v4 사격·교전 자세", t1_numbers: "v4 전술·수적 우위", t2_cover_fight: "v4 전술·엄폐 교전", s1_role: "v4 전술·전차 역할(전차별)",
+  s2_outnumbered: "v4 전술·열세 대응(전차별)",
   t1_pick_fights: "v4 전술·유리한 교전", t2_peek: "v4 전술·사격 후 재배치", t3_capture: "v4 전술·거점 확보", t4_defend: "v4 전술·거점 방어(전차별)", t5_flank: "v4 전술·측면(전차별)", t6_retreat: "v4 전술·열세 후퇴(전차별)"};
 const TANK_LABEL = {tiger1: "티거 I", sherman75: "셔먼 75mm", t34_76: "T-34/76"};
 const PHASE = {starting: "시작 중", collecting: "학습 중(수집)", updating: "학습 중(PPO 갱신)", paused: "일시정지", saving: "저장 중", stopped: "중지됨", evaluating: "평가 중(학습 없음)"};
@@ -578,6 +581,7 @@ function stageTip(id, variant) {
   const notes = s.variant_notes || {};
   const vs = variant ? [[variant, notes[variant]]] : Object.entries(notes);
   return `<b>${esc((STAGE_LABEL[id] || id).replace("v4 ", ""))}</b>` +
+    (s.lesson ? `<div><span class="muted">원인 → 결과</span> ${esc(s.lesson)}</div>` : "") +
     `<div><span class="muted">학습</span> ${esc(s.learn)}</div><div><span class="muted">목표</span> ${esc(s.goal)}</div>` +
     (s.promote ? `<div><span class="muted">승급</span> 변형마다(공통 모델은 변형 × 전차마다) 최근 ${s.promote.window}판 성공률 ${pct(s.promote.threshold)} 이상</div>` : "") +
     (vs.length ? `<div class="muted" style="margin-top:4px">변형 — 같은 과제 안에서 이기는 선택이 다르다</div><ul>${vs.map(([k, v]) => `<li><b style="display:inline">${esc(k)}</b> ${esc(v || "")}</li>`).join("")}</ul>` : "");
@@ -659,7 +663,7 @@ function heat(rate, thr) {
 function renderV4() {
   const v = S.v4; $("v4Panel").hidden = !v; if (!v) return;
   const tanks = v.tanks, models = v.models || {};
-  const groups = [["기동", "common", "1부 기동 · 공통"], ["사격", "common", "2부 사격 · 공통"], ["전술", "common", "3부 전술 T1~T3 · 공통"], ["전술", "tank", "3부 전술 T4~T6 · 전차별"]];
+  const groups = [["기동", "common", "1부 기동 · 공통"], ["사격", "common", "2부 사격 · 공통"], ["전술", "common", "3부 전술 · 공통"], ["전술", "tank", "3부 전술 · 전차별"]];
   const shared = models.shared;
   $("v4Sub").textContent = shared ? (shared.common_complete ? "공통 단계 완료 · 전차별 분기" : `공통 모델 학습 중 · ${STAGE_LABEL[shared.stage] || shared.stage} · 단계 안 ${fmt(shared.episodes_in_stage)}판 · 보조 보상 ×${shared.shaping_scale ?? "-"}`) : "";
   $("v4Map").innerHTML = groups.map(([part, scope, title]) => {

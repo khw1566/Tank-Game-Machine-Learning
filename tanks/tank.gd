@@ -105,6 +105,9 @@ var _was_knocked_out := false
 var _materials: Array = []
 var _initialized := false
 var _muzzle_dist := 3.0
+## 평탄 지형 맵(학습 환경이 넣어 줌). 있으면 주변에 장애물이 없을 때 지면 레이캐스트를 건너뛴다
+var ground_map: HillMap = null
+var _ground_clear := false
 
 
 func _ready() -> void:
@@ -113,10 +116,12 @@ func _ready() -> void:
 
 
 ## 코드에서 생성할 때: Tank.new() → setup() → (position/rotation 지정) → add_child()
-func setup(p_tank_id: String, p_team: int, p_seed := 0) -> void:
+func setup(p_tank_id: String, p_team: int, p_seed := 0, p_pace := {}) -> void:
 	tank_id = p_tank_id
 	team = p_team
 	spec = TankDatabase.get_spec(tank_id)
+	if not p_pace.is_empty():
+		spec.apply_pace(float(p_pace.get("mobility", 1.0)), float(p_pace.get("turret", 1.0)))
 	shape = spec.shape()
 	damage = TankDamageState.new(spec)
 	rng.seed = p_seed if p_seed != 0 else hash(name) ^ Time.get_ticks_usec()
@@ -236,12 +241,20 @@ func hit_attachment(part_name: String) -> Node3D:
 	return self
 
 
+## 학습 성능 계측(µs 누적, 모든 전차 합). training_env 가 에피소드마다 읽고 0 으로 돌린다
+static var perf_step_us := 0
+static var perf_ground_us := 0
+
+
 func _physics_process(delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
 	step(delta)
+	perf_step_us += Time.get_ticks_usec() - t0
 
 
 ## 한 물리 스텝. 학습 루프에서 직접 호출해도 된다.
 func step(delta: float) -> void:
+	_ground_clear = _check_ground_clear()
 	if not _initialized:
 		_initialized = true
 		heading = rotation.y
@@ -366,11 +379,23 @@ func _drive(c: TankControlInput, delta: float) -> void:
 	_follow_ground(delta)
 
 
+## 이번 스텝 동안 궤도·차체가 닿을 수 있는 범위(이동 여유 포함)에 지형 말고 지면 충돌체가 없는가
+func _check_ground_clear() -> bool:
+	if ground_map == null or not is_inside_tree():
+		return false
+	var lift := spec.obstacle_step_m + 0.8
+	var half := Vector3(spec.hull_width * 0.5 + 0.6, (lift + 10.0) * 0.5 + 3.0, spec.track_length * 0.5 + 1.2)
+	var c := Vector3(global_position.x, global_position.y + (lift - 10.0) * 0.5, global_position.z)
+	return ground_map.ground_clear(Transform3D(Basis(Vector3.UP, heading), c), half, get_rid())
+
+
 ## 진행 방향 궤도 앞끝 바로 앞의 높이를 재서, 지금 궤도가 딛고 있는 높이보다 obstacle_step_m 이상 높으면 막힘.
 ## (돌·통나무·턱처럼 충돌 상자 아래로 들어오는 낮은 장애물에 대한 수직 장애물 한계)
 func _step_blocked(dir: float, dist: float) -> bool:
 	if dir == 0.0 or not is_inside_tree() or _support.is_empty():
 		return false
+	if _ground_clear:
+		return false  # 평탄 지형 + 주변 장애물 없음: 앞의 지면은 지금 딛는 높이 이하
 	var space := get_world_3d().direct_space_state
 	var hx := spec.hull_width * 0.5 - spec.track_width * 0.5
 	var half := -1 if dir > 0.0 else 1 # 앞(-Z) 또는 뒤
@@ -475,6 +500,12 @@ func _track_target(cmd: float, g: int, vmax: float) -> float:
 ## 궤도마다 앞/뒤 절반에서 각각 4점씩 재고 가장 높은 곳을 지지점으로 본다 → 한쪽 궤도로 돌·통나무를 타면 그쪽이 들림.
 ## 실제 차체 자세는 현가장치 스프링-감쇠 모델로 이 목표를 따라가고, 가감속·선회 관성으로 출렁인다.
 func _follow_ground(delta: float, snap := false) -> void:
+	var t0 := Time.get_ticks_usec()
+	_follow_ground_impl(delta, snap)
+	perf_ground_us += Time.get_ticks_usec() - t0
+
+
+func _follow_ground_impl(delta: float, snap := false) -> void:
 	var space := get_world_3d().direct_space_state if is_inside_tree() else null
 	var hx := spec.hull_width * 0.5 - spec.track_width * 0.5
 	var hz := spec.track_length * 0.45
@@ -482,7 +513,12 @@ func _follow_ground(delta: float, snap := false) -> void:
 	var lift := spec.obstacle_step_m + 0.8
 	var h := {}
 	var ok := space != null
-	if ok:
+	if ok and _ground_clear:
+		# 평탄 지형이고 궤도 주변에 장애물이 없다: 16개 레이가 모두 같은 높이를 돌려준다
+		for side in [-1, 1]:
+			for half in [-1, 1]:
+				h[Vector2i(side, half)] = ground_map.flat_height
+	elif ok:
 		for side in [-1, 1]:
 			for half in [-1, 1]: # -1 = 앞, +1 = 뒤
 				var best := -INF

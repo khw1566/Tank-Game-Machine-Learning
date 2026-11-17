@@ -18,6 +18,7 @@ from .godot_env import GodotProcess, PROGRESS_FIELDS
 from .objectives import objective_color
 from .storage import archive_runtime, checkpoint_paths, sha256
 from .individuals import AGENTS, load_individuals
+from .pace import require_pace_support
 
 MODES = {
     'mixed': '7개체 독립 정책 대전',
@@ -181,6 +182,7 @@ def run_evaluation(args, modes):
                     cfg, bindings = battle_config(models, mode, seed, uid, record, args.time_limit)
                     names = tank_names([{'type': t['type']} for t in cfg['tanks']])
                     cfg['meta']['policies'] = {name: metadata[tank]['sha256'] for name, tank in bindings.items() if tank != 'scripted'}
+                    require_pace_support(process.hello, cfg)
                     process.send({'type': 'reset', 'config': cfg})
                     header, obs = process.recv_obs()
                     external = [name for name in names if bindings[name] != 'scripted']

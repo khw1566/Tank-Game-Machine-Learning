@@ -3,9 +3,10 @@
 기존 커리큘럼(curriculum.py)과 같은 인터페이스(stage, pick_stage, report, set_stage, state, save, load)를 갖고,
 에피소드 설정은 build_episode() 가 직접 만든다. 계획 문서: training/CURRICULUM_V4.md
 
-1부 기동    m1_move_basic → m2_move_obstacles → m3_move_under_fire → m4_ambush → m5_crossing
-2부 사격    g1_gunnery → g2_gunnery_moving → g4_return_fire → g6_close_front
-3부 전술    공통: t1_pick_fights → t2_peek → t3_capture  /  전차별: t4_defend → t5_flank → t6_retreat
+단계 구성 4.1(9단계, 단계마다 원인 → 결과 하나, 승급 기준 80%, 최대 판수 강제 승급 없음)
+1부 기동    m1_drive → m2_route → m3_under_fire
+2부 사격    g1_aim → g2_posture
+3부 전술    공통: t1_numbers → t2_cover_fight  /  전차별: s1_role → s2_outnumbered
 (4부 최종단계는 다음 단계에서 추가한다)
 
 공통 학습(tank = "shared"): 티거·셔먼·T-34 를 한 모델로 학습한다(관측에 내 전차 종류가 있다). 에피소드마다 전차 종류를
@@ -19,12 +20,14 @@ import json
 import random
 
 from . import curriculum as _v1, scenarios
+from .pace import GAME_PACE
 
 VERSION = 4
 OBS = "situation"            # Godot --obs=situation (SituationObs) 이 필요하다
 
+# hit_taken: 맞을 때마다(관통 여부와 무관). 노출 → 피격 관계를 티거처럼 관통당하지 않는 전차도 분명히 겪게 한다
 BASE_REWARD = {"time_per_s": -0.01, "progress": 0.03, "objective": 8.0, "survive": 6.0, "win": 8.0,
-               "loss": -8.0, "timeout_penalty": -3.0,
+               "loss": -8.0, "timeout_penalty": -3.0, "hit_taken": -0.5,
                "combat": {"hit": 0.5, "penetration": 2.0, "knockout": 8.0, "miss": -0.05,
                           "victim_scale": 1.0, "live_target_only": True}}
 
@@ -38,110 +41,98 @@ SHARED = "shared"
 SHARED_TANKS = ["tiger1", "sherman75", "t34_76"]
 
 
-def stage(sid, part, label, builder, variants, kind, time_limit, size, threshold, enemy_ctrl="scripted",
-          min_eps=300, max_eps=8000, view_lock=-1, decay=1500, scope="common"):
-    return {"id": sid, "part": part, "scope": scope, "label": label, "builder": builder, "variants": variants, "kind": kind,
-            "time_limit_s": time_limit, "map": _map(size), "view_lock": view_lock, "enemy_ctrl": enemy_ctrl,
-            "lineup": "scenario", "reward": BASE_REWARD,
-            "promote": {"window": 40, "threshold": threshold, "min_episodes": min_eps, "max_episodes": max_eps},
+STAGESET = "4.1"   # 4.0 = 15단계(강제 승급 있음), 4.1 = 9단계·기준 80%·강제 승급 없음
+THRESHOLD = 0.8
+
+
+def V(name, builder, bvariant, kind="combat", time_limit=90, ctrl="scripted"):
+    """변형 하나 = 상황 생성기 + 그 생성기의 변형. 같은 단계 안에서 이기는 선택이 서로 다른 변형을 섞는다."""
+    return {"name": name, "builder": builder, "variant": bvariant, "kind": kind, "time_limit_s": time_limit, "ctrl": ctrl}
+
+
+def stage(sid, part, label, variants, size, lesson, learn, goal, scope="common", view_lock=-1, min_eps=300,
+          decay=1500, threshold=THRESHOLD):
+    return {"id": sid, "part": part, "scope": scope, "label": label, "lesson": lesson, "learn": learn, "goal": goal,
+            "variants": [v["name"] for v in variants], "variant_specs": {v["name"]: v for v in variants},
+            "variants_desc": {v["name"]: v.get("desc", "") for v in variants},
+            "kind": variants[0]["kind"], "time_limit_s": max(v["time_limit_s"] for v in variants),
+            "map": _map(size), "view_lock": view_lock, "lineup": "scenario", "reward": BASE_REWARD,
+            # 승급은 기준 달성으로만(최대 판수 강제 승급 없음). 막히면 대시보드에 그대로 드러난다.
+            "promote": {"window": 40, "threshold": threshold, "min_episodes": min_eps, "max_episodes": None},
             "shaping_decay_episodes": decay}
 
 
+def D(v, desc):
+    v["desc"] = desc
+    return v
+
+
 STAGES = [
-    stage("m1_move_basic", "기동", "기본 주행·정지", "move_basic", ["near", "far", "behind"], "drive", 60, 600, .8,
-          min_eps=200, decay=800),
-    stage("m2_move_obstacles", "기동", "장애물 지대 통과", "move_obstacles", ["clear", "wall", "gates"], "drive", 90, 600, .7),
-    stage("m3_move_under_fire", "기동", "포화 속 이동", "move_under_fire", ["screened", "open_cover", "long_detour"],
-          "combat", 120, 2400, .6),
-    stage("m4_ambush", "기동", "기습 대응·생존", "ambush", ["near_cover", "far_cover", "reverse"], "combat", 40, 2000, .6),
-    stage("m5_crossing", "기동", "개활지 횡단", "crossing", ["steady", "sloppy", "woods"], "combat", 90, 2400, .6),
-    stage("g1_gunnery", "사격", "정지 표적·은폐 표적", "gunnery", ["static", "hidden"], "gunnery", 45, 1800, .7,
-          enemy_ctrl="static", view_lock=1),
-    stage("g2_gunnery_moving", "사격", "이동 표적", "gunnery", ["moving"], "gunnery", 60, 1800, .6, enemy_ctrl="mover",
-          view_lock=1),
-    stage("g4_return_fire", "사격", "반격하는 적과 대결(헐다운/개활지)", "return_fire", ["berm", "open"], "combat", 90, 1800, .55),
-    stage("g6_close_front", "사격", "근거리 정면(앵글링)", "close_front", ["close", "medium"], "combat", 60, 1200, .55),
-    stage("t1_pick_fights", "전술", "유리한 교전 고르기(고립된 적부터)", "pick_fights", ["isolated_near", "group_near"],
-          "combat", 180, 2000, .45, min_eps=400, max_eps=12000),
-    stage("t2_peek", "전술", "사격 후 재배치", "peek", ["same_spot", "slow_enemy"], "combat", 120, 1800, .45, min_eps=400),
-    stage("t3_capture", "전술", "거점 확보", "capture", ["inside", "overwatch"], "combat", 150, 1600, .45, min_eps=400,
-          max_eps=12000),
-    stage("t4_defend", "전술", "거점 방어(전차별)", "defend", ["frontal", "flanking"], "combat", 120, 2400, .45,
-          min_eps=400, max_eps=12000, scope="tank"),
-    stage("t5_flank", "전술", "측면 기동/측면 대응(전차별)", "flank", ["open", "screened"], "combat", 150, 1800, .45,
-          min_eps=400, max_eps=12000, scope="tank"),
-    stage("t6_retreat", "전술", "열세 시 후퇴·반격(전차별)", "retreat", ["pursuers", "holders"], "combat", 90, 2000, .45,
-          min_eps=400, max_eps=12000, scope="tank"),
+    # ---------------------------------------------------------------- 1부 기동
+    stage("m1_drive", "기동", "주행·정지", [
+        D(V("near", "move_basic", "near", "drive", 60), "30~60m 앞 목표"),
+        D(V("far", "move_basic", "far", "drive", 60), "80~150m 앞 목표"),
+        D(V("behind", "move_basic", "behind", "drive", 60), "뒤쪽 목표: 제자리 선회 후 출발"),
+    ], 600, lesson="조작 → 도착: 속도를 줄여 목표에서 멈춰야 도착으로 인정된다",
+        learn="무한궤도·브레이크·변속으로 원하는 지점까지 가서 멈추기.", goal="반경 6m 목표 안에서 0.6초 정지(60초 제한).",
+        min_eps=200, decay=800),
+    stage("m2_route", "기동", "경로 선택", [
+        D(V("clear", "move_obstacles", "clear", "drive", 90), "장애물이 길 옆에만: 직진이 정답"),
+        D(V("wall", "move_obstacles", "wall", "drive", 90), "길을 막은 벽: 끝으로 돌아가야 함"),
+        D(V("gates", "move_obstacles", "gates", "drive", 90), "엇갈린 통로 두 개"),
+    ], 600, lesson="장애물 → 경로: 막혀 있으면 돌아가고, 열려 있으면 곧장 간다",
+        learn="장애물을 보고 직진과 우회를 구분하기.", goal="90~140m 앞 목표 도착·정지(90초 제한)."),
+    stage("m3_under_fire", "기동", "노출과 피격", [
+        D(V("screened", "move_under_fire", "screened", "combat", 120), "벽이 경로를 가려 줌: 그대로 가면 안 맞는다"),
+        D(V("open_cover", "move_under_fire", "open_cover", "combat", 120), "개활지 + 바위: 바위 뒤를 거치면 덜 맞는다"),
+        D(V("crossing", "crossing", "steady", "combat", 90), "엄폐 없음: 멈추지 않고 움직이면 덜 맞는다"),
+        D(V("ambush", "ambush", "reverse", "combat", 40), "기습: 뒤쪽 벽 뒤로 빠져 시선을 끊으면 산다(40초 생존)"),
+    ], 2400, lesson="노출 → 피격: 적 시선 안에 서 있으면 맞고, 시선을 끊거나 움직이면 덜 맞는다",
+        learn="적이 쏘는 가운데 이동·생존. 맞으면(관통되지 않아도) 감점.",
+        goal="격파되지 않고 목표 도착 또는 40초 생존. 3발(횡단 4발) 넘게 맞으면 목표를 이뤄도 실패."),
+    # ---------------------------------------------------------------- 2부 사격
+    stage("g1_aim", "사격", "조준 사격", [
+        D(V("static", "gunnery", "static", "gunnery", 45, "static"), "150~700m 정지 표적"),
+        D(V("hidden", "gunnery", "hidden", "gunnery", 45, "static"), "숲 가장자리에 반쯤 숨은 표적"),
+        D(V("moving", "gunnery", "moving", "gunnery", 60, "mover"), "움직이는 표적: 앞을 겨누어야 맞는다"),
+    ], 1800, lesson="조준 → 명중: 거리를 어림하고(이동 표적은 앞을 겨누어) 쏴야 맞는다",
+        learn="포수 조준경으로 거리 어림·조준·리드. 반격 없음.", goal="제한 시간 안에 명중 2회.", view_lock=1),
+    stage("g2_posture", "사격", "교전 자세", [
+        D(V("hull_down", "return_fire", "berm", "combat", 90), "앞에 차체 높이 둔덕: 차체를 숨기고 포탑만 내밀면 덜 맞는다"),
+        D(V("angled", "return_fire", "open", "combat", 90), "엄폐 없음(400m 안팎): 차체를 비스듬히 두면 도탄된다"),
+        D(V("close", "close_front", "close", "combat", 60), "120~260m 정면: 먼저 쏘고 각도로 버틴다"),
+    ], 1800, lesson="자세 → 받는 피해: 헐다운이면 차체가 안 맞고, 비스듬하면 도탄된다",
+        learn="되쏘는 적과 1대1. 헐다운·앵글링(티타임)·선제 사격.", goal="적 격파. 준 피해와 받은 피해(피격 포함)가 보상에 반영."),
+    # ---------------------------------------------------------------- 3부 전술(공통)
+    stage("t1_numbers", "전술", "수적 우위 만들기", [
+        D(V("isolated_near", "pick_fights", "isolated_near", "combat", 180), "고립된 적이 가까움: 그쪽부터"),
+        D(V("group_near", "pick_fights", "group_near", "combat", 180), "묶음이 가까움: 벽을 돌아 고립된 적부터"),
+    ], 2000, lesson="교전 상대 수 → 승패: 한 번에 한 대씩 상대하면 이긴다",
+        learn="적 3대 중 고립된 1대를 먼저 잡고, 묶인 2대와 동시에 싸우지 않기.", goal="적 3대 격파(180초 제한).",
+        min_eps=400),
+    stage("t2_cover_fight", "전술", "엄폐를 쓰는 교전", [
+        D(V("peek_fast", "peek", "same_spot", "combat", 120), "적 반응 빠름: 같은 자리로 다시 나가면 맞는다(자리 바꾸기)"),
+        D(V("peek_slow", "peek", "slow_enemy", "combat", 120), "적 반응 느림: 빨리 쏘고 숨기"),
+        D(V("capture_inside", "capture", "inside", "combat", 150), "구역 안 적: 먼저 치우고 점유"),
+        D(V("capture_overwatch", "capture", "overwatch", "combat", 150), "멀리서 감시: 구역 안 엄폐로 시선 끊고 버티기"),
+    ], 1800, lesson="엄폐 사용 → 생존: 쏠 때만 노출하고, 노출 위치를 바꾸면 덜 맞는다",
+        learn="엄폐 뒤에서 내다보고 쏘기, 위치 바꾸기, 엄폐를 끼고 구역 점유.", goal="적 격파 또는 구역 25초 점유(구역 점유는 5발 넘게 맞으면 실패).",
+        min_eps=400),
+    # ---------------------------------------------------------------- 3부 전술(전차별)
+    stage("s1_role", "전술", "전차 역할(전차별)", [
+        D(V("defend", "defend", "frontal", "combat", 150), "티거: 접근하는 3~4대 격파 / 연합군: 티거 상대로 120초 생존"),
+        D(V("defend_flank", "defend", "flanking", "combat", 150), "일부가 측면으로 돌아오는 방어"),
+        D(V("flank", "flank", "open", "combat", 150), "티거: 좌우 협공 대응 / 연합군: 티거 측면 공략"),
+    ], 2400, lesson="전차 특성 → 역할: 티거는 버티며 정면으로, 셔먼·T-34는 측면으로",
+        learn="전차마다 다른 방어·측면 과제.", goal="변형별 목표(격파 또는 생존).", scope="tank", min_eps=400),
+    stage("s2_outnumbered", "전술", "열세 대응(전차별)", [
+        D(V("pursuers", "retreat", "pursuers", "combat", 90), "적이 추격: 엄폐 뒤에서 하나씩 상대"),
+        D(V("holders", "retreat", "holders", "combat", 90), "적이 제자리: 시야를 끊고 버티기"),
+    ], 2000, lesson="열세 → 후퇴: 시선을 끊으면 살고, 추격해 온 적은 하나씩 잡는다",
+        learn="수적으로 불리할 때 물러나 시선을 끊고 버티기.", goal="90초 생존, 6발 넘게 맞으면 실패(티거 1:5, 셔먼·T-34 1:3).",
+        scope="tank", min_eps=400),
 ]
 STAGE_IDS = [s["id"] for s in STAGES]
-
-# 대시보드 툴팁: 무엇을 배우는지(learn), 무엇을 하면 성공인지(goal), 변형별로 어떤 선택이 유리한지(variants)
-DESCRIPTIONS = {
-    "m1_move_basic": dict(
-        learn="전차를 원하는 지점까지 몰고 가서 멈추는 기본 조작(무한궤도 좌우, 브레이크, 변속).",
-        goal="반경 6m 목표 지점에 들어가 0.6초 정지. 60초 제한.",
-        variants_desc={"near": "30~60m 앞", "far": "80~150m 앞", "behind": "뒤쪽 목표: 제자리 선회 후 출발"}),
-    "m2_move_obstacles": dict(
-        learn="장애물이 있는 지형에서 경로를 고르는 법. 직진이 맞는 곳과 돌아가야 하는 곳을 구분한다.",
-        goal="90~140m 앞 목표 지점 도착·정지. 90초 제한.",
-        variants_desc={"clear": "장애물이 길 옆에만 있음(직진이 정답)", "wall": "길을 막은 벽: 한쪽 끝으로 우회",
-                  "gates": "엇갈린 통로 두 개를 차례로 통과"}),
-    "m3_move_under_fire": dict(
-        learn="멀리 있는 부정확한 적 2~4대가 쏘는 가운데 옆으로 이동. 엄폐를 쓸지, 빠르게 돌파할지 판단한다.",
-        goal="격파되지 않고 목표 지점 도착. 받은 피해만큼 감점. 120초 제한.",
-        variants_desc={"screened": "경로를 벽이 가려 줌: 그대로 가면 안전", "open_cover": "개활지에 바위 몇 개: 엄폐 경유 또는 빠른 돌파",
-                  "long_detour": "엄폐는 멀고 적은 매우 부정확: 돌아가면 손해"}),
-    "m4_ambush": dict(
-        learn="기습 사격을 받았을 때 시선을 끊을 곳으로 빠지는 법(앞으로, 옆으로, 뒤로).",
-        goal="40초 동안 전투 가능 상태 유지. 받은 피해만큼 감점.",
-        variants_desc={"near_cover": "가까운 바위 뒤", "far_cover": "옆쪽 먼 바위", "reverse": "뒤쪽 벽 뒤로 후진"}),
-    "m5_crossing": dict(
-        learn="엄폐 없는 개활지를 적 사선을 가로질러 통과. 적은 이동 표적에 리드를 주지 않으므로 멈추지 않는 것이 유리하다.",
-        goal="150~220m 횡단 후 목표 지점 도착. 90초 제한.",
-        variants_desc={"steady": "적 조준이 비교적 정확", "sloppy": "적 조준이 거침", "woods": "경로 근처 숲을 은폐로 이용 가능"}),
-    "g1_gunnery": dict(
-        learn="포수 조준경으로 거리를 어림하고 조준해 맞히는 법. 반격 없음.",
-        goal="45초 안에 명중 2회.",
-        variants_desc={"static": "150~700m 정지 표적", "hidden": "숲 가장자리에 반쯤 숨은 표적"}),
-    "g2_gunnery_moving": dict(
-        learn="움직이는 표적에 앞을 겨누어(리드) 맞히는 법.",
-        goal="60초 안에 명중 2회.",
-        variants_desc={"moving": "무작위로 움직이는 표적"}),
-    "g4_return_fire": dict(
-        learn="되쏘는 적과의 1대1. 차체를 둔덕 뒤에 숨기는 헐다운, 엄폐가 없을 때는 차체 각도(앵글링)로 피해를 줄인다.",
-        goal="적 격파. 준 피해와 받은 피해가 보상에 반영. 90초 제한.",
-        variants_desc={"berm": "바로 앞에 차체 높이 둔덕(헐다운 가능)", "open": "엄폐 없음(앵글링·선제 사격)"}),
-    "g6_close_front": dict(
-        learn="근거리 정면 대결. 차체를 비스듬히 두어 도탄을 유도하는 티타임과 먼저 쏘기.",
-        goal="적 격파. 60초 제한.",
-        variants_desc={"close": "120~260m", "medium": "260~400m"}),
-    "t1_pick_fights": dict(
-        learn="적이 적은 쪽부터 싸우기. 고립된 1대를 먼저 잡고 묶여 있는 2대는 나중에 상대한다.",
-        goal="적 3대 모두 격파. 180초 제한.",
-        variants_desc={"isolated_near": "고립된 적이 가까움", "group_near": "묶음이 가까움: 벽을 돌아 고립된 적부터"}),
-    "t2_peek": dict(
-        learn="엄폐 뒤에서 내다보고 쏜 뒤 숨기, 같은 자리로 다시 나가지 않고 위치를 바꾸기.",
-        goal="적 격파. 120초 제한.",
-        variants_desc={"same_spot": "적 반응이 빨라 같은 자리 재노출이 위험", "slow_enemy": "적 반응이 느려 빠르게 쏘고 숨기가 통함"}),
-    "t3_capture": dict(
-        learn="목표 구역에 들어가 버티기. 구역 안 적을 먼저 치울지, 엄폐로 감시 시선을 끊을지 판단한다.",
-        goal="반경 35m 구역 안에 누적 25초. 150초 제한.",
-        variants_desc={"inside": "적이 구역 안 엄폐에 있음", "overwatch": "적이 멀리서 구역을 감시"}),
-    "t4_defend": dict(
-        learn="거점 방어(전차별). 티거는 둔덕 뒤에서 장거리로 하나씩, 셔먼과 T-34는 티거의 접근을 버틴다.",
-        goal="티거: 접근하는 3~4대 모두 격파. 셔먼·T-34: 티거 상대로 120초 생존.",
-        variants_desc={"frontal": "정면 접근", "flanking": "일부가 측면으로 돌아옴"}),
-    "t5_flank": dict(
-        learn="측면(전차별). 셔먼과 T-34는 정면이 단단한 티거의 옆을 잡고, 티거는 좌우 협공에 차체 정면을 돌려 대응한다.",
-        goal="적 격파. 150초 제한.",
-        variants_desc={"open": "측면 경로에 바위 엄폐", "screened": "숲 뒤로 돌아가는 경로(연합군)"}),
-    "t6_retreat": dict(
-        learn="열세일 때 물러나 시야를 끊고, 쫓아오는 적을 엄폐 뒤에서 하나씩 상대한다.",
-        goal="90초 생존(격파는 추가 보상). 티거 1:5, 셔먼·T-34 1:3.",
-        variants_desc={"pursuers": "적이 추격해 옴", "holders": "적이 제자리에서 사격"}),
-}
-for _st in STAGES:
-    _st.update(DESCRIPTIONS.get(_st["id"], {}))
 
 LAST_COMMON = max(i for i, s in enumerate(STAGES) if s["scope"] == "common")
 FIRST_TANK = LAST_COMMON + 1
@@ -211,15 +202,19 @@ class CurriculumV4:
         if learner == SHARED or learner not in scenarios.TEAM_OF:
             learner = rng.choice(self.tanks)
         variant = rng.choice(st["variants"])
-        sc = scenarios.build(st["builder"], variant, learner, seed)
+        spec = st["variant_specs"][variant]
+        sc = scenarios.build(spec["builder"], spec["variant"], learner, seed)
+        sc["variant"] = variant
+        sc["source"] = {"builder": spec["builder"], "variant": spec["variant"]}
         team = scenarios.TEAM_OF[learner]
         lu = [{"type": learner, "team": team, "ctrl": "external", "role": "learner"}]
         for _ in sc["enemies"]:
             t = rng.choice(scenarios.ENEMIES_OF[learner])
-            lu.append({"type": t, "team": 1 - team, "ctrl": st["enemy_ctrl"], "role": st["enemy_ctrl"]})
+            lu.append({"type": t, "team": 1 - team, "ctrl": spec["ctrl"], "role": spec["ctrl"]})
         reward = json.loads(json.dumps(st["reward"]))
         reward["shaping_scale"] = self.shaping_scale(st["id"])
-        extra = {"scenario": sc, "reward": reward, "kind": st["kind"], "time_limit_s": sc.get("survive_s", st["time_limit_s"]),
+        extra = {"scenario": sc, "reward": reward, "kind": spec["kind"],
+                 "time_limit_s": sc.get("survive_s", spec["time_limit_s"]), "stageset": STAGESET,
                  "learning_objective": {"id": f"{st['id']}:{variant}", "label": f"{st['label']} · {variant}",
                                         "version": VERSION, "part": st["part"]},
                  "curriculum_version": VERSION, "learner": learner, "model": self.tank}
@@ -267,7 +262,7 @@ class CurriculumV4:
         enough = self.episodes_in_stage >= p["min_episodes"] and all(len(d) >= window for d in self.results[sid].values())
         rates = self.variant_rates(sid, window)
         passed = enough and min(rates.values()) >= p["threshold"]
-        if not passed and self.episodes_in_stage < p["max_episodes"]:
+        if not passed and (p.get("max_episodes") is None or self.episodes_in_stage < p["max_episodes"]):
             return None
         self.common_complete = True
         ev = {"tank": self.tank, "from": sid, "to": "branch_tanks", "episodes": self.episodes_in_stage,
@@ -313,7 +308,7 @@ class CurriculumV4:
         return self._advance(idx, global_step, "manual", self.variant_rates(self.stage["id"], 40))
 
     def state(self) -> dict:
-        return {"curriculum_version": VERSION, "tank": self.tank, "tanks": self.tanks, "common_complete": self.common_complete,
+        return {"curriculum_version": VERSION, "stageset": STAGESET, "tank": self.tank, "tanks": self.tanks, "common_complete": self.common_complete,
                 "branched_from": self.branched_from, "stage_idx": self.stage_idx, "stage": self.stage["id"],
                 "episodes_in_stage": self.episodes_in_stage, "stage_start_step": self.stage_start_step,
                 "history": self.history,
@@ -333,6 +328,8 @@ class CurriculumV4:
             st = json.load(f)
         if st.get("curriculum_version") != VERSION:
             raise ValueError(f"커리큘럼 v{VERSION} 상태가 아닙니다: {path}")
+        if st.get("stageset", "4.0") != STAGESET:
+            raise ValueError(f"단계 구성이 다릅니다({st.get('stageset', '4.0')} → {STAGESET}). 새 실행 이름으로 시작하세요: {path}")
         c = cls(tank, start_stage=int(st.get("stage_idx", 0)), **kw)
         c.episodes_in_stage = int(st.get("episodes_in_stage", 0))
         c.stage_start_step = int(st.get("stage_start_step", 0))
@@ -361,4 +358,4 @@ def make_config(stage: dict, extra: dict, learner: str, lu: list[dict], seed: in
             "tanks": [{"type": d["type"], "team": d["team"], "ctrl": d["ctrl"]} for d in lu],
             "spawn": {}, "learner_team": scenarios.TEAM_OF[learner], "record": record, "meta": meta,
             "scenario": extra["scenario"], "reward": reward, "learning_objective": extra["learning_objective"],
-            "curriculum_version": VERSION}
+            "curriculum_version": VERSION, "stageset": extra.get("stageset", STAGESET), "pace": dict(GAME_PACE)}

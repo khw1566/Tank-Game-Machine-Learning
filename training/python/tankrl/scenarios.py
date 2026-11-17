@@ -110,6 +110,7 @@ def move_under_fire(rng, learner, variant):
     screened: 진행 경로 앞을 벽이 가려 줌(직진이 최선) / open_cover: 개활지, 경로 근처 바위(엄폐 경유 또는 빠른 돌파)
     long_detour: 엄폐는 멀리 있고 적은 매우 부정확(돌아가면 손해, 직진 돌파가 유리)."""
     sc, f = _base("m3_move_under_fire", variant, "reach", rng)
+    sc["max_hits"] = 3
     lat = rng.choice([-1, 1]) * rng.uniform(120, 180)
     sc["objective"] = {"p": f.p(lat, rng.uniform(-10, 30)), "radius": 8.0, "hold_s": 0.6}
     r0, r1 = THREAT_RANGE[learner]
@@ -132,6 +133,7 @@ def move_under_fire(rng, learner, variant):
 def ambush(rng, learner, variant):
     """적이 사격을 시작한 상황에서 정해진 시간 생존. 엄폐 위치가 변형마다 다르다(가까운 둔덕 / 먼 바위 / 뒤쪽 벽)."""
     sc, f = _base("m4_ambush", variant, "survive", rng)
+    sc["max_hits"] = 3
     r0, r1 = THREAT_RANGE[learner]
     enemies = [(rng.uniform(-120, 120), rng.uniform(r0, r1)) for _ in range(rng.randint(2, 3))]
     obs = sc["obstacles"]
@@ -148,6 +150,7 @@ def ambush(rng, learner, variant):
 def crossing(rng, learner, variant):
     """엄폐 없이 적 사선을 가로지르는 횡단. 적은 이동 표적에 리드를 주지 않으므로 계속 움직이는 쪽이 유리."""
     sc, f = _base("m5_crossing", variant, "reach", rng)
+    sc["max_hits"] = 4
     r0, r1 = THREAT_RANGE[learner]
     d = rng.uniform(150, 220)
     sc["objective"] = {"p": f.p(d, 0), "radius": 8.0, "hold_s": 0.6}
@@ -241,6 +244,7 @@ def capture(rng, learner, variant):
     """T3 목표 구역(반경 35m)을 25초 점유. inside: 적이 구역 안 엄폐에 있음(먼저 제거) / overwatch: 적이 멀리서 구역을 감시
     (구역 안 엄폐물로 시선을 끊고 버티기)."""
     sc, f = _base("t3_capture", variant, "zone", rng)
+    sc["max_hits"] = 5
     d = rng.uniform(220, 320)
     zone = (rng.uniform(-40, 40), d)
     sc["objective"] = {"p": f.p(*zone), "radius": 35.0, "hold_s": 1.0}
@@ -265,6 +269,7 @@ def defend(rng, learner, variant):
     sc, f = _base("t4_defend", variant, "destroy" if learner == "tiger1" else "survive", rng)
     if learner != "tiger1":
         sc["survive_s"] = 120
+        sc["max_hits"] = 4
     sc["obstacles"].append(_berm(f, 0, 10, 14, 3, 0.95))
     n = rng.randint(3, 4) if learner == "tiger1" else 1
     r0 = 700 if learner == "tiger1" else 500
@@ -303,6 +308,7 @@ def retreat(rng, learner, variant):
     """T6 열세(적 3대). 시야를 끊는 엄폐가 뒤에 있다. 결과 = 생존(+격파 보너스).
     pursuers: 적이 추격해 와서 하나씩 나타난다(엄폐 뒤에서 반격) / holders: 적이 제자리(시야를 끊고 버티면 된다)."""
     sc, f = _base("t6_retreat", variant, "survive", rng)
+    sc["max_hits"] = 6
     sc["survive_s"] = 90
     r0, r1 = THREAT_RANGE[learner]
     n = 5 if learner == "tiger1" else 3   # 티거는 3대로는 열세가 아니다

@@ -21,23 +21,22 @@ python -m tests.check_curriculum_v4 --godot ../../build/TankGame.exe   # 모든 
 
 ## 구성
 
-| 단계 | 부 | 변형(이기는 선택이 다름) | 목표 |
+단계 구성 4.1 — 9단계, 단계마다 원인 → 결과 하나, 승급 기준 80%(변형 × 전차 모두), 최대 판수 강제 승급 없음.
+(4.0 의 15단계는 첫 학습에서 최대 판수로 강제 승급되며 성공률 25~30% 인 채로 넘어가 폐기했다.)
+
+| 단계 | 부 | 원인 → 결과 | 변형 |
 |---|---|---|---|
-| m1_move_basic | 기동 | near / far / behind | 도착·정지 |
-| m2_move_obstacles | 기동 | clear / wall / gates | 도착·정지 |
-| m3_move_under_fire | 기동 | screened / open_cover / long_detour | 포화 속 도착 |
-| m4_ambush | 기동 | near_cover / far_cover / reverse | 40초 생존 |
-| m5_crossing | 기동 | steady / sloppy / woods | 횡단 도착 |
-| g1_gunnery | 사격 | static / hidden | 명중 2회 |
-| g2_gunnery_moving | 사격 | moving | 명중 2회 |
-| g4_return_fire | 사격 | berm(헐다운) / open(앵글링) | 격파 |
-| g6_close_front | 사격 | close / medium | 격파 |
-| t1_pick_fights | 전술(공통) | isolated_near / group_near | 전멸 |
-| t2_peek | 전술(공통) | same_spot / slow_enemy | 격파 |
-| t3_capture | 전술(공통) | inside / overwatch | 구역 25초 점유 |
-| t4_defend | 전술(전차별) | frontal / flanking | 티거: 접근하는 3~4대 격파 / 연합군: 티거 상대로 120초 생존 |
-| t5_flank | 전술(전차별) | open / screened | 티거: 좌우 협공 대응 / 연합군: 티거 측면 공략 |
-| t6_retreat | 전술(전차별) | pursuers / holders | 열세(티거 1:5, 연합군 1:3)에서 90초 생존 |
+| m1_drive | 기동 | 조작 → 도착(멈춰야 도착) | near / far / behind |
+| m2_route | 기동 | 장애물 → 경로(막히면 우회, 열리면 직진) | clear / wall / gates |
+| m3_under_fire | 기동 | 노출 → 피격(시선 끊기·계속 움직이기) | screened / open_cover / crossing / ambush |
+| g1_aim | 사격 | 조준 → 명중(거리 어림·리드) | static / hidden / moving |
+| g2_posture | 사격 | 자세 → 받는 피해(헐다운·앵글링) | hull_down / angled / close |
+| t1_numbers | 전술(공통) | 교전 상대 수 → 승패 | isolated_near / group_near |
+| t2_cover_fight | 전술(공통) | 엄폐 사용 → 생존 | peek_fast / peek_slow / capture_inside / capture_overwatch |
+| s1_role | 전술(전차별) | 전차 특성 → 역할 | defend / defend_flank / flank |
+| s2_outnumbered | 전술(전차별) | 열세 → 후퇴 | pursuers / holders |
+
+맞을 때마다(관통 여부와 무관) −0.5 (`hit_taken`). 게임 속도 설정(`tankrl/pace.py`)을 처음부터 적용한다.
 
 공통 모델의 승급은 변형 × 전차 조합이 모두 기준을 넘어야 한다(한 전차만 잘해서는 통과하지 못함).
 4부 최종단계(규칙 AI 다수전 → 자기대전)는 다음 단계에서 추가한다.

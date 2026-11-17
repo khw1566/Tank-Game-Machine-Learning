@@ -30,6 +30,7 @@ SCENARIO_FIELDS = ["global_step", "uid", "tank", "stage", "variant", "goal", "su
                    "objective_reached", "status", "exposed_s", "hull_exposed_s", "turret_only_s", "hits_taken",
                    "pens_taken", "hits", "pens", "kills", "shots", "path_m", "best_objective_m", "zone_s",
                    "shaping_scale", "spawn_distance_m", "seed", "learner_policy", "reward_components", "relocated"]
+from .pace import require_pace_support
 
 PROGRESS_FIELDS = ["wall_time", "global_step", "env", "uid", "tank", "stage", "stage_idx", "current_stage",
                    "success", "reason", "winner", "return", "decisions", "duration_s", "spawn_distance_m",
@@ -187,6 +188,7 @@ class GodotVecEnv(VecEnv):
                 "curriculum_version": curriculum_v4.VERSION, "variant": variant,
                 "shaping_scale": extra["reward"]["shaping_scale"]}
         cfg = curriculum_v4.make_config(stage, extra, actual, lu, seed, uid, record, meta, self.reward_overrides)
+        require_pace_support(self.procs[i].hello, cfg)
         if int(self.procs[i].hello.get("scenario_version", 0)) < 1:
             raise RuntimeError("커리큘럼 v4 상황 배치를 지원하지 않는 게임입니다. 게임을 다시 빌드하세요.")
         self._ctx[i] = {"cfg": cfg, "stage": stage, "roles": ["learner"], "ext_names": [names[0]],
@@ -220,6 +222,7 @@ class GodotVecEnv(VecEnv):
                           self.reward_overrides)
         if int(self.procs[i].hello.get("spawn_safety_version", 0)) < 1:
             raise RuntimeError("안전 스폰·장애물 파괴를 지원하는 최신 게임 실행 파일로 다시 빌드하세요.")
+        require_pace_support(self.procs[i].hello, cfg)
         if "terrain_course" in cfg and int(self.procs[i].hello.get("terrain_course_version", 0)) < cfg["terrain_course"]["version"]:
             raise RuntimeError("현재 지형주행 코스를 지원하지 않는 게임입니다. 최신 소스로 게임을 다시 빌드하세요.")
         ext = [k for k, d in enumerate(lu) if d["ctrl"] == "external"]

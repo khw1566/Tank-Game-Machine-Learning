@@ -8,16 +8,19 @@ from tankrl.curriculum_v4 import CurriculumV4
 
 def test_scenarios_are_deterministic_and_complete():
     for st in curriculum_v4.STAGES:
+        assert st["promote"]["threshold"] == 0.8 and st["promote"]["max_episodes"] is None
+        assert st["lesson"] and st["learn"] and st["goal"]
         for v in st["variants"]:
+            spec = st["variant_specs"][v]
             for tank in ("tiger1", "sherman75", "t34_76"):
-                a = scenarios.build(st["builder"], v, tank, 42)
-                b = scenarios.build(st["builder"], v, tank, 42)
+                a = scenarios.build(spec["builder"], spec["variant"], tank, 42)
+                b = scenarios.build(spec["builder"], spec["variant"], tank, 42)
                 assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
-                assert a["variant"] == v and "learner" in a
+                assert a["variant"] == spec["variant"] and "learner" in a
                 assert a["goal"] in ("reach", "survive", "destroy", "zone", "hits")
                 if a["goal"] == "reach":
                     assert "objective" in a
-                if st["kind"] != "drive":
+                if spec["kind"] != "drive":
                     assert a["enemies"]
 
 
@@ -65,13 +68,13 @@ def test_shaping_decays_and_entropy_restarts(tmp_path):
 
 
 def test_build_episode_config():
-    c = CurriculumV4("t34_76", start_stage=curriculum_v4.STAGE_IDS.index("g4_return_fire"), review_prob=0)
+    c = CurriculumV4("t34_76", start_stage=curriculum_v4.STAGE_IDS.index("g2_posture"), review_prob=0)
     st, lu, extra = c.build_episode("t34_76", random.Random(3), 99)
     cfg = curriculum_v4.make_config(st, extra, "t34_76", lu, 99, "u", False, {})
     assert cfg["tanks"][0] == {"type": "t34_76", "team": 1, "ctrl": "external"}
     assert all(t["team"] == 0 and t["type"] == "tiger1" for t in cfg["tanks"][1:])
     assert len(cfg["tanks"]) == 1 + len(cfg["scenario"]["enemies"])
-    assert cfg["learning_objective"]["id"].startswith("g4_return_fire:")
+    assert cfg["learning_objective"]["id"].startswith("g2_posture:")
 
 
 def test_shared_requires_every_tank_and_branches():
@@ -97,9 +100,9 @@ def test_shared_requires_every_tank_and_branches():
     assert ev and ev["to"] == "branch_tanks" and c.common_complete
     b = c.branch("t34_76", 123, "run/shared/step_000000123")
     assert b.stage["id"] == curriculum_v4.STAGE_IDS[curriculum_v4.FIRST_TANK] and b.stage["scope"] == "tank"
-    assert list(b.results[st["id"]]["inside@t34_76"])[-1] == 1 and b.history[-1]["reason"] == "branch"
+    assert list(b.results[st["id"]]["capture_inside@t34_76"])[-1] == 1 and b.history[-1]["reason"] == "branch"
     try:
-        c.set_stage("t4_defend", 0)
+        c.set_stage("s1_role", 0)
         raise AssertionError("shared model must not enter tank stages")
     except ValueError:
         pass

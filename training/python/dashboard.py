@@ -252,7 +252,8 @@ class RunWatch:
             if len(q) > 40:
                 del q[0]
         stages = [{"id": s["id"], "part": s["part"], "scope": s["scope"], "label": s["label"], "variants": s["variants"],
-                   "learn": s.get("learn", ""), "goal": s.get("goal", ""), "variant_notes": s.get("variants_desc", {}),
+                   "learn": s.get("learn", ""), "goal": s.get("goal", ""), "lesson": s.get("lesson", ""),
+                   "variant_notes": s.get("variants_desc", {}),
                    "threshold": s["promote"]["threshold"], "window": s["promote"]["window"],
                    "color": v4_color(s["id"]),
                    "variant_colors": {v: v4_color(s["id"] + ':' + v) for v in s["variants"]}} for s in curriculum_v4.STAGES]
@@ -451,6 +452,7 @@ class Dashboard:
         return {"stages": [{"id": s["id"], "kind": s["kind"], "promote": s.get("promote"),
                             "time_limit_s": s["time_limit_s"], "v4": s["id"] in curriculum_v4.STAGE_IDS,
                             "label": s.get("label", ""), "learn": s.get("learn", ""), "goal": s.get("goal", ""),
+                            "lesson": s.get("lesson", ""),
                             "variant_notes": s.get("variants_desc", {})} for s in STAGES],
                 "tanks": TANKS, "cpu_count": os.cpu_count() or 1, "settings": self.settings,
                 "runs_dir": str(self.runs_dir), "platform": sys.platform, "deps": self.deps_info(),
@@ -710,7 +712,9 @@ class Dashboard:
         directory.mkdir(exist_ok=True)
         game = self.game_cmd()
         cmd = [self.train_python(), '-u', str(HERE / 'train_individuals.py'), '--godot', game[0],
-               '--runs-dir', str(self.runs_dir), '--run', run, '--source-run', origin, '--timesteps', str(timesteps)]
+               '--runs-dir', str(self.runs_dir), '--run', run, '--source-run', origin, '--timesteps', str(timesteps),
+               # 전장 4개 병렬(개체별 추론 묶음). 설정 independent_n_envs 로 바꿀 수 있다(1 = 예전 순차 수집)
+               '--n-envs', str(int(self.settings.get('independent_n_envs', 4)))]
         if self.settings.get('project'):
             cmd += ['--project', self.settings['project']]
         with (directory / 'train_log.txt').open('a', encoding='utf-8') as log:

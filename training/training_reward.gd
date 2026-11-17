@@ -160,6 +160,8 @@ func on_shot(shooter: Tank, r: Dictionary) -> void:
 	var live_hit := not bool(w.combat.get("live_target_only", false)) or bool(r.get("target_was_combat_effective", true))
 	if env.config.has("scenario") and r.get("hit", false) and target == str(env.tanks[0].name) and tteam != shooter.team:
 		_sc_taken.hits += 1
+		if float(w.get("hit_taken", 0.0)) != 0.0:
+			_add(str(env.tanks[0].name), float(w.hit_taken), "hit_taken")
 		if r.get("penetrated", false):
 			_sc_taken.pens += 1
 	if r.get("hit", false) and tteam != shooter.team and live_hit:
@@ -412,25 +414,33 @@ func _scenario_decision(dt: float) -> Dictionary:
 		if goal == "reach" and _sc_hold + 0.000001 >= float(sc.get("objective", {}).get("hold_s", 1.0)):
 			_sc_objective = true
 			_add(me.name, float(w.get("objective", 8.0)), "objective")
-			return _done("objective_reached", true, learner_team())
+			return _sc_finish("objective_reached", learner_team())
 		if goal == "zone" and _sc_zone + 0.000001 >= float(sc.get("zone_s", 20.0)):
 			_sc_objective = true
 			_add(me.name, float(w.get("objective", 8.0)), "objective")
-			return _done("zone_held", true, learner_team())
+			return _sc_finish("zone_held", learner_team())
 	if goal == "hits" and int(hits.get(me.name, 0)) >= int(sc.get("hits", 2)):
 		_sc_objective = true
 		_add(me.name, float(w.get("objective", 8.0)), "objective")
 		return _done("target_hit", true, learner_team())
 	if enemies_alive == 0 and env.tanks.size() > 1 and goal in ["destroy", "survive", "hits"]:
 		_add(me.name, float(w.win), "win")
-		return _done("enemies_destroyed", true, learner_team())
+		return _sc_finish("enemies_destroyed", learner_team())
 	if env.tick >= env.time_limit_ticks:
 		if goal == "survive":
 			_add(me.name, float(w.get("survive", 6.0)), "survive")
-			return _done("survived", true, -1)
+			return _sc_finish("survived", -1)
 		_add(me.name, float(w.get("timeout_penalty", -3.0)), "timeout")
 		return _done("time_limit", false, -1)
 	return {"done": false}
+
+
+## 목표를 이뤘어도 scenario.max_hits 보다 많이 맞았으면 실패(맞지 않는 법이 그 단계의 목표다)
+func _sc_finish(reason: String, winner: int) -> Dictionary:
+	var limit := int(env.config.scenario.get("max_hits", -1))
+	if limit >= 0 and int(_sc_taken.hits) > limit:
+		return _done(reason + "_too_many_hits", false, winner)
+	return _done(reason, true, winner)
 
 
 ## 보고서용(정책 관측 아님): 실제 적 눈 위치에서 학습 전차가 보이는지

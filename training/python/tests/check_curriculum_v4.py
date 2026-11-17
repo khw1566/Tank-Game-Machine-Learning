@@ -35,6 +35,8 @@ for idx, st0 in enumerate(original):
         st = curriculum_v4.STAGES[idx]
         st["variants"] = [variant]
         st["time_limit_s"] = a.time_limit
+        for sp in st.get("variant_specs", {}).values():
+            sp["time_limit_s"] = a.time_limit
         cur = CurriculumV4(a.tank, start_stage=idx, review_prob=0.0)
         name = f"{st['id']}_{variant}"
         env = GodotVecEnv(1, a.godot, a.project, tmp / name, a.tank, cur, record_every=0, seed=11)
