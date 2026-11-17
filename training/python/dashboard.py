@@ -448,6 +448,25 @@ class Dashboard:
         out.sort(key=lambda r: r["t"] or 0, reverse=True)
         return {"runs": runs, "records": out}
 
+    def recommended(self) -> dict:
+        """학습 시작 창 자동 기입: 현재 커리큘럼(v4 공통 모델) 권장값 + 가장 최근 공통 모델(같은 단계 구성)."""
+        best = None
+        for d in self.runs_dir.iterdir() if self.runs_dir.exists() else []:
+            model, cur = d / curriculum_v4.SHARED / "latest.zip", d / curriculum_v4.SHARED / "curriculum.json"
+            if not model.exists():
+                continue
+            c = read_json(cur)
+            mt = model.stat().st_mtime
+            same = c.get("stageset", "4.0") == curriculum_v4.STAGESET
+            key = (same, mt)
+            if best is None or key > best[0]:
+                info = read_json(d / curriculum_v4.SHARED / "checkpoint.json")
+                best = (key, {"path": str(model), "run": d.name, "stage": c.get("stage", ""),
+                              "version": f"{d.name}/step_{int(info.get('num_timesteps', 0)):09d}"})
+        return {"mode": "shared", "run_prefix": "cv" + curriculum_v4.STAGESET.replace(".", ""), "timesteps": 80_000_000,
+                "rotate_steps": 3_000_000, "cycles": 3, "n_envs": max(1, min(8, (os.cpu_count() or 4) - 2)),
+                "record_every": 100, "save_every": 100_000, "init_model": best[1] if best else None}
+
     def info(self) -> dict:
         return {"stages": [{"id": s["id"], "kind": s["kind"], "promote": s.get("promote"),
                             "time_limit_s": s["time_limit_s"], "v4": s["id"] in curriculum_v4.STAGE_IDS,
@@ -456,6 +475,7 @@ class Dashboard:
                             "variant_notes": s.get("variants_desc", {})} for s in STAGES],
                 "tanks": TANKS, "cpu_count": os.cpu_count() or 1, "settings": self.settings,
                 "runs_dir": str(self.runs_dir), "platform": sys.platform, "deps": self.deps_info(),
+                "recommended": self.recommended(),
                 "terrain_courses": COURSES}
 
     # ------------------------------------------------------------ 학습용 Python·패키지
@@ -559,8 +579,17 @@ class Dashboard:
         if a.get("rotate"):
             cmd += ["--rotate", a["rotate"], "--rotate-steps", str(int(a.get("rotate_steps", 300000))),
                     "--cycles", str(int(a.get("cycles", 1)))]
+        elif a.get("tank") == curriculum_v4.SHARED:
+            # v4 공통 모델: 세 전차를 한 모델로 학습하고, 공통 단계를 마치면 전차별 모델로 자동 분기
+            cmd += ["--tank", curriculum_v4.SHARED, "--curriculum", "v4", "--timesteps", str(int(a.get("timesteps", 80_000_000))),
+                    "--auto-branch", "--rotate-steps", str(int(a.get("rotate_steps", 3_000_000))),
+                    "--cycles", str(int(a.get("cycles", 3)))]
         else:
             cmd += ["--tank", a.get("tank", "tiger1"), "--timesteps", str(int(a.get("timesteps", 1000000)))]
+        if a.get("curriculum") and a.get("tank") != curriculum_v4.SHARED and not a.get("rotate"):
+            cmd += ["--curriculum", a["curriculum"]]
+        if a.get("init_model") and not a.get("resume"):
+            cmd += ["--init-model", a["init_model"]]
         if a.get("start_stage"):
             cmd += ["--start-stage", a["start_stage"]]
         if a.get("resume"):

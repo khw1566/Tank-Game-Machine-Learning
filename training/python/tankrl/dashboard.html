@@ -270,12 +270,14 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
       <div class="ctl wide"><label>학습용 Python (비우면 training\python\.venv 가 있으면 그것, 없으면 대시보드를 실행한 Python)</label><input type="text" name="python" placeholder="(자동)"></div>
       <div class="ctl wide"><label>프로젝트 폴더 (Godot 편집기 실행 파일을 쓸 때만, exe 면 비움)</label><input type="text" name="project" placeholder="..\.."></div>
       <div class="ctl"><label>실행 이름 (같은 이름 + 이어서 = 계속 학습)</label><input type="text" name="run" list="runList"><datalist id="runList"></datalist></div>
-      <div class="ctl"><label>학습 방식</label><select name="mode"><option value="single">전차 하나</option><option value="rotate">여러 전차 교대(자기대전)</option></select></div>
+      <div class="ctl"><label>학습 방식</label><select name="mode"><option value="shared">커리큘럼 v4 · 세 전차 공통 → 전차별 자동 분기</option><option value="single">전차 하나</option><option value="rotate">여러 전차 교대(자기대전)</option></select></div>
+      <div class="ctl" data-m="single"><label>커리큘럼</label><select name="curriculum"><option value="v4">v4 (현재)</option><option value="v1">v1 (이전 버전)</option></select></div>
       <div class="ctl" data-m="single"><label>전차</label><select name="tank"></select></div>
-      <div class="ctl" data-m="single"><label>총 결정 수(스텝)</label><input type="number" name="timesteps" value="3000000" step="100000"></div>
+      <div class="ctl" data-m="single shared"><label>총 결정 수(스텝)</label><input type="number" name="timesteps" value="3000000" step="100000"></div>
       <div class="ctl" data-m="rotate"><label>교대할 전차</label><input type="text" name="rotate" value="tiger1,sherman75,t34_76"></div>
-      <div class="ctl" data-m="rotate"><label>교대마다 스텝</label><input type="number" name="rotate_steps" value="500000" step="50000"></div>
-      <div class="ctl" data-m="rotate"><label>반복 횟수</label><input type="number" name="cycles" value="10"></div>
+      <div class="ctl" data-m="rotate shared"><label><span data-m-label="rotate">교대마다 스텝</span><span data-m-label="shared">분기 후 전차별 스텝(번갈아)</span></label><input type="number" name="rotate_steps" value="500000" step="50000"></div>
+      <div class="ctl" data-m="rotate shared"><label><span data-m-label="rotate">반복 횟수</span><span data-m-label="shared">분기 후 반복 횟수</span></label><input type="number" name="cycles" value="10"></div>
+      <div class="ctl wide" data-m="shared single"><label>시작 가중치 (새 실행일 때만, 비우면 새 정책) <span class="sub" id="initHint"></span></label><input type="text" name="init_model" placeholder="(새 정책)"></div>
       <div class="ctl"><label>동시 환경 수</label><input type="number" name="n_envs" min="1" max="64"></div>
       <div class="ctl"><label>학습 장치</label><select name="device"><option value="auto">자동 (혼합 CUDA 우선)</option><option value="hybrid">혼합 (CPU 추론 + GPU 갱신)</option><option value="cuda">GPU (추론·갱신 모두 CUDA)</option><option value="cpu">CPU</option></select></div>
       <div class="ctl"><label>PPO 환경당 수집 수 (빈칸 = 기본 / 저장된 값)</label><input type="number" name="n_steps" min="1" placeholder="1024"></div>
@@ -838,8 +840,15 @@ function wire() {
   $("btnReport").onclick = async () => { try { await api("/api/report", {run: RUN}); toast("보고서 만드는 중…"); } catch (e) { toast("실패: " + e.message, 5000); } };
   $("btnNew").onclick = openStart;
   const f = $("startForm");
-  f.mode.onchange = () => document.querySelectorAll("[data-m]").forEach(el => el.style.display = el.dataset.m === f.mode.value ? "" : "none");
-  f.run.oninput = () => { f.resume.checked = [...$("runList").options].some(o => o.value === f.run.value); };
+  f.mode.onchange = () => {
+    document.querySelectorAll("[data-m]").forEach(el => el.style.display = el.dataset.m.split(" ").includes(f.mode.value) ? "" : "none");
+    document.querySelectorAll("[data-m-label]").forEach(el => el.style.display = el.dataset.mLabel === f.mode.value ? "" : "none");
+    const v4 = f.mode.value === "shared" || (f.mode.value === "single" && f.curriculum.value === "v4");
+    f.terrain_course.closest(".ctl").style.display = v4 ? "none" : "";
+  };
+  f.curriculum.onchange = f.mode.onchange;
+  f.run.oninput = () => { f.resume.checked = [...$("runList").options].some(o => o.value === f.run.value); f.init_model.disabled = f.resume.checked; };
+  f.resume.onchange = () => { f.init_model.disabled = f.resume.checked; };
   $("btnGo").onclick = async (e) => {
     e.preventDefault();
     const a = {godot: f.godot.value, project: f.project.value, python: f.python.value, run: f.run.value.trim(), n_envs: +f.n_envs.value, start_stage: f.start_stage.value,
@@ -847,7 +856,10 @@ function wire() {
       device: f.device.value, terrain_course: f.terrain_course.value, n_steps: f.n_steps.value ? +f.n_steps.value : null,
       batch_size: f.batch_size.value ? +f.batch_size.value : null, n_epochs: f.n_epochs.value ? +f.n_epochs.value : null};
     if (f.mode.value === "rotate") Object.assign(a, {rotate: f.rotate.value, rotate_steps: +f.rotate_steps.value, cycles: +f.cycles.value});
-    else Object.assign(a, {tank: f.tank.value, timesteps: +f.timesteps.value});
+    else if (f.mode.value === "shared") Object.assign(a, {tank: "shared", curriculum: "v4", auto_branch: true, timesteps: +f.timesteps.value,
+      rotate_steps: +f.rotate_steps.value, cycles: +f.cycles.value, init_model: f.resume.checked ? "" : f.init_model.value.trim()});
+    else Object.assign(a, {tank: f.tank.value, timesteps: +f.timesteps.value, curriculum: f.curriculum.value,
+      init_model: f.resume.checked || f.curriculum.value !== "v4" ? "" : f.init_model.value.trim()});
     try { const r = await api("/api/start", a); INFO.settings.device = a.device; $("dlg").close(); toast("학습 시작: " + r.run, 3000); setTimeout(() => loadRuns(r.run), 1500); }
     catch (err) { toast("시작 실패: " + err.message, 6000); }
   };
@@ -859,13 +871,28 @@ function openStart() {
   f.device.value = s.device || "auto";
   f.terrain_course.value = a?.terrain_course || "";
   for (const key of ["n_steps", "batch_size", "n_epochs"]) f[key].value = a?.[key] ?? "";
-  if (a && !S.alive) {   // 지금 보고 있는 실행을 이어서 하기 좋게 채운다
-    f.run.value = RUN; f.resume.checked = true; f.n_envs.value = a.n_envs; f.mode.value = a.rotate ? "rotate" : "single";
-    if (a.rotate) { f.rotate.value = a.rotate; f.rotate_steps.value = a.rotate_steps; f.cycles.value = a.cycles; } else f.tank.value = a.tank;
+  const rec = INFO.recommended || {};
+  f.init_model.value = ""; f.extra.value = "";
+  if (a && !S.alive && (a.curriculum === "v4" || a.tank === "shared" || !rec.mode)) {   // 지금 보고 있는 실행을 이어서 하기 좋게 채운다
+    f.run.value = RUN; f.resume.checked = true; f.n_envs.value = a.n_envs;
+    f.mode.value = a.tank === "shared" ? "shared" : a.rotate ? "rotate" : "single";
+    f.curriculum.value = a.curriculum || "v1";
+    if (a.rotate || a.tank === "shared") { f.rotate.value = a.rotate || f.rotate.value; f.rotate_steps.value = a.rotate_steps; f.cycles.value = a.cycles; }
+    if (a.tank !== "shared") f.tank.value = a.tank;
+    f.timesteps.value = a.timesteps || f.timesteps.value;
     f.record_every.value = a.record_every; f.save_every.value = a.save_every; f.speed_cap.value = a.speed_cap || 0;
-  } else {
-    f.run.value = ""; f.resume.checked = false; f.n_envs.value = Math.max(1, Math.min(8, INFO.cpu_count - 2));
+    $("initHint").textContent = "이어서 학습할 때는 저장된 모델을 씁니다";
+  } else {   // 새 실행: 현재 커리큘럼 권장 설정으로 채운다(그대로 시작 가능)
+    const d = new Date(), pad = n => String(n).padStart(2, "0");
+    f.run.value = `${rec.run_prefix || "cv41"}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}_shared`;
+    f.resume.checked = false; f.mode.value = rec.mode || "shared"; f.curriculum.value = "v4";
+    f.timesteps.value = rec.timesteps ?? 80000000; f.rotate_steps.value = rec.rotate_steps ?? 3000000; f.cycles.value = rec.cycles ?? 3;
+    f.n_envs.value = rec.n_envs ?? Math.max(1, Math.min(8, INFO.cpu_count - 2));
+    f.record_every.value = rec.record_every ?? 100; f.save_every.value = rec.save_every ?? 100000; f.speed_cap.value = 0;
+    if (rec.init_model) { f.init_model.value = rec.init_model.path; $("initHint").textContent = `최근 공통 모델 ${rec.init_model.version} (${rec.init_model.stage})에서 이어받기 — 새 정책으로 시작하려면 비우세요`; }
+    else $("initHint").textContent = "";
   }
+  f.init_model.disabled = f.resume.checked;
   f.start_stage.value = "";
   f.mode.onchange();
   $("cpuHint").textContent = `논리 코어 ${INFO.cpu_count}개. 환경 수를 바꾸며 초당 결정 수를 비교하세요. GPU를 선택해도 시뮬레이션은 CPU에서 실행됩니다. 실행 이름을 비우면 날짜·시각으로 정해집니다.`;
