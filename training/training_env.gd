@@ -66,6 +66,9 @@ var _rew_bytes := PackedByteArray()
 var _shots: Array = []
 var _paths: Array = []
 var _end := {}
+## 성능 계측(µs 누적). 에피소드 결과(result.perf)에 ms 로 남긴다. 시뮬레이션 결과에는 영향이 없다
+var _perf := {}
+var _frame_t := 0
 
 # 재현 모드
 var _repro := {}
@@ -120,7 +123,8 @@ func _ready() -> void:
 		"action_labels": TankAgent.action_labels(), "physics_hz": Engine.physics_ticks_per_second,
 		"repeat": REPEAT, "engine": Engine.get_version_info().string,
 		"terrain_course_version": TerrainCourse.VERSION, "spawn_safety_version": 1, "destruction_version": 1,
-		"compact_battle_version": 1, "fast_combat_reward_version": 1})
+		"compact_battle_version": 1, "fast_combat_reward_version": 1,
+		"pace_version": 1, "perf_version": 1})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 
 
@@ -167,7 +171,9 @@ func _recv() -> Dictionary:
 ## step 을 받을 때까지 메시지를 처리한다(reset 은 처리 후 관측을 보내고 계속 대기)
 func _serve() -> void:
 	while true:
+		var tw := Time.get_ticks_usec()
 		var msg := _recv()
+		_perf_add("wait_python", tw)
 		if msg.is_empty():
 			print("training env %d: python disconnected" % env_id)
 			get_tree().quit()
@@ -176,7 +182,9 @@ func _serve() -> void:
 		var h: Dictionary = msg.header
 		match str(h.get("type", "")):
 			"reset":
+				var tr := Time.get_ticks_usec()
 				reset_episode(h.get("config", {}))
+				_perf_add("reset", tr)
 				if _spawn_error != "":
 					_send({"type": "error", "message": _spawn_error})
 				else:
@@ -199,6 +207,7 @@ func _serve() -> void:
 
 
 func _send_obs(nrew: int) -> void:
+	var t0 := Time.get_ticks_usec()
 	var obs := PackedFloat32Array()
 	var meta := []
 	for k in ext.size():
@@ -208,10 +217,17 @@ func _send_obs(nrew: int) -> void:
 		meta.append({"name": t.name, "tank": t.spec.id, "team": t.team,
 			"alive": t.damage.is_combat_effective(),
 			"reward": rewarder.taken(t.name) if nrew > 0 else 0.0})
+	_perf_add("obs_build", t0)
+	var tb := Time.get_ticks_usec()
 	var h := {"type": "obs", "tick": tick, "decision": decisions, "done": done, "agents": meta}
 	if done:
+		_end["perf"] = perf_summary()
 		h["episode"] = _end
-	_send(h, obs.to_byte_array())
+	var bytes := obs.to_byte_array()
+	_perf_add("obs_header", tb)
+	var ts := Time.get_ticks_usec()
+	_send(h, bytes)
+	_perf_add("obs_write", ts)
 
 
 # ================================================================ 에피소드
@@ -226,6 +242,7 @@ func _send_obs(nrew: int) -> void:
 ##   success_hits, record(bool: 전체 리플레이·보고서 기록), meta(자유: 모델 버전 등 기록용)
 func reset_episode(p_config: Dictionary) -> void:
 	_finish_files("reset")
+	_perf_reset()
 	config = p_config.duplicate(true)
 	_spawn_error = ""
 	var rng := RandomNumberGenerator.new()
@@ -351,6 +368,7 @@ func _spawn_all(specs: Array, rng: RandomNumberGenerator) -> void:
 		_spawn_one(str(s.type), int(s.team), Vector2(layout.spawn[0], layout.spawn[1]),
 			float(layout.yaw), rng.randi_range(1, 2147483646), "external", 0)
 		agents.append(TankAgent.new(map, tanks[0], sounds))
+		agents[-1].perception.configure(config.get("pace", {}))
 		config["spawn_distance_m"] = layout.length_m
 		return
 	var sp: Dictionary = config.get("spawn", {})
@@ -393,6 +411,7 @@ func _spawn_all(specs: Array, rng: RandomNumberGenerator) -> void:
 		var ai := ScriptedAI.for_tank(t, team_idx[t.team], Vector3(b.x, 0, b.y))
 		team_idx[t.team] += 1
 		agents.append(TankAgent.new(map, t, sounds, ai))
+		agents[-1].perception.configure(config.get("pace", {}))
 		if ctrls[i] == "mover":
 			var d := TargetDriver.new(rng.randi_range(1, 2147483646), map.size_m * 0.5)
 			drivers[t.name] = d
@@ -406,7 +425,8 @@ func _clear_spot(p: Vector2, rng: RandomNumberGenerator) -> Vector2:
 func _spawn_one(id: String, team: int, p: Vector2, yaw: float, seed_v: int, ctrl: String, idx: int) -> void:
 	var t := Tank.new()
 	t.name = "%s_%d" % [id, idx]
-	t.setup(id, team, seed_v)
+	t.setup(id, team, seed_v, config.get("pace", {}))
+	t.ground_map = map
 	t.position = Vector3(p.x, map.height_at(p.x, p.y) + 0.5, p.y)
 	t.rotation.y = yaw
 	add_child(t)
@@ -472,15 +492,28 @@ func _physics_process(dt: float) -> void:
 		_repro_tick(dt)
 		return
 	# 결정 시점(첫 결정은 reset 직후 _serve 안에서 이미 받음): 보상·종료 판정 → 관측 전송 → 다음 행동 수신
+	var tf := Time.get_ticks_usec()
+	if _frame_t > 0:
+		_perf["frame"] = _perf.get("frame", 0) + tf - _frame_t
+	_frame_t = tf
 	if tick > 0 and tick % REPEAT == 0:
+		var te := Time.get_ticks_usec()
 		_evaluate()
+		_perf_add("reward", te)
 		if done:
+			_end["perf"] = perf_summary()   # 에피소드 파일에도 남긴다
+			var tff := Time.get_ticks_usec()
 			_finish_files("done")   # 에피소드 파일·리플레이 경로를 결과에 넣은 뒤 보낸다
+			_perf_add("files", tff)
+		var to := Time.get_ticks_usec()
 		_send_obs(1)
+		_perf_add("obs_send", to)
 		_serve()   # step 을 받을 때까지(끝났으면 reset → 새 에피소드 첫 step)
 		if not active:
 			return
+	var ta := Time.get_ticks_usec()
 	_advance(dt)
+	_perf_add("agents", ta)
 
 
 func _evaluate() -> void:
@@ -552,16 +585,17 @@ func _advance(dt: float) -> void:
 		var ag: TankAgent = agents[i]
 		var alive := t.damage.is_combat_effective()
 		var a: Array = []
+		# 전투불능 전차의 관측은 아무도 쓰지 않는다(Python 은 살아 있는 개체만 추론·학습, 기록도 생존 전차만)
+		# → 관측 계산을 건너뛴다. 시뮬레이션 결과는 같다.
 		match ctrls[i]:
 			"external":
-				ag.update(tanks, dt)
+				if alive:
+					ag.update(tanks, dt)
 				a = _last_actions[ext.find(i)]
 				ag.apply_action(a, dt)
 			"scripted":
 				if alive:
 					a = ag.step_ai(tanks, dt)
-				else:
-					ag.update(tanks, dt)
 			"mover":
 				ag.update(tanks, dt)
 				a = drivers[t.name].act(t, dt) if alive else []
@@ -662,6 +696,47 @@ func final_hash() -> String:
 	if not damage_state.is_empty():
 		parts.append("obstacles:" + JSON.stringify(damage_state))
 	return ("|".join(parts)).md5_text()
+
+
+# ================================================================ 성능 계측
+
+func _perf_add(key: String, t0: int) -> void:
+	_perf[key] = _perf.get(key, 0) + Time.get_ticks_usec() - t0
+
+
+func _perf_reset() -> void:
+	_perf = {}
+	_frame_t = 0
+	Tank.perf_step_us = 0
+	Tank.perf_ground_us = 0
+	TankPerception.perf_self_us = 0
+	TankPerception.perf_contacts_us = 0
+	TankPerception.perf_scan_us = 0
+	TankPerception.perf_sound_us = 0
+	TankPerception.perf_observations = 0
+	TankPerception.perf_los_rays = 0
+	TankPerception.perf_scans = 0
+
+
+## 에피소드 동안의 구간별 시간(ms). frame = 물리 프레임 전체(Python 대기 포함),
+## engine_other = frame 에서 계측된 구간을 뺀 나머지(Godot 물리 서버·씬 트리 처리)
+func perf_summary() -> Dictionary:
+	var ms := func(us): return snappedf(float(us) / 1000.0, 0.01)
+	var frame: int = _perf.get("frame", 0)
+	var wait: int = _perf.get("wait_python", 0)
+	var measured: int = wait + int(_perf.get("agents", 0)) + int(_perf.get("reward", 0)) \
+		+ int(_perf.get("obs_send", 0)) + int(_perf.get("files", 0)) + Tank.perf_step_us
+	return {"version": 1, "ticks": tick, "decisions": decisions, "tanks": tanks.size(),
+		"frame_ms": ms.call(frame), "wait_python_ms": ms.call(wait),
+		"sim_ms": ms.call(frame - wait),
+		"agents_ms": ms.call(_perf.get("agents", 0)), "reward_ms": ms.call(_perf.get("reward", 0)),
+		"obs_send_ms": ms.call(_perf.get("obs_send", 0)), "obs_build_ms": ms.call(_perf.get("obs_build", 0)), "obs_header_ms": ms.call(_perf.get("obs_header", 0)), "obs_write_ms": ms.call(_perf.get("obs_write", 0)), "files_ms": ms.call(_perf.get("files", 0)),
+		"tank_step_ms": ms.call(Tank.perf_step_us), "tank_ground_ms": ms.call(Tank.perf_ground_us),
+		"engine_other_ms": ms.call(frame - measured),
+		"perception": {"observations": TankPerception.perf_observations, "self_ms": ms.call(TankPerception.perf_self_us),
+			"contacts_ms": ms.call(TankPerception.perf_contacts_us), "scan_ms": ms.call(TankPerception.perf_scan_us),
+			"sound_ms": ms.call(TankPerception.perf_sound_us), "los_rays": TankPerception.perf_los_rays,
+			"scans": TankPerception.perf_scans}}
 
 
 # ================================================================ 기록 파일

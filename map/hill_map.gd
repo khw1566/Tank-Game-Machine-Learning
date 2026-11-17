@@ -307,6 +307,45 @@ func _build_terrain_collision(n: int, heights: PackedFloat32Array) -> void:
 	cs.scale = Vector3(cell_m, 1.0, cell_m)
 	body.add_child(cs)
 	add_child(body)
+	_terrain_rid = body.get_rid()
+	flat_height = NAN
+	if not heights.is_empty():
+		var lo := heights[0]
+		var hi := heights[0]
+		for h in heights:
+			lo = minf(lo, h)
+			hi = maxf(hi, h)
+		if lo == hi:
+			flat_height = lo
+
+
+# ---------------------------------------------------------------- 지면 질의 가속(학습 속도)
+
+## 지형 격자가 완전히 평평하면 그 높이, 아니면 NAN. 평탄 지형에서 장애물이 없는 곳은
+## 레이캐스트 없이 이 높이를 지면으로 쓸 수 있다(Tank._follow_ground).
+var flat_height := NAN
+var _terrain_rid := RID()
+var _clear_box := BoxShape3D.new()
+var _clear_query := PhysicsShapeQueryParameters3D.new()
+
+
+## 평탄 지형에서 xf(수직 축 회전만) 중심, 반폭 half 의 상자 안에 지형 말고 지면 레이어
+## 충돌체(바위·나무줄기·건물·벽·통나무)가 하나도 없으면 true. 하나라도 있거나 맵 밖이면 false.
+func ground_clear(xf: Transform3D, half: Vector3, exclude: RID) -> bool:
+	if is_nan(flat_height) or not is_inside_tree():
+		return false
+	var lim := size_m * 0.5 - cell_m
+	var reach := Vector2(half.x, half.z).length()
+	if absf(xf.origin.x) + reach > lim or absf(xf.origin.z) + reach > lim:
+		return false
+	_clear_box.size = half * 2.0
+	_clear_query.shape = _clear_box
+	_clear_query.transform = xf
+	_clear_query.collision_mask = LAYER_GROUND
+	_clear_query.collide_with_areas = false
+	_clear_query.collide_with_bodies = true
+	_clear_query.exclude = [_terrain_rid, exclude]
+	return get_world_3d().direct_space_state.intersect_shape(_clear_query, 1).is_empty()
 
 
 # ---------------------------------------------------------------- 배치

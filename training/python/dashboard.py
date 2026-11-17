@@ -610,7 +610,9 @@ class Dashboard:
         directory.mkdir(exist_ok=True)
         game = self.game_cmd()
         cmd = [self.train_python(), '-u', str(HERE / 'train_individuals.py'), '--godot', game[0],
-               '--runs-dir', str(self.runs_dir), '--run', run, '--source-run', origin, '--timesteps', str(timesteps)]
+               '--runs-dir', str(self.runs_dir), '--run', run, '--source-run', origin, '--timesteps', str(timesteps),
+               # 전장 4개 병렬(개체별 추론 묶음). 설정 independent_n_envs 로 바꿀 수 있다(1 = 예전 순차 수집)
+               '--n-envs', str(int(self.settings.get('independent_n_envs', 4)))]
         if self.settings.get('project'):
             cmd += ['--project', self.settings['project']]
         with (directory / 'train_log.txt').open('a', encoding='utf-8') as log:

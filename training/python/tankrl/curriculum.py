@@ -20,6 +20,7 @@ import collections
 import json
 import random
 
+from .pace import GAME_PACE
 from .terrain import COURSES, COURSE_IDS, VERSION as TERRAIN_VERSION, WINDOW as TERRAIN_WINDOW, lesson
 
 TEAM_OF = {"tiger1": 0, "sherman75": 1, "t34_76": 1}
@@ -331,6 +332,7 @@ def make_config(stage: dict, learner: str, lu: list[dict], seed: int, map_seed: 
         "tanks": [{"type": d["type"], "team": d["team"], "ctrl": d["ctrl"]} for d in lu],
         "spawn": stage.get("spawn", {}), "learner_team": TEAM_OF[learner],
         "record": record, "meta": meta,
+        "pace": dict(stage.get("pace", GAME_PACE)),
     }
     if "waypoint" in stage:
         cfg["waypoint"] = stage["waypoint"]
