@@ -26,7 +26,7 @@ from . import protocol
 from .curriculum import STAGE_IDS, Curriculum, lineup, make_config, tank_names
 from . import curriculum_v4
 
-SCENARIO_FIELDS = ["global_step", "uid", "stage", "variant", "goal", "success", "reason", "return", "duration_s",
+SCENARIO_FIELDS = ["global_step", "uid", "tank", "stage", "variant", "goal", "success", "reason", "return", "duration_s",
                    "objective_reached", "status", "exposed_s", "hull_exposed_s", "turret_only_s", "hits_taken",
                    "pens_taken", "hits", "pens", "kills", "shots", "path_m", "best_objective_m", "zone_s",
                    "shaping_scale", "spawn_distance_m", "seed", "learner_policy", "reward_components", "relocated"]
@@ -178,18 +178,19 @@ class GodotVecEnv(VecEnv):
         names = tank_names(lu)
         self.episode_count += 1
         variant = extra["scenario"]["variant"]
-        uid = f"{self.run_name}_{self.learner}_{self.episode_count:07d}_{stage['id']}_{variant}"
+        actual = extra["learner"]
+        uid = f"{self.run_name}_{self.learner}_{self.episode_count:07d}_{stage['id']}_{variant}_{actual}"
         record = self.record_every > 0 and self.episode_count % self.record_every == 0
-        meta = {"run": self.run_name, "learner_tank": self.learner, "policies": {names[0]: self.learner_version},
+        meta = {"run": self.run_name, "learner_tank": actual, "model": self.learner, "policies": {names[0]: self.learner_version},
                 "roles": {n: d["role"] for d, n in zip(lu, names)}, "global_step": self.global_step,
                 "stage_idx": self.stage_ids.index(stage["id"]), "current_stage": self.curriculum.stage["id"],
                 "curriculum_version": curriculum_v4.VERSION, "variant": variant,
                 "shaping_scale": extra["reward"]["shaping_scale"]}
-        cfg = curriculum_v4.make_config(stage, extra, self.learner, lu, seed, uid, record, meta, self.reward_overrides)
+        cfg = curriculum_v4.make_config(stage, extra, actual, lu, seed, uid, record, meta, self.reward_overrides)
         if int(self.procs[i].hello.get("scenario_version", 0)) < 1:
             raise RuntimeError("커리큘럼 v4 상황 배치를 지원하지 않는 게임입니다. 게임을 다시 빌드하세요.")
         self._ctx[i] = {"cfg": cfg, "stage": stage, "roles": ["learner"], "ext_names": [names[0]],
-                        "opp_versions": [""], "learner_k": 0, "variant": variant}
+                        "opp_versions": [""], "learner_k": 0, "variant": variant, "tank": actual}
         return cfg
 
     def _new_config(self, i: int) -> dict:
@@ -301,7 +302,7 @@ class GodotVecEnv(VecEnv):
         me = ctx["ext_names"][ctx["learner_k"]]
         tinfo = next((t for t in ep.get("tanks", []) if t["name"] == me), {})
         row = {"wall_time": round(time.time(), 2), "global_step": self.global_step, "env": i, "uid": cfg["uid"],
-               "tank": self.learner, "stage": stage_id,
+               "tank": ctx.get("tank", self.learner), "stage": stage_id,
                "stage_idx": self.stage_ids.index(stage_id) + getattr(self.curriculum, "dashboard_offset", 0),
                "current_stage": self.curriculum.stage["id"], "success": int(bool(ep.get("success"))),
                "reason": ep.get("reason", ""), "winner": ep.get("winner", -1),
@@ -339,7 +340,7 @@ class GodotVecEnv(VecEnv):
                 if new_file:
                     writer.writeheader()
                 data = {key: scenario.get(key, "") for key in SCENARIO_FIELDS}
-                data.update(global_step=self.global_step, uid=cfg["uid"], stage=stage_id,
+                data.update(global_step=self.global_step, uid=cfg["uid"], stage=stage_id, tank=ctx.get("tank", self.learner),
                             success=int(bool(ep.get("success"))), reason=ep.get("reason", ""),
                             duration_s=ep.get("duration_s", 0), spawn_distance_m=ep.get("spawn_distance_m", 0),
                             seed=cfg["seed"], learner_policy=self.learner_version,
@@ -350,7 +351,7 @@ class GodotVecEnv(VecEnv):
                 data["return"] = round(float(self._ret[i]), 4)
                 writer.writerow(data)
             promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step,
-                                           variant=scenario.get("variant", ""))
+                                           variant=scenario.get("variant", ""), learner=ctx.get("tank", ""))
         else:
             promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step,
                                            terrain.get("course", ""))

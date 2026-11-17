@@ -22,12 +22,15 @@ ap.add_argument("--project", default=None)
 ap.add_argument("--tank", default="tiger1")
 ap.add_argument("--time-limit", type=float, default=25)
 ap.add_argument("--keep", action="store_true")
+ap.add_argument("--from-stage", default="", help="이 단계부터만 점검")
 a = ap.parse_args()
 tmp = Path(tempfile.mkdtemp(prefix="tank_v4_"))
 original = copy.deepcopy(curriculum_v4.STAGES)
 fails = 0
 rows = []
 for idx, st0 in enumerate(original):
+    if a.from_stage and idx < curriculum_v4.STAGE_IDS.index(a.from_stage):
+        continue
     for variant in st0["variants"]:
         st = curriculum_v4.STAGES[idx]
         st["variants"] = [variant]

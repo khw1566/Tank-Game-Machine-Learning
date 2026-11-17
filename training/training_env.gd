@@ -458,6 +458,7 @@ func _spawn_scenario(specs: Array, rng: RandomNumberGenerator) -> void:
 		if i > 0:
 			var params: Dictionary = places[i].get("ai", {})
 			ai.hold = bool(params.get("hold", false))
+			ai.advance = bool(params.get("advance", false))
 			for k in SCENARIO_AI_KEYS:
 				if params.has(k):
 					ai.set(k, float(params[k]))

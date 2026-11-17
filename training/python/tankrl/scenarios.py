@@ -198,6 +198,125 @@ BUILDERS = {"move_basic": move_basic, "move_obstacles": move_obstacles, "move_un
             "close_front": close_front}
 
 
+# ---------------------------------------------------------------- 3부 전술적 응용
+# 연합군 전차가 티거 여러 대를 상대할 때는 적 조준을 더 거칠게 해 "잘 고른 교전"이면 이길 수 있게 한다.
+NOISE_MULT = {"tiger1": 1.0, "sherman75": 1.8, "t34_76": 1.8}
+
+
+def _ai(learner, noise, delay, **extra):
+    m = NOISE_MULT[learner]
+    return lambda r: _enemy_ai(r, (noise[0] * m, noise[1] * m), delay) | extra
+
+
+def pick_fights(rng, learner, variant):
+    """T1 적 3대: 고립된 1대 + 서로 엄호하는 2대. 고립된 적부터 잡으면 1대1 두 번, 묶음부터 가면 1대2.
+    isolated_near: 고립된 적이 가깝다 / group_near: 묶음이 가깝고 고립된 적은 엄폐를 돌아가야 한다."""
+    sc, f = _base("t1_pick_fights", variant, "destroy", rng)
+    r0, r1 = DUEL_RANGE[learner]
+    side = rng.choice([-1, 1])
+    near, far = rng.uniform(r0, (r0 + r1) / 2), rng.uniform((r0 + r1) / 2, r1) + 80
+    iso_v, grp_v = (near, far) if variant == "isolated_near" else (far, near)
+    iso = (side * rng.uniform(120, 180), iso_v)
+    grp = [(-side * rng.uniform(60, 100) + dx, grp_v) for dx in (-15, 15)]
+    obs = sc["obstacles"]
+    # 묶음과 고립된 적 사이를 가르는 긴 벽: 한쪽과 싸우는 동안 다른 쪽 시선을 끊는다
+    obs.append(_stone(f, side * 25, (iso_v + grp_v) / 2 * 0.6, 12, 4.5, 60, 0.0))
+    for _ in range(3):
+        obs.append(_stone(f, rng.uniform(-150, 150), rng.uniform(40, min(iso_v, grp_v) - 60), rng.uniform(7, 10), 3.5, rng.uniform(5, 8)))
+    return _finish(sc, f, (0, 0), [iso] + grp, rng, _ai(learner, (1.5, 2.5), (1.0, 2.0)), jitter_deg=30)
+
+
+def peek(rng, learner, variant):
+    """T2 엄폐(벽) 뒤에서 시작, 벽 양 끝 두 곳으로 내다볼 수 있다. 적은 마지막으로 본 곳에 포를 겨눈 채 기다린다.
+    same_spot: 적 반응이 빨라 같은 자리 재노출이 위험(자리 바꾸기가 이김) / slow_enemy: 반응이 느려 빨리 쏘고 숨기가 통한다."""
+    sc, f = _base("t2_peek", variant, "destroy", rng)
+    r0, r1 = DUEL_RANGE[learner]
+    sc["obstacles"].append(_stone(f, 0, 14, 26, 4.5, 4))
+    delay = (0.3, 0.7) if variant == "same_spot" else (2.5, 3.5)
+    return _finish(sc, f, (0, 0), [(rng.uniform(-60, 60), rng.uniform(r0, r1))], rng,
+                   _ai(learner, (0.8, 1.5), delay), jitter_deg=10)
+
+
+def capture(rng, learner, variant):
+    """T3 목표 구역(반경 35m)을 25초 점유. inside: 적이 구역 안 엄폐에 있음(먼저 제거) / overwatch: 적이 멀리서 구역을 감시
+    (구역 안 엄폐물로 시선을 끊고 버티기)."""
+    sc, f = _base("t3_capture", variant, "zone", rng)
+    d = rng.uniform(220, 320)
+    zone = (rng.uniform(-40, 40), d)
+    sc["objective"] = {"p": f.p(*zone), "radius": 35.0, "hold_s": 1.0}
+    sc["zone_s"] = 25
+    obs = sc["obstacles"]
+    for _ in range(3):
+        obs.append(_stone(f, zone[0] + rng.uniform(-25, 25), zone[1] + rng.uniform(-20, 25), rng.uniform(7, 11), 4.0, rng.uniform(5, 8)))
+    if variant == "inside":
+        enemies = [(zone[0] + rng.uniform(-20, 20), zone[1] + rng.uniform(15, 30)) for _ in range(2)]
+    else:
+        r0, r1 = DUEL_RANGE[learner]
+        enemies = [(zone[0] + rng.uniform(-150, 150), zone[1] + rng.uniform(r0, r1)) for _ in range(2)]
+    return _finish(sc, f, (0, 0), enemies, rng, _ai(learner, (1.5, 2.5), (1.0, 2.0)), learner_face=zone, jitter_deg=20)
+
+
+# ---------------------------------------------------------------- 3부 전차별 과제(T4~T6, 전차별 모델로 분기 학습)
+
+def defend(rng, learner, variant):
+    """T4 거점 방어. 티거: 연합군 3~4대가 접근(장거리·헐다운 둔덕에서 하나씩) / 셔먼·T-34: 티거 1대 접근(측면 사각을 이용).
+    frontal: 정면 접근 / flanking: 일부가 측면으로 돌아온다."""
+    # 티거는 버티기만으로 이기기 쉬우므로 접근하는 적을 모두 잡아야 성공, 연합군 전차는 120초 버티면 성공
+    sc, f = _base("t4_defend", variant, "destroy" if learner == "tiger1" else "survive", rng)
+    if learner != "tiger1":
+        sc["survive_s"] = 120
+    sc["obstacles"].append(_berm(f, 0, 10, 14, 3, 0.95))
+    n = rng.randint(3, 4) if learner == "tiger1" else 1
+    r0 = 700 if learner == "tiger1" else 500
+    enemies = [(rng.uniform(-200, 200), rng.uniform(r0, r0 + 250)) for _ in range(n)]
+    for _ in range(4):
+        sc["obstacles"].append(_stone(f, rng.uniform(-200, 200), rng.uniform(150, r0 - 100), rng.uniform(7, 10), 3.5, rng.uniform(5, 8)))
+    flank = [0.0] * n if variant == "frontal" else [rng.choice([-1, 1]) * rng.uniform(150, 260) for _ in range(n)]
+    ai = _ai(learner, (2.0, 3.0), (1.0, 2.0), hold=False, advance=True, engage_range=round(rng.uniform(250, 400), 1))
+    sc = _finish(sc, f, (0, 0), enemies, rng, ai, jitter_deg=20)
+    for e, off in zip(sc["enemies"], flank):
+        e["ai"]["flank_offset"] = round(off, 1)
+    return sc
+
+
+def flank(rng, learner, variant):
+    """T5 측면. 셔먼·T-34: 정면이 단단한 티거 1대(제자리)를 측면에서 잡기, open: 측면 길 열림 / screened: 숲 뒤로 돌아가기.
+    티거: 연합군 2대가 좌우로 갈라져 접근 — 차체를 위협 쪽으로 돌려 정면 장갑을 유지해야 한다."""
+    sc, f = _base("t5_flank", variant, "destroy", rng)
+    if learner == "tiger1":
+        enemies = [(-rng.uniform(250, 350), rng.uniform(300, 450)), (rng.uniform(250, 350), rng.uniform(300, 450))]
+        ai = _ai(learner, (1.5, 2.5), (1.0, 2.0), hold=False, advance=True, engage_range=round(rng.uniform(200, 300), 1))
+    else:
+        enemies = [(rng.uniform(-30, 30), rng.uniform(400, 550))]
+        ai = _ai(learner, (1.0, 1.8), (2.5, 4.0), angle_deg=0.0)
+        sc["obstacles"].append(_stone(f, 0, 14, 16, 4.5, 4))   # 시작은 엄폐 뒤(정면 노출로 바로 격파되지 않게)
+        if variant == "screened":
+            sc["obstacles"].append({"type": "woods", "p": f.p(rng.choice([-1, 1]) * 140, 250), "r": 45.0,
+                                    "seed": rng.randrange(1, 2**31 - 1)})
+        else:
+            for k in range(3):
+                sc["obstacles"].append(_stone(f, rng.choice([-1, 1]) * rng.uniform(120, 200), 120 + 100 * k, 8, 3.5, 6))
+    return _finish(sc, f, (0, 0), enemies, rng, ai, jitter_deg=15)
+
+
+def retreat(rng, learner, variant):
+    """T6 열세(적 3대). 시야를 끊는 엄폐가 뒤에 있다. 결과 = 생존(+격파 보너스).
+    pursuers: 적이 추격해 와서 하나씩 나타난다(엄폐 뒤에서 반격) / holders: 적이 제자리(시야를 끊고 버티면 된다)."""
+    sc, f = _base("t6_retreat", variant, "survive", rng)
+    sc["survive_s"] = 90
+    r0, r1 = THREAT_RANGE[learner]
+    n = 5 if learner == "tiger1" else 3   # 티거는 3대로는 열세가 아니다
+    enemies = [(rng.uniform(-150, 150), rng.uniform(r0, r1)) for _ in range(n)]
+    sc["obstacles"].append(_stone(f, rng.uniform(-15, 15), -rng.uniform(35, 55), 30, 4.5, 6))
+    sc["obstacles"].append(_stone(f, rng.choice([-1, 1]) * rng.uniform(60, 90), -rng.uniform(10, 30), 12, 4.5, 10))
+    extra = {"hold": False, "advance": True, "engage_range": 250.0} if variant == "pursuers" else {}
+    return _finish(sc, f, (0, 0), enemies, rng, _ai(learner, (1.5, 2.5), (1.0, 2.0), **extra), jitter_deg=40)
+
+
+BUILDERS.update({"pick_fights": pick_fights, "peek": peek, "capture": capture,
+                 "defend": defend, "flank": flank, "retreat": retreat})
+
+
 def build(builder: str, variant: str, learner: str, seed: int) -> dict:
     rng = random.Random(seed)
     sc = BUILDERS[builder](rng, learner, variant)

@@ -30,12 +30,42 @@ def episode_config(path):
     return {}
 
 
+# 커리큘럼 v4: 부(部)마다 색 계열, 단계마다 색조를 조금씩, 변형마다 밝기를 다르게 한다
+# (같은 부의 곡선은 한눈에 같은 계열로 보이고, 같은 단계의 변형은 같은 색조의 진하기로 구분된다).
+V4_PART_HUE = {"m": 212, "g": 28, "tc": 135, "tt": 285}
+V4_TANK_STAGES = ("t4_", "t5_", "t6_")
+
+
+def v4_color(ident):
+    stage, _, variant = ident.partition(':')
+    part = 'tt' if stage.startswith(V4_TANK_STAGES) else ('tc' if stage.startswith('t') else stage[:1])
+    hue = V4_PART_HUE.get(part)
+    if hue is None:
+        return None
+    try:
+        index = int(stage[1])
+    except (IndexError, ValueError):
+        index = 0
+    hue = (hue + (index - 3) * 9) % 360
+    from .curriculum_v4 import STAGES
+    variants = next((st["variants"] for st in STAGES if st["id"] == stage), [])
+    if variant in variants and len(variants) > 1:
+        light = 0.38 + 0.30 * variants.index(variant) / (len(variants) - 1)
+    else:
+        light = 0.48
+    return '#%02x%02x%02x' % tuple(round(c * 255) for c in colorsys.hls_to_rgb(hue / 360, light, .72))
+
+
 def objective_color(key):
     # The primary stage is part of the identity too: basic driving and terrain
     # driving remain distinguishable even when both practise approach/stop.
     course = key.removeprefix('drive_terrain/terrain:v3/') if key.startswith('drive_terrain/terrain:v3/') else ''
     if course in COURSE_COLORS:
         return COURSE_COLORS[course]
+    if '/objective:v4/' in key:
+        color = v4_color(key.split('/objective:v4/', 1)[1])
+        if color:
+            return color
     digest = hashlib.sha256(key.encode()).digest()
     hue = int.from_bytes(digest[:4], 'big') / 2**32
     return '#%02x%02x%02x' % tuple(round(c * 255) for c in colorsys.hls_to_rgb(hue, .43, .7))

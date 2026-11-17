@@ -34,6 +34,7 @@ from tankrl.control import TrainController
 from tankrl.curriculum import STAGE_IDS, STAGES, Curriculum
 from tankrl import curriculum_v4
 from tankrl.curriculum_v4 import CurriculumV4
+from tankrl.control import write_json_atomic
 from tankrl.godot_env import GodotVecEnv
 from tankrl.opponents import OpponentPool
 from tankrl.runtime import model_runtime, resolve_device
@@ -46,7 +47,13 @@ def parse():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--godot", required=True, help="Godot 4.3 실행 파일 또는 내보낸 TankGame.exe")
     ap.add_argument("--project", default=None, help="Godot 편집기 실행 파일을 쓸 때 프로젝트 폴더(내보낸 exe 면 생략)")
-    ap.add_argument("--tank", default="tiger1", choices=["tiger1", "sherman75", "t34_76"])
+    ap.add_argument("--tank", default="tiger1", choices=["tiger1", "sherman75", "t34_76", "shared"],
+                    help="shared = v4 공통 모델(세 전차를 한 모델로, 3부 T3 까지)")
+    ap.add_argument("--auto-branch", action="store_true",
+                    help="v4 공통 모델이 T3 를 마치면 전차별 모델로 복사해 T4~T6 을 --rotate-steps 씩 번갈아 학습")
+    ap.add_argument("--branch-from", default="", help="v4: 이 실행 폴더의 shared 모델에서 전차별 모델을 시작(같은 실행이면 비움)")
+    ap.add_argument("--init-model", default="", help="체크포인트가 없을 때 이 모델 가중치로 시작(관측·행동 규격이 같아야 함)")
+    ap.add_argument("--branch-tanks", default="tiger1,sherman75,t34_76", help="자동 분기할 전차 목록")
     ap.add_argument("--rotate", default="", help="여러 종류를 번갈아 학습: tiger1,sherman75,t34_76")
     ap.add_argument("--rotate-steps", type=int, default=300_000, help="교대마다 한 종류의 학습 스텝")
     ap.add_argument("--cycles", type=int, default=1, help="--rotate 반복 횟수")
@@ -147,7 +154,24 @@ def build_model(args, env, checkpoint: Path | None = None):
                device=device, rollout_buffer_class=buffer_class, verbose=0)
 
 
-def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: TrainController) -> None:
+def branch_source(args, run_dir: Path, tank: str):
+    """전차별 모델의 시작점: 아직 체크포인트가 없는 전차 폴더 + 공통(shared) 체크포인트가 있으면 (모델, 커리큘럼, 설명)."""
+    if tank == curriculum_v4.SHARED or (not args.branch_from and not args.auto_branch):
+        return None
+    src_run = Path(args.branch_from).resolve() if args.branch_from else run_dir
+    sdir = src_run / curriculum_v4.SHARED
+    model, cpath = checkpoint_paths(sdir)
+    if model is None:
+        return None
+    shared = CurriculumV4.load(cpath, curriculum_v4.SHARED, review_prob=args.review_prob, seed=args.seed,
+                               entropy_boost=args.entropy_boost, entropy_steps=args.entropy_steps)
+    info = json.loads((sdir / "checkpoint.json").read_text(encoding="utf-8")) if (sdir / "checkpoint.json").exists() else {}
+    source = f"{src_run.name}/{curriculum_v4.SHARED}/step_{int(info.get('num_timesteps', 0)):09d}"
+    return model, shared, source, info
+
+
+def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: TrainController) -> bool:
+    """반환: v4 공통 모델이 이번에 T3 를 마쳐 전차별 분기 준비가 됐으면 True."""
     from stable_baselines3.common.callbacks import BaseCallback
     from stable_baselines3.common.logger import configure
 
@@ -156,14 +180,18 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     cpath = tdir / "curriculum.json"
     checkpoint, cpath = checkpoint_paths(tdir)
     resume = checkpoint is not None
-    v4 = args.curriculum == "v4"
+    branched = None if resume else branch_source(args, run_dir, tank)
+    v4 = args.curriculum == "v4" or tank == curriculum_v4.SHARED or branched is not None
     if cpath.exists() and (resume or args.resume or args.rotate):
         # 저장된 진행 상태가 v4 면 대시보드의 "이어서"도 v4 로 이어 간다
         v4 = v4 or json.loads(cpath.read_text(encoding="utf-8")).get("curriculum_version") == curriculum_v4.VERSION
     cls, ids = (CurriculumV4, curriculum_v4.STAGE_IDS) if v4 else (Curriculum, STAGE_IDS)
     kw = dict(entropy_boost=args.entropy_boost, entropy_steps=args.entropy_steps) if v4 else {}
     start = ids.index(args.start_stage) if args.start_stage else 0
-    if cpath.exists() and (resume or args.resume or args.rotate):
+    if branched is not None:
+        cur = branched[1].branch(tank, 0, branched[2])
+        print(f"[train] {tank}: 공통 모델 {branched[2]} 에서 분기, 단계 {cur.stage['id']}", flush=True)
+    elif cpath.exists() and (resume or args.resume or args.rotate):
         cur = cls.load(cpath, tank, review_prob=args.review_prob, seed=args.seed, **kw)
     else:
         cur = cls(tank, start_stage=start, review_prob=args.review_prob, seed=args.seed, **kw)
@@ -184,10 +212,19 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     if resume and not (args.resume or args.rotate):
         print(f"[train] 기존 {tank} 체크포인트 보호: 자동으로 이어서 학습합니다", flush=True)
     try:
-        model = build_model(args, env, checkpoint if resume else None)
+        init = Path(args.init_model).resolve() if args.init_model and not resume and not branched else None
+        model = build_model(args, env, checkpoint if resume else (branched[0] if branched else init))
+        if branched is not None:
+            cur.stage_start_step = model.num_timesteps
+            cur.history[-1]["global_step"] = model.num_timesteps
+            write_json_atomic(tdir / "branch.json", {"source": branched[2], "source_checkpoint": branched[3],
+                                                     "source_model": str(branched[0]), "tank": tank,
+                                                     "start_stage": cur.stage["id"]})
         runtime = model_runtime(model, args.device)
         runtime['start_timesteps'] = model.num_timesteps
-        runtime['resumed_from'] = str(checkpoint) if checkpoint else None
+        runtime['resumed_from'] = str(checkpoint) if checkpoint else (str(branched[0]) if branched else None)
+        runtime['branched_from'] = branched[2] if branched else None
+        runtime['initialized_from'] = str(init) if init else None
         ctl.info["runtime"] = runtime
         write_manifest(run_dir, args, env, runtime)
     except BaseException:
@@ -236,6 +273,9 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             if self.num_timesteps >= self.next_save:
                 self.next_save += args.save_every
                 save(snapshot=True)
+            if args.auto_branch and getattr(cur, "common_complete", False) and tank == curriculum_v4.SHARED:
+                print("[train] 공통 단계 완료: 전차별 분기를 위해 공통 모델 학습을 마칩니다", flush=True)
+                return False
             return ctl.tick(self.num_timesteps)
 
         def _on_rollout_end(self) -> None:
@@ -282,6 +322,7 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
         finally:
             env.close()
             ctl.env = ctl.model = ctl.curriculum = None
+    return bool(getattr(cur, "common_complete", False)) and tank == curriculum_v4.SHARED
 
 
 def main():
@@ -318,7 +359,16 @@ def run_training(args, run_dir: Path, pool_dir: Path) -> None:
                     ctl.info["rotate"] = {"tanks": tanks, "cycle": c + 1, "cycles": args.cycles}
                     train_one(args, run_dir, pool_dir, t, args.rotate_steps, ctl)
         else:
-            train_one(args, run_dir, pool_dir, args.tank, args.timesteps, ctl)
+            done_common = train_one(args, run_dir, pool_dir, args.tank, args.timesteps, ctl)
+            if done_common and args.auto_branch and not ctl.stop_requested:
+                tanks = [t.strip() for t in args.branch_tanks.split(",") if t.strip()]
+                for c in range(args.cycles):
+                    for t in tanks:
+                        if ctl.stop_requested:
+                            break
+                        print(f"[train] 전차별 분기 {c + 1}/{args.cycles}: {t} {args.rotate_steps} 스텝", flush=True)
+                        ctl.info["rotate"] = {"tanks": tanks, "cycle": c + 1, "cycles": args.cycles, "branch": True}
+                        train_one(args, run_dir, pool_dir, t, args.rotate_steps, ctl)
     finally:
         ctl.write_status(None, force=True, phase="stopped")
     print(f"[train] 끝. 보고서: python report.py {run_dir}")

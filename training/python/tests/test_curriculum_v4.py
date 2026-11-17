@@ -41,7 +41,7 @@ def test_promotion_requires_every_variant():
     assert ev is None and c.stage_idx == 0
     for i in range(window):
         ev = c.report(st["id"], True, 10_000 + i, variant="behind") or ev
-    assert ev and ev["to"] == curriculum_v4.STAGE_IDS[1] and set(ev["variant_rates"]) == set(st["variants"])
+    assert ev and ev["to"] == curriculum_v4.STAGE_IDS[1] and set(ev["variant_rates"]) == {f"{v}@tiger1" for v in st["variants"]}
     assert c.stage_start_step > 0
 
 
@@ -54,7 +54,7 @@ def test_shaping_decays_and_entropy_restarts(tmp_path):
     c.episodes_in_stage = 0
     for v in c.stage["variants"]:
         for _ in range(40):
-            c.results[sid][v].append(1)
+            c.results[sid][c.key(v, "tiger1")].append(1)
     assert c.shaping_scale(sid) == 0.0                      # competence removes shaping
     assert c.shaping_scale(curriculum_v4.STAGE_IDS[0]) == 0.0  # review = outcome only
     assert abs(c.entropy_coef(0.005, 0) - 0.03) < 1e-9
@@ -74,6 +74,37 @@ def test_build_episode_config():
     assert cfg["learning_objective"]["id"].startswith("g4_return_fire:")
 
 
+def test_shared_requires_every_tank_and_branches():
+    c = CurriculumV4(curriculum_v4.SHARED, start_stage=curriculum_v4.LAST_COMMON, review_prob=0)
+    st = c.stage
+    rng = random.Random(0)
+    seen = set()
+    for i in range(60):
+        s2, lu, extra = c.build_episode(curriculum_v4.SHARED, rng, i + 1)
+        seen.add(extra["learner"])
+        assert lu[0]["type"] == extra["learner"]
+    assert seen == set(curriculum_v4.SHARED_TANKS)
+    p = st["promote"]
+    ev = None
+    for i in range(p["min_episodes"] + p["window"]):
+        for t in curriculum_v4.SHARED_TANKS:
+            for v in st["variants"]:
+                ev = c.report(st["id"], t != "sherman75", i, variant=v, learner=t) or ev
+    assert ev is None and not c.common_complete           # one tank failing blocks the branch
+    for i in range(p["window"]):
+        for v in st["variants"]:
+            ev = c.report(st["id"], True, 99_000 + i, variant=v, learner="sherman75") or ev
+    assert ev and ev["to"] == "branch_tanks" and c.common_complete
+    b = c.branch("t34_76", 123, "run/shared/step_000000123")
+    assert b.stage["id"] == curriculum_v4.STAGE_IDS[curriculum_v4.FIRST_TANK] and b.stage["scope"] == "tank"
+    assert list(b.results[st["id"]]["inside@t34_76"])[-1] == 1 and b.history[-1]["reason"] == "branch"
+    try:
+        c.set_stage("t4_defend", 0)
+        raise AssertionError("shared model must not enter tank stages")
+    except ValueError:
+        pass
+
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -86,6 +117,7 @@ class CurriculumV4Test(unittest.TestCase):
         test_promotion_requires_every_variant()
         test_shaping_decays_and_entropy_restarts(Path(tempfile.mkdtemp()))
         test_build_episode_config()
+        test_shared_requires_every_tank_and_branches()
 
 
 if __name__ == "__main__":

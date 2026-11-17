@@ -84,6 +84,22 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .empty { color: var(--muted); padding: 30px 0; text-align: center; }
 @media (max-width: 900px) { .stages { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 600px) { #runSel { max-width: 100%; } .controls { gap: 10px; } main { padding: 12px 10px 30px; } }
+.v4map { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
+.v4part { border: 1px solid var(--grid); border-radius: 8px; padding: 8px; }
+.v4part > .pt { font-weight: 600; margin-bottom: 6px; display: flex; gap: 6px; align-items: center; }
+.v4part > .pt i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.v4stage { border-left: 4px solid var(--grid); padding: 4px 6px; margin: 4px 0; border-radius: 4px; }
+.v4stage.cur { background: rgba(37, 99, 235, .07); }
+.v4stage .sh { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; }
+.v4stage .badges span { font-size: 10px; padding: 0 5px; border-radius: 8px; color: #fff; margin-left: 3px; }
+.v4cells { display: grid; gap: 2px; margin-top: 3px; font-size: 10px; }
+.v4cells div { padding: 1px 3px; border-radius: 3px; text-align: center; white-space: nowrap; overflow: hidden; }
+.v4cells .lbl { text-align: left; color: var(--muted); background: none; }
+table.heat { border-collapse: collapse; font-size: 10px; }
+table.heat th, table.heat td { padding: 1px 3px; text-align: center; border: 1px solid var(--bg, #fff); min-width: 26px; }
+table.heat th.rh { text-align: left; white-space: nowrap; position: sticky; left: 0; background: var(--panel, #fff); z-index: 1; }
+table.heat tr.chg th.rh, table.heat tr.chg td { border-top: 2px solid var(--muted); }
+table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
 </style>
 </head>
 <body>
@@ -150,6 +166,17 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
     <div id="terrainLessons" style="margin-top:12px"></div>
   </section>
 
+  <section class="panel" id="v4Panel" hidden>
+    <h2>커리큘럼 v4 지도 <span class="sub" id="v4Sub"></span></h2>
+    <p class="hint">칸 하나 = 변형 × 전차의 최근 40판 성공률(빨강 → 초록, 진한 초록 = 승급 기준 통과). 변형 × 전차가 모두 진한 초록이어야 다음 단계로 갑니다. 배지 = 그 단계를 학습 중인 모델.</p>
+    <div id="v4Map" class="v4map"></div>
+    <h2 style="margin-top:16px">모델 품질 표
+      <span class="spacer"></span><span class="sub">전차</span><select id="v4Tank"><option value="">모두</option></select>
+      <span class="sub">값</span><select id="v4Metric"><option value="succ">성공률</option><option value="ret">평균 보상</option><option value="n">판수</option></select></h2>
+    <p class="hint">행 = 모델(공통 / 전차별) × 스텝 구간, 열 = 단계 · 변형. 학습 판과 복습 판(이전 단계를 가끔 다시 푸는 판)을 함께 집계하므로, 단계를 바꾼 뒤 이전 단계 실력이 유지되는지(망각 여부)가 같은 열에서 보입니다. 행 머리의 표시: <b style="color:var(--muted)">▶ 단계 변경</b> · <b style="color:#9333ea">⑂ 전차별 분기</b>.</p>
+    <div class="tablewrap" style="max-height:560px;overflow:auto"><table id="v4Quality" class="heat"></table></div>
+  </section>
+
   <section class="panel">
     <h2>10단계 최종 시험 · 티거 1 대 연합군 6</h2>
     <p class="hint">선택한 실행의 저장 모델을 복사해 평가합니다. 셔먼 3대 + T-34 3대, 360m 맵, 200m 출발, 3분 제한. 7개체는 서로 다른 모델을 사용하며, 기존 모델이 없는 개체는 새 정책으로 초기화합니다.</p>
@@ -171,6 +198,8 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
       <span class="sub">전차</span><select id="tankSel"></select>
       <span class="sub">가로축</span>
       <select id="xSel"><option value="step">결정 수(스텝)</option><option value="ep">에피소드</option><option value="time">경과 시간</option></select>
+      <span class="sub">곡선 묶기</span>
+      <select id="grpSel"><option value="obj">세부 목표(변형)</option><option value="stage">단계</option><option value="tank">변형 × 전차</option><option value="part">부(部)</option></select>
       <span class="sub">이동평균</span>
       <select id="winSel"><option>20</option><option selected>100</option><option>300</option></select>
     </h2>
@@ -292,7 +321,8 @@ function lineChart(cv, series, o = {}) {
   for (let k = 0; k <= 4; k++) { const yv = y0 + (y1 - y0) * k / 4, y = Math.round(sy(yv)) + .5; g.beginPath(); g.moveTo(L, y); g.lineTo(L + w, y); g.stroke(); g.fillText(o.yfmt ? o.yfmt(yv) : +yv.toPrecision(3), L - 5, y + 4); }
   g.textAlign = "center";
   for (let k = 0; k <= 4; k++) { const xv = x0 + (x1 - x0) * k / 4; g.fillText(o.xfmt ? o.xfmt(xv) : fmt(xv), Math.min(Math.max(sx(xv), L + 18), L + w - 18), H - 5); }
-  (o.vlines || []).forEach(v => { if (v.x < x0 || v.x > x1) return; const x = Math.round(sx(v.x)) + .5; g.strokeStyle = css("--muted"); g.setLineDash([3, 3]); g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + h); g.stroke(); g.setLineDash([]); });
+  (o.vlines || []).forEach(v => { if (v.x < x0 || v.x > x1) return; const x = Math.round(sx(v.x)) + .5; g.strokeStyle = v.color || css("--muted"); g.lineWidth = v.width || 1; g.setLineDash(v.dash || [3, 3]); g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + h); g.stroke(); g.setLineDash([]); g.lineWidth = 1;
+    if (v.label && o.labels !== false) { g.save(); g.fillStyle = v.color || css("--muted"); g.textAlign = "left"; g.font = "10px Segoe UI, Malgun Gothic, sans-serif"; g.translate(x + 3, T + 2); g.rotate(Math.PI / 2); g.fillText(v.label, 0, 0); g.restore(); } });
   (o.hlines || []).forEach(l => { const y = Math.round(sy(l.y)) + .5; g.strokeStyle = l.color || css("--muted"); g.setLineDash([5, 4]); g.beginPath(); g.moveTo(L, y); g.lineTo(L + w, y); g.stroke(); g.setLineDash([]); });
   series.forEach(s => {
     if (!s.pts.length) return;
@@ -358,11 +388,35 @@ function sb3Series(tank, key, name, color, x) {
 
 function objectiveInfo(key) {
   const o = S.objectives?.[key];
+  if (o && key.includes("/objective:v4/")) return {name: `${(STAGE_LABEL[o.stage] || o.stage).replace("v4 ", "")} · ${key.split(":").pop()}`, color: o.color};
   return o ? {name: `${STAGE_LABEL[o.stage] || o.stage} · ${o.label}`, color: o.color} : {name: "세부 목표 미기록", color: "#64748b"};
 }
+const TANK_DASH = {tiger1: [], sherman75: [7, 3], t34_76: [2, 3]};
+const V4PART = {기동: "1부 기동", 사격: "2부 사격", 전술: "3부 전술"};
+function v4Stage(id) { return (S.v4?.stages || []).find(s => s.id === id); }
+function groupOf(e) {
+  const key = e[col("objective")], o = S.objectives?.[key], mode = $("grpSel").value, tank = INFO.tanks[e[col("tank")]] || "";
+  const st = o && v4Stage(o.stage);
+  if (mode === "stage" && o) return {key: "s|" + o.stage, name: STAGE_LABEL[o.stage] || o.stage, color: st?.color || o.color};
+  if (mode === "part" && st) { const nm = st.scope === "tank" ? "3부 전술(전차별)" : V4PART[st.part] || st.part; return {key: "p|" + nm, name: nm, color: st.color}; }
+  const base = objectiveInfo(key);
+  if (mode === "tank") return {key: key + "|" + tank, name: base.name + " · " + (TANK_LABEL[tank] || tank), color: base.color, dash: TANK_DASH[tank]};
+  return {key, ...base};
+}
 function objectiveSeries(list, metric, win, predicate = () => true) {
-  const keys = [...new Set(list.filter(([e]) => predicate(e)).map(([e]) => e[col("objective")]))];
-  return keys.map(key => ({...objectiveInfo(key), pts: rolling(list, metric, win, e => e[col("objective")] === key && predicate(e))}));
+  const groups = new Map();
+  list.forEach(([e]) => { if (!predicate(e)) return; const g = groupOf(e); if (!groups.has(g.key)) groups.set(g.key, g); });
+  return [...groups.values()].map(g => ({name: g.name, color: g.color, dash: g.dash, pts: rolling(list, metric, win, e => groupOf(e).key === g.key && predicate(e))}));
+}
+function changeLines() {
+  const xm = $("xSel").value, t = $("tankSel").value;
+  return (S.curriculum_log || []).filter(p => !t || p.tank === t || p.tank === "shared").map(p => {
+    const x = xm === "step" ? p.global_step : xm === "time" && EPS.length ? p.wall_time - EPS[0][col("wall_time")] : EPS.findIndex(e => e[col("global_step")] >= p.global_step) + 1;
+    const branch = p.reason === "branch" || p.to === "branch_tanks";
+    const manual = p.reason === "manual";
+    return {x, color: branch ? "#9333ea" : manual ? "#c26708" : undefined, width: branch ? 2 : 1, dash: branch ? [] : [3, 3],
+      label: branch ? (p.to === "branch_tanks" ? "공통 완료 → 전차별 분기" : `⑂ ${TANK_LABEL[p.tank] || p.tank}`) : `▶ ${STAGE_LABEL[p.to] || p.to}`};
+  });
 }
 
 function drawCharts() {
@@ -375,8 +429,7 @@ function drawCharts() {
   $("cv_agent_return").closest(".chart").hidden = !agentCurves.some(s => s.pts.length);
   lineChart($("cv_agent_return"), agentCurves); legend("agent_return", agentCurves);
   const C = COLORS(), win = +$("winSel").value, list = tankEps(), xf = xfmt();
-  const vlines = (S.curriculum_log || []).filter(p => !$("tankSel").value || p.tank === $("tankSel").value)
-    .map(p => ({x: $("xSel").value === "step" ? p.global_step : $("xSel").value === "time" && EPS.length ? p.wall_time - EPS[0][col("wall_time")] : EPS.findIndex(e => e[col("global_step")] >= p.global_step) + 1}));
+  const vlines = changeLines();
   const succ = objectiveSeries(list, "success", win);
   const cs = S.status?.curriculum, current = cs?.terrain;
   const key = Object.keys(S.objectives || {}).find(k => k === `${cs?.stage}/terrain:v3/${current?.course}`);
@@ -384,7 +437,7 @@ function drawCharts() {
   lineChart($("cv_succ"), succ, {ymin: 0, ymax: 1, yfmt: v => (v * 100).toFixed(0) + "%", xfmt: xf, vlines, hlines: hl}); legend("succ", succ);
   const ret = objectiveSeries(list, "return", win);
   lineChart($("cv_ret"), ret, {xfmt: xf, vlines}); legend("ret", ret);
-  const shoot = e => INFO.stages[e[col("stage_idx")]].kind !== "drive";
+  const shoot = e => INFO.stages[e[col("stage_idx")]]?.kind !== "drive";
   const acc = [
     ...objectiveSeries(list, e => e[col("shots")] > 0 ? e[col("hits")] / e[col("shots")] : null, win, shoot).map(s => ({...s, name: s.name + " · 명중률"})),
     ...objectiveSeries(list, e => e[col("hits")] > 0 ? e[col("pens")] / e[col("hits")] : null, win, shoot).map(s => ({...s, name: s.name + " · 관통률", dash: [5, 3]})),
@@ -465,7 +518,7 @@ function render() {
   $("terrainLessons").innerHTML = tc ? `<p class="hint">목표점 5m 안 · 속도 1m/s 이하 · 0.6초 정지 → 다음 목표. 20초 무진전 시 종료. ${tc.fixed ? "선택한 코스 고정 연습" : `각 코스 최근 ${tc.window}판 기준으로 승급하며, 시간 경과만으로 건너뛰지 않습니다.`}</p>` +
     `<div class="stages">${tc.courses.map((c, i) => `<div class="stage ${i === tc.index ? "cur" : ""}"><div class="n">시험공간 ${i + 1}</div><div class="t">${esc(c.label)}</div><div class="r">${pct(c.success_rate)} · ${c.episodes}판</div></div>`).join("")}</div>` +
     ((S.terrain_recent || []).length ? `<p class="hint">최근 시험: ${S.terrain_recent.slice(-5).map(r => `${esc(r.course)} ${r.success === "1" ? "성공" : esc(r.reason)} · 잔여 ${esc(r.best_remaining_m)}m`).join(" / ")}</p>` : "") : "";
-  renderTanks(); renderPromos(); renderEpisodes(); renderJobs();
+  renderV4(); renderTanks(); renderPromos(); renderEpisodes(); renderJobs();
   $("log").textContent = S.log_tail || "(로그 없음 — 대시보드에서 시작한 학습만 train_log.txt 에 남습니다)";
   if (!$("log")._user) $("log").scrollTop = 1e9;
   const rj = S.run_json || {};
@@ -488,6 +541,61 @@ function render() {
   if (evaluation && st.error) $("evalSummary").innerHTML = `<p class="bad">${esc(st.error)}</p>` + $("evalSummary").innerHTML;
   drawCharts();
 }
+const MODEL_LABEL = {shared: "공통", tiger1: "티거", sherman75: "셔먼", t34_76: "T-34"};
+const MODEL_COLOR = {shared: "#3b82f6", tiger1: "#94a3b8", sherman75: "#22c55e", t34_76: "#ef4444"};
+function heat(rate, thr) {
+  if (rate == null) return "";
+  const r = Math.min(1, rate / (thr || 1));
+  return `background:hsl(${Math.round(r * 125)} ${rate >= thr ? 65 : 55}% ${rate >= thr ? 36 : 46}%);color:#fff`;
+}
+function renderV4() {
+  const v = S.v4; $("v4Panel").hidden = !v; if (!v) return;
+  const tanks = v.tanks, models = v.models || {};
+  const groups = [["기동", "common", "1부 기동 · 공통"], ["사격", "common", "2부 사격 · 공통"], ["전술", "common", "3부 전술 T1~T3 · 공통"], ["전술", "tank", "3부 전술 T4~T6 · 전차별"]];
+  const shared = models.shared;
+  $("v4Sub").textContent = shared ? (shared.common_complete ? "공통 단계 완료 · 전차별 분기" : `공통 모델 학습 중 · ${STAGE_LABEL[shared.stage] || shared.stage} · 단계 안 ${fmt(shared.episodes_in_stage)}판 · 보조 보상 ×${shared.shaping_scale ?? "-"}`) : "";
+  $("v4Map").innerHTML = groups.map(([part, scope, title]) => {
+    const sts = v.stages.filter(s => s.part === part && s.scope === scope);
+    return `<div class="v4part"><div class="pt"><i style="background:${sts[0]?.color}"></i>${title}</div>` + sts.map(s => {
+      const here = Object.entries(models).filter(([, m]) => m.stage === s.id);
+      const badges = here.map(([m]) => `<span style="background:${MODEL_COLOR[m]}">${MODEL_LABEL[m] || m}</span>`).join("");
+      const cells = s.variants.map(vr => `<div class="lbl" style="color:${s.variant_colors[vr]}">${esc(vr)}</div>` + tanks.map(t => {
+        const r = v.recent[`${s.id}:${vr}@${t}`]; const rate = r ? r[0] / r[1] : null;
+        return `<div style="${heat(rate, s.threshold)}" title="${esc(s.label)} · ${esc(vr)} · ${TANK_LABEL[t]}: ${r ? `${r[0]}/${r[1]}판` : "기록 없음"}">${rate == null ? "·" : Math.round(rate * 100)}</div>`;
+      }).join("")).join("");
+      const locked = scope === "tank" && shared && !shared.common_complete && !here.length;
+      return `<div class="v4stage ${here.length ? "cur" : ""}" style="border-left-color:${s.color}"><div class="sh"><span>${esc(s.label)}${locked ? ' <span class="muted">(공통 완료 후)</span>' : ""}</span><span class="badges">기준 ${pct(s.threshold)}${badges}</span></div>` +
+        `<div class="v4cells" style="grid-template-columns: 90px repeat(${tanks.length}, 1fr)"><div class="lbl"></div>${tanks.map(t => `<div class="lbl" style="text-align:center">${MODEL_LABEL[t]}</div>`).join("")}${cells}</div></div>`;
+    }).join("") + "</div>";
+  }).join("");
+  // 품질 표
+  const tsel = $("v4Tank"); if (tsel.options.length === 1) tanks.forEach(t => tsel.add(new Option(TANK_LABEL[t], t)));
+  const tf = tsel.value, metric = $("v4Metric").value, bucket = v.bucket;
+  const cols = v.stages.flatMap(s => s.variants.map(vr => ({s, vr, key: `${s.id}:${vr}`})));
+  const sf = x => x >= 1e6 ? (x / 1e6).toFixed(2) + "M" : (x / 1e3).toFixed(0) + "k";
+  const events = S.curriculum_log || [];
+  let html = `<tr><th class="rh">모델 · 스텝</th>${v.stages.map(s => `<th colspan="${s.variants.length}" style="border-bottom:3px solid ${s.color}" title="${esc(s.label)}">${esc(STAGE_LABEL[s.id] || s.id).replace("v4 ", "")}</th>`).join("")}</tr>` +
+    `<tr><th class="rh"></th>${cols.map(c => `<th style="color:${c.s.variant_colors[c.vr]}" title="${esc(c.vr)}">${esc(c.vr).slice(0, 7)}</th>`).join("")}</tr>`;
+  const order = ["shared", ...tanks].filter(m => v.grid[m]);
+  for (const m of order) {
+    const buckets = Object.keys(v.grid[m]).map(Number).sort((a, b) => a - b);
+    for (const b of buckets) {
+      const lo = b * bucket, hi = lo + bucket;
+      const ev = events.filter(p => p.global_step >= lo && p.global_step < hi && (p.tank === m || (m === "shared" && p.tank === "shared")));
+      const br = ev.some(p => p.reason === "branch" || p.to === "branch_tanks");
+      const mark = ev.map(p => p.reason === "branch" ? "⑂" : p.to === "branch_tanks" ? "⑂공통완료" : "▶" + (STAGE_LABEL[p.to] || p.to).replace("v4 ", "")).join(" ");
+      const row = v.grid[m][b];
+      html += `<tr class="${br ? "br" : ev.length ? "chg" : ""}"><th class="rh"><span style="color:${MODEL_COLOR[m]}">${MODEL_LABEL[m] || m}</span> ${sf(lo)}–${sf(hi)} <span class="muted">${esc(mark)}</span></th>` + cols.map(c => {
+        let n = 0, k = 0, r = 0;
+        for (const t of tanks) { if (tf && t !== tf) continue; const x = row[`${c.key}@${t}`]; if (x) { n += x[0]; k += x[1]; r += x[2]; } }
+        if (!n) return "<td></td>";
+        const rate = k / n, txt = metric === "succ" ? Math.round(rate * 100) : metric === "ret" ? (r / n).toFixed(1) : n;
+        return `<td style="${heat(rate, c.s.threshold)}" title="${MODEL_LABEL[m]} ${sf(lo)}–${sf(hi)} · ${esc(c.s.label)} · ${esc(c.vr)}${tf ? " · " + TANK_LABEL[tf] : ""}: ${k}/${n}판 성공 · 평균 보상 ${(r / n).toFixed(2)}">${txt}</td>`;
+      }).join("") + "</tr>";
+    }
+  }
+  $("v4Quality").innerHTML = html;
+}
 function renderTanks() {
   if (Object.keys(S.individuals || {}).length) {
     $("tankTable").innerHTML = '<tr><th>독립 개체</th><th>차종</th><th>누적 스텝</th><th>개체별 추가 학습</th><th>추가 학습 epoch</th></tr>' + Object.entries(S.individuals).map(([name, d]) => {
@@ -504,9 +612,9 @@ function renderTanks() {
 }
 function renderPromos() {
   const log = (S.curriculum_log || []).slice().reverse();
-  const reason = {threshold: "기준 달성", max_episodes: "최대 판수 도달", manual: "수동 변경"};
+  const reason = {threshold: "기준 달성", max_episodes: "최대 판수 도달", manual: "수동 변경", branch: "공통 모델에서 분기"};
   $("promoTable").innerHTML = `<tr><th>시각</th><th>전차</th><th>변경</th><th class="num">판수</th><th class="num">성공률</th><th>사유</th><th class="num">스텝</th></tr>` +
-    (log.length ? log.map(p => `<tr><td>${p.wall_time ? new Date(p.wall_time * 1000).toLocaleString("ko-KR", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"}) : "-"}</td><td>${TANK_LABEL[p.tank] || p.tank}</td><td>${STAGE_LABEL[p.from] || p.from} → ${STAGE_LABEL[p.to] || p.to}</td><td class="num">${fmt(p.episodes)}</td><td class="num">${pct(p.success_rate)}</td><td>${reason[p.reason] || p.reason}</td><td class="num">${fmt(p.global_step)}</td></tr>`).join("")
+    (log.length ? log.map(p => `<tr><td>${p.wall_time ? new Date(p.wall_time * 1000).toLocaleString("ko-KR", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"}) : "-"}</td><td>${MODEL_LABEL[p.tank] ? (p.tank === "shared" ? "공통 모델" : TANK_LABEL[p.tank]) : p.tank}</td><td title="${esc(Object.entries(p.variant_rates || {}).map(([k, x]) => k + " " + pct(x)).join(", "))}">${STAGE_LABEL[p.from] || p.from} → ${p.to === "branch_tanks" ? "전차별 분기" : STAGE_LABEL[p.to] || p.to}</td><td class="num">${fmt(p.episodes)}</td><td class="num">${pct(p.success_rate)}</td><td>${reason[p.reason] || p.reason}</td><td class="num">${fmt(p.global_step)}</td></tr>`).join("")
       : `<tr><td colspan="7" class="muted">아직 없음</td></tr>`);
 }
 function renderEpisodes() {
@@ -588,7 +696,8 @@ function wire() {
     try { await api("/api/restart", {run: RUN, device}); $("trainDevice")._dirty = false; toast("학습 장치 변경 후 다시 시작 중…", 4000); }
     catch (e) { toast("실패: " + e.message, 6000); }
   };
-  ["tankSel", "xSel", "winSel"].forEach(id => $(id).onchange = drawCharts);
+  ["tankSel", "xSel", "winSel", "grpSel"].forEach(id => $(id).onchange = drawCharts);
+  ["v4Tank", "v4Metric"].forEach(id => $(id).onchange = renderV4);
   $("onlyRec").onchange = renderEpisodes;
   $("log").addEventListener("scroll", e => { const el = e.target; el._user = el.scrollTop + el.clientHeight < el.scrollHeight - 20; });
   $("epTable").onclick = async e => {

@@ -35,6 +35,7 @@ var _cue_yaw := INF            # 마지막으로 들은 포성·피탄 방향(�
 var _cue_age := 99.0
 ## 커리큘럼 v4 상대 조절(기본값이면 기존 동작과 같다)
 var hold := false              # true = 팀과 무관하게 제자리 방어(차체만 적 쪽으로 비스듬히)
+var advance := false           # true = 팀과 무관하게 공격(적 진영으로 접근, engage_range 안에서 정지 사격)
 var aim_noise_mrad := 0.0      # 발마다 새로 뽑는 조준점 오차(표준편차, mrad). 시드 고정 난수
 var fire_delay_s := 0.0        # 표적을 이만큼 계속 본 뒤에야 쏜다(반응 시간)
 var rng := RandomNumberGenerator.new()
@@ -78,7 +79,7 @@ func act(me: Tank, p: TankPerception) -> Array:
 		var focus := _cue_yaw if cue else base_yaw
 		var sweep := deg_to_rad(20.0 if cue else 60.0) * sin(_scan_t * 0.6)
 		view = _look_at(p, wrapf(focus + sweep - hull_yaw, -PI, PI), 0.0, 30.0)
-		if me.team == 0 or hold:
+		if (me.team == 0 and not advance) or hold:
 			drive = _turn_to(me, focus + deg_to_rad(angle_deg), 0.0)
 			mode = "search_hold"
 		else:
@@ -99,7 +100,7 @@ func act(me: Tank, p: TankPerception) -> Array:
 			_track_id = int(target.track)
 			_track_seen_s = 0.0
 		_track_seen_s = _track_seen_s + STEP_S if target.visible_now else 0.0
-		if me.team == 0 or hold:
+		if (me.team == 0 and not advance) or hold:
 			drive = _turn_to(me, atan2(-to_t.x, -to_t.z) + deg_to_rad(angle_deg), 0.0)
 			mode = "angle_hold"
 		elif dist > engage_range or age > reacquire_s:

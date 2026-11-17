@@ -34,6 +34,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from tankrl.curriculum import STAGE_IDS as V1_STAGE_IDS, STAGES as V1_STAGES  # noqa: E402
 from tankrl import curriculum_v4  # noqa: E402
+from tankrl.objectives import v4_color  # noqa: E402
 
 # 기존 10단계 뒤에 커리큘럼 v4 단계를 이어 붙인다(번호가 겹치지 않게).
 STAGES = V1_STAGES + curriculum_v4.STAGES
@@ -45,6 +46,7 @@ from tankrl.objectives import ObjectiveIndex, objective_color
 from tankrl.control import write_json_atomic
 
 TANKS = ["tiger1", "sherman75", "t34_76"]
+MODELS = TANKS + [curriculum_v4.SHARED]   # 저장 모델 폴더: 전차별 + v4 공통 모델
 # 브라우저로 보내는 에피소드 열(짧게): progress.csv 의 열 이름
 EP_COLS = ["wall_time", "global_step", "env", "tank", "stage_idx", "current_stage", "success", "return",
            "decisions", "hits", "pens", "kills", "shots", "spawn_distance_m", "rec", "objective"]
@@ -149,7 +151,7 @@ class RunWatch:
         self.imports = [run_dir / source['path'] for source in sources]
         self.imported_progress = [CsvTail(directory / 'progress.csv') for directory in self.imports]
         self.imported_terrain = [CsvTail(directory / 'terrain_progress.csv') for directory in self.imports]
-        self.sb3 = {t: CsvSegments([run_dir / 'sb3' / t] + [directory / 'sb3' / t for directory in self.imports]) for t in TANKS}
+        self.sb3 = {t: CsvSegments([run_dir / 'sb3' / t] + [directory / 'sb3' / t for directory in self.imports]) for t in MODELS}
         self.lock = threading.Lock()
         self.first_read = True
         self.objectives = ObjectiveIndex()
@@ -215,11 +217,54 @@ class RunWatch:
         out['individual_curve_colors'] = {r['agent'] + '/v' + str(r.get('reward_version', 2)):
             objective_color('agent/' + r['agent'] + '/v' + str(r.get('reward_version', 2))) for r in out['individual_progress']}
         out["curriculum_log"] = read_jsonl(self.run_dir / "curriculum_log.jsonl")[-200:]
+        out["v4"] = self.v4_summary(rows)
         out["tanks"] = self.tank_info()
         out["run_json"] = self.run_summary()
         log = self.run_dir / "train_log.txt"
         out["log_tail"] = tail_text(log, 6000) if log.exists() else ""
         return out
+
+    def v4_summary(self, rows: list[dict]) -> dict | None:
+        """커리큘럼 v4 지도·품질 표. 모델(공통/전차별) × 스텝 구간 × 단계:변형 × 전차의 성공률.
+        학습 에피소드 + 복습 에피소드(이전 단계를 가끔 다시 푸는 판)로 계산하므로, 단계가 바뀐 뒤
+        이전 단계 실력이 떨어지는지(망각)도 같은 표에서 보인다."""
+        marker = '/objective:v4/'
+        v4 = [r for r in rows if marker in r.get('objective', '')]
+        if not v4:
+            return None
+        top = max(float(r.get('global_step') or 0) for r in v4)
+        bucket = max(50_000, int(round(top / 30 / 50_000)) * 50_000)
+        grid, recent = {}, {}
+        for r in v4:
+            ident = r['objective'].split(marker, 1)[1]
+            tank = r.get('tank', '')
+            policy = r.get('learner_policy', '')
+            parts = policy.split('/')
+            model = parts[1] if len(parts) > 2 else tank
+            b = int(float(r.get('global_step') or 0) // bucket)
+            ok = 1 if str(r.get('success')) in ('1', '1.0', 'True') else 0
+            cell = grid.setdefault(model, {}).setdefault(str(b), {}).setdefault(ident + '@' + tank, [0, 0, 0.0])
+            cell[0] += 1
+            cell[1] += ok
+            cell[2] += float(r.get('return') or 0)
+            q = recent.setdefault(ident + '@' + tank, [])
+            q.append(ok)
+            if len(q) > 40:
+                del q[0]
+        stages = [{"id": s["id"], "part": s["part"], "scope": s["scope"], "label": s["label"], "variants": s["variants"],
+                   "threshold": s["promote"]["threshold"], "window": s["promote"]["window"],
+                   "color": v4_color(s["id"]),
+                   "variant_colors": {v: v4_color(s["id"] + ':' + v) for v in s["variants"]}} for s in curriculum_v4.STAGES]
+        models = {}
+        for m in MODELS:
+            c = read_json(self.run_dir / m / 'curriculum.json')
+            if c.get('curriculum_version') == curriculum_v4.VERSION:
+                models[m] = {"stage": c.get("stage"), "stage_idx": c.get("stage_idx"), "tanks": c.get("tanks", [m]),
+                             "common_complete": c.get("common_complete", False), "branched_from": c.get("branched_from", ""),
+                             "episodes_in_stage": c.get("episodes_in_stage", 0), "shaping_scale": c.get("shaping_scale")}
+        branch = {m: read_json(self.run_dir / m / 'branch.json') for m in TANKS if (self.run_dir / m / 'branch.json').exists()}
+        return {"bucket": bucket, "grid": grid, "recent": {k: [sum(v), len(v)] for k, v in recent.items()},
+                "stages": stages, "models": models, "branch": branch, "tanks": curriculum_v4.SHARED_TANKS}
 
     def tank_info(self) -> dict:
         res = {}
@@ -227,7 +272,7 @@ class RunWatch:
         sessions = read_json(self.run_dir / "run.json").get("sessions", [])
         if sessions and sessions[-1].get("args", {}).get("pool_dir"):
             pool = abs_path(sessions[-1]["args"]["pool_dir"])
-        for t in TANKS:
+        for t in MODELS:
             d = self.run_dir / t
             if not d.exists():
                 continue
