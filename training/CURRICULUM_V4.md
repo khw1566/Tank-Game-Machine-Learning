@@ -6,8 +6,13 @@ v4 는 결과(목표 달성·생존·피해 교환)만 보상하고, 같은 과�
 
 ## 실행
 
+1~2부와 3부 T1~T3 은 세 전차를 **한 모델(shared)** 로 학습하고, T3 를 마치면 공통 모델을 전차별로 복사해 T4~T6 을 따로 학습한다.
+
 ```powershell
-python train.py --godot ../../build/TankGame.exe --curriculum v4 --tank tiger1 --run cv4_20261117 --n-envs 6
+# 공통 학습 → T3 완료 시 자동 분기, 전차별 300만 스텝씩 3바퀴 번갈아
+python train.py --godot ../../build/TankGame.exe --curriculum v4 --tank shared --auto-branch --rotate-steps 3000000 --cycles 3 --run cv4_20261117_shared --n-envs 8
+# 수동 분기: 다른 실행의 공통 모델에서 전차별 학습 시작
+python train.py --godot ../../build/TankGame.exe --curriculum v4 --tank t34_76 --branch-from runs/cv4_20261117_shared --run cv4_t34
 python -m tests.check_curriculum_v4 --godot ../../build/TankGame.exe   # 모든 단계·변형 스모크 + 재현 해시
 ```
 
@@ -27,8 +32,23 @@ python -m tests.check_curriculum_v4 --godot ../../build/TankGame.exe   # 모든 
 | g2_gunnery_moving | 사격 | moving | 명중 2회 |
 | g4_return_fire | 사격 | berm(헐다운) / open(앵글링) | 격파 |
 | g6_close_front | 사격 | close / medium | 격파 |
+| t1_pick_fights | 전술(공통) | isolated_near / group_near | 전멸 |
+| t2_peek | 전술(공통) | same_spot / slow_enemy | 격파 |
+| t3_capture | 전술(공통) | inside / overwatch | 구역 25초 점유 |
+| t4_defend | 전술(전차별) | frontal / flanking | 티거: 접근하는 3~4대 격파 / 연합군: 티거 상대로 120초 생존 |
+| t5_flank | 전술(전차별) | open / screened | 티거: 좌우 협공 대응 / 연합군: 티거 측면 공략 |
+| t6_retreat | 전술(전차별) | pursuers / holders | 열세(티거 1:5, 연합군 1:3)에서 90초 생존 |
 
-3부 전술적 응용(T1~T6)과 4부 최종단계(규칙 AI 다수전 → 자기대전)는 다음 단계에서 추가한다.
+공통 모델의 승급은 변형 × 전차 조합이 모두 기준을 넘어야 한다(한 전차만 잘해서는 통과하지 못함).
+4부 최종단계(규칙 AI 다수전 → 자기대전)는 다음 단계에서 추가한다.
+
+## 대시보드
+
+- **커리큘럼 v4 지도**: 부별로 단계 카드, 카드 안에 변형 × 전차 칸(최근 40판 성공률, 기준 통과 시 진한 초록), 학습 중인 모델 배지.
+- **모델 품질 표**: 행 = 모델(공통/전차별) × 스텝 구간, 열 = 단계·변형. 복습 판까지 집계하므로 단계 변경 뒤 이전 단계 성공률이
+  떨어지는지(망각) 같은 열에서 보인다. ▶ 단계 변경, ⑂ 전차별 분기 표시.
+- **곡선 묶기**: 변형 / 단계 / 부 / 변형 × 전차(전차는 선 모양으로 구분). 단계 변경선과 분기선(보라)에 이름표.
+- **색상**: 부마다 색 계열(기동 파랑, 사격 주황, 공통 전술 초록, 전차별 전술 보라), 단계마다 색조, 변형마다 명암.
 
 ## 규칙
 
