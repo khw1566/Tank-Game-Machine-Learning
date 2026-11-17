@@ -74,6 +74,75 @@ STAGES = [
           min_eps=400, max_eps=12000, scope="tank"),
 ]
 STAGE_IDS = [s["id"] for s in STAGES]
+
+# 대시보드 툴팁: 무엇을 배우는지(learn), 무엇을 하면 성공인지(goal), 변형별로 어떤 선택이 유리한지(variants)
+DESCRIPTIONS = {
+    "m1_move_basic": dict(
+        learn="전차를 원하는 지점까지 몰고 가서 멈추는 기본 조작(무한궤도 좌우, 브레이크, 변속).",
+        goal="반경 6m 목표 지점에 들어가 0.6초 정지. 60초 제한.",
+        variants_desc={"near": "30~60m 앞", "far": "80~150m 앞", "behind": "뒤쪽 목표: 제자리 선회 후 출발"}),
+    "m2_move_obstacles": dict(
+        learn="장애물이 있는 지형에서 경로를 고르는 법. 직진이 맞는 곳과 돌아가야 하는 곳을 구분한다.",
+        goal="90~140m 앞 목표 지점 도착·정지. 90초 제한.",
+        variants_desc={"clear": "장애물이 길 옆에만 있음(직진이 정답)", "wall": "길을 막은 벽: 한쪽 끝으로 우회",
+                  "gates": "엇갈린 통로 두 개를 차례로 통과"}),
+    "m3_move_under_fire": dict(
+        learn="멀리 있는 부정확한 적 2~4대가 쏘는 가운데 옆으로 이동. 엄폐를 쓸지, 빠르게 돌파할지 판단한다.",
+        goal="격파되지 않고 목표 지점 도착. 받은 피해만큼 감점. 120초 제한.",
+        variants_desc={"screened": "경로를 벽이 가려 줌: 그대로 가면 안전", "open_cover": "개활지에 바위 몇 개: 엄폐 경유 또는 빠른 돌파",
+                  "long_detour": "엄폐는 멀고 적은 매우 부정확: 돌아가면 손해"}),
+    "m4_ambush": dict(
+        learn="기습 사격을 받았을 때 시선을 끊을 곳으로 빠지는 법(앞으로, 옆으로, 뒤로).",
+        goal="40초 동안 전투 가능 상태 유지. 받은 피해만큼 감점.",
+        variants_desc={"near_cover": "가까운 바위 뒤", "far_cover": "옆쪽 먼 바위", "reverse": "뒤쪽 벽 뒤로 후진"}),
+    "m5_crossing": dict(
+        learn="엄폐 없는 개활지를 적 사선을 가로질러 통과. 적은 이동 표적에 리드를 주지 않으므로 멈추지 않는 것이 유리하다.",
+        goal="150~220m 횡단 후 목표 지점 도착. 90초 제한.",
+        variants_desc={"steady": "적 조준이 비교적 정확", "sloppy": "적 조준이 거침", "woods": "경로 근처 숲을 은폐로 이용 가능"}),
+    "g1_gunnery": dict(
+        learn="포수 조준경으로 거리를 어림하고 조준해 맞히는 법. 반격 없음.",
+        goal="45초 안에 명중 2회.",
+        variants_desc={"static": "150~700m 정지 표적", "hidden": "숲 가장자리에 반쯤 숨은 표적"}),
+    "g2_gunnery_moving": dict(
+        learn="움직이는 표적에 앞을 겨누어(리드) 맞히는 법.",
+        goal="60초 안에 명중 2회.",
+        variants_desc={"moving": "무작위로 움직이는 표적"}),
+    "g4_return_fire": dict(
+        learn="되쏘는 적과의 1대1. 차체를 둔덕 뒤에 숨기는 헐다운, 엄폐가 없을 때는 차체 각도(앵글링)로 피해를 줄인다.",
+        goal="적 격파. 준 피해와 받은 피해가 보상에 반영. 90초 제한.",
+        variants_desc={"berm": "바로 앞에 차체 높이 둔덕(헐다운 가능)", "open": "엄폐 없음(앵글링·선제 사격)"}),
+    "g6_close_front": dict(
+        learn="근거리 정면 대결. 차체를 비스듬히 두어 도탄을 유도하는 티타임과 먼저 쏘기.",
+        goal="적 격파. 60초 제한.",
+        variants_desc={"close": "120~260m", "medium": "260~400m"}),
+    "t1_pick_fights": dict(
+        learn="적이 적은 쪽부터 싸우기. 고립된 1대를 먼저 잡고 묶여 있는 2대는 나중에 상대한다.",
+        goal="적 3대 모두 격파. 180초 제한.",
+        variants_desc={"isolated_near": "고립된 적이 가까움", "group_near": "묶음이 가까움: 벽을 돌아 고립된 적부터"}),
+    "t2_peek": dict(
+        learn="엄폐 뒤에서 내다보고 쏜 뒤 숨기, 같은 자리로 다시 나가지 않고 위치를 바꾸기.",
+        goal="적 격파. 120초 제한.",
+        variants_desc={"same_spot": "적 반응이 빨라 같은 자리 재노출이 위험", "slow_enemy": "적 반응이 느려 빠르게 쏘고 숨기가 통함"}),
+    "t3_capture": dict(
+        learn="목표 구역에 들어가 버티기. 구역 안 적을 먼저 치울지, 엄폐로 감시 시선을 끊을지 판단한다.",
+        goal="반경 35m 구역 안에 누적 25초. 150초 제한.",
+        variants_desc={"inside": "적이 구역 안 엄폐에 있음", "overwatch": "적이 멀리서 구역을 감시"}),
+    "t4_defend": dict(
+        learn="거점 방어(전차별). 티거는 둔덕 뒤에서 장거리로 하나씩, 셔먼과 T-34는 티거의 접근을 버틴다.",
+        goal="티거: 접근하는 3~4대 모두 격파. 셔먼·T-34: 티거 상대로 120초 생존.",
+        variants_desc={"frontal": "정면 접근", "flanking": "일부가 측면으로 돌아옴"}),
+    "t5_flank": dict(
+        learn="측면(전차별). 셔먼과 T-34는 정면이 단단한 티거의 옆을 잡고, 티거는 좌우 협공에 차체 정면을 돌려 대응한다.",
+        goal="적 격파. 150초 제한.",
+        variants_desc={"open": "측면 경로에 바위 엄폐", "screened": "숲 뒤로 돌아가는 경로(연합군)"}),
+    "t6_retreat": dict(
+        learn="열세일 때 물러나 시야를 끊고, 쫓아오는 적을 엄폐 뒤에서 하나씩 상대한다.",
+        goal="90초 생존(격파는 추가 보상). 티거 1:5, 셔먼·T-34 1:3.",
+        variants_desc={"pursuers": "적이 추격해 옴", "holders": "적이 제자리에서 사격"}),
+}
+for _st in STAGES:
+    _st.update(DESCRIPTIONS.get(_st["id"], {}))
+
 LAST_COMMON = max(i for i, s in enumerate(STAGES) if s["scope"] == "common")
 FIRST_TANK = LAST_COMMON + 1
 
@@ -128,7 +197,8 @@ class CurriculumV4:
             return 0.0
         p = self.stage["promote"]
         skill = 1.0 - min(1.0, self.success_rate(stage_id, p["window"]) / p["threshold"])
-        cap = max(0.0, 1.0 - self.episodes_in_stage / max(1, 4 * self.stage["shaping_decay_episodes"]))
+        # 공통 모델은 전차 수만큼 판이 나뉘므로 상한도 그만큼 늘린다
+        cap = max(0.0, 1.0 - self.episodes_in_stage / max(1, 4 * len(self.tanks) * self.stage["shaping_decay_episodes"]))
         return round(min(skill, cap), 4)
 
     def entropy_coef(self, base: float, step: int) -> float:

@@ -252,6 +252,7 @@ class RunWatch:
             if len(q) > 40:
                 del q[0]
         stages = [{"id": s["id"], "part": s["part"], "scope": s["scope"], "label": s["label"], "variants": s["variants"],
+                   "learn": s.get("learn", ""), "goal": s.get("goal", ""), "variant_notes": s.get("variants_desc", {}),
                    "threshold": s["promote"]["threshold"], "window": s["promote"]["window"],
                    "color": v4_color(s["id"]),
                    "variant_colors": {v: v4_color(s["id"] + ':' + v) for v in s["variants"]}} for s in curriculum_v4.STAGES]
@@ -342,6 +343,7 @@ class Dashboard:
         self.runs_dir.mkdir(parents=True, exist_ok=True)
         self.watches: dict[str, RunWatch] = {}
         self.procs: dict[str, subprocess.Popen] = {}      # 이 대시보드가 띄운 train.py
+        self._records_cache: dict[str, tuple] = {}  # progress.csv 경로 -> (수정 시각, 보고서 목록)
         self.jobs: list[dict] = []                         # 재현·보고서 등 백그라운드 작업
         self.lock = threading.Lock()
         self.settings_path = self.runs_dir / "dashboard_settings.json"
@@ -399,9 +401,57 @@ class Dashboard:
                         "mtime": d.stat().st_mtime})
         return out
 
+    def records(self) -> dict:
+        """모든 실행의 보고서를 한곳에: 실행별 학습·평가 보고서 + 전체 기록(리플레이)이 남은 경기의 보고서."""
+        out, runs = [], []
+        for d in sorted(self.runs_dir.iterdir()):
+            if not d.is_dir() or d.name == "pool":
+                continue
+            progress = d / "progress.csv"
+            v4 = read_json(d / "run.json").get("curriculum_version") == curriculum_v4.VERSION
+            files = [f for f in ("training_report.html", "evaluation_report.html") if (d / f).exists()]
+            if not progress.exists() and not files:
+                continue
+            runs.append({"run": d.name, "v4": v4, "reports": files,
+                         "mtime": max((d / f).stat().st_mtime for f in files) if files else None})
+            if not progress.exists():
+                continue
+            key = str(progress)
+            mt = progress.stat().st_mtime
+            if self._records_cache.get(key, (None,))[0] != mt:
+                rows = []
+                with progress.open(newline="", encoding="utf-8-sig") as src:
+                    for r in csv.DictReader(src):
+                        rd = r.get("replay_dir") or ""
+                        rep_html = Path(rd) / "report.html" if rd else None
+                        if not rep_html or not rep_html.exists():
+                            continue
+                        try:
+                            rel = rep_html.resolve().relative_to(self.runs_dir).as_posix()
+                        except ValueError:
+                            continue
+                        uid = r.get("uid", "")
+                        variant = ""
+                        if v4 and r.get("stage") and ("_" + r["stage"] + "_") in uid:
+                            # uid = <실행>_<모델>_<번호>_<단계>_<변형>[_<전차>] (공통 모델은 전차가 붙는다)
+                            rest = uid.split("_" + r["stage"] + "_", 1)[1]
+                            tank_suffix = "_" + r.get("tank", "")
+                            variant = rest[:-len(tank_suffix)] if r.get("tank") and rest.endswith(tank_suffix) else rest
+                        rows.append({"run": d.name, "t": num(r.get("wall_time", "")), "step": num(r.get("global_step", "")),
+                                     "tank": r.get("tank", ""), "stage": r.get("stage", ""), "variant": variant,
+                                     "success": r.get("success") in ("1", "1.0", "True"), "reason": r.get("reason", ""),
+                                     "return": num(r.get("return", "")), "dur": num(r.get("duration_s", "")),
+                                     "policy": r.get("learner_policy", ""), "report": rel, "v4": v4})
+                self._records_cache[key] = (mt, rows)
+            out.extend(self._records_cache[key][1])
+        out.sort(key=lambda r: r["t"] or 0, reverse=True)
+        return {"runs": runs, "records": out}
+
     def info(self) -> dict:
         return {"stages": [{"id": s["id"], "kind": s["kind"], "promote": s.get("promote"),
-                            "time_limit_s": s["time_limit_s"]} for s in STAGES],
+                            "time_limit_s": s["time_limit_s"], "v4": s["id"] in curriculum_v4.STAGE_IDS,
+                            "label": s.get("label", ""), "learn": s.get("learn", ""), "goal": s.get("goal", ""),
+                            "variant_notes": s.get("variants_desc", {})} for s in STAGES],
                 "tanks": TANKS, "cpu_count": os.cpu_count() or 1, "settings": self.settings,
                 "runs_dir": str(self.runs_dir), "platform": sys.platform, "deps": self.deps_info(),
                 "terrain_courses": COURSES}
@@ -807,6 +857,8 @@ def make_handler(dash: Dashboard):
                     if q.get("refresh"):
                         dash.check_deps()
                     return self.send_json(dash.deps_info())
+                if u.path == "/api/records":
+                    return self.send_json(dash.records())
                 if u.path == "/api/runs":
                     return self.send_json({"runs": dash.runs(), "jobs": dash.jobs[-10:]})
                 if u.path == "/api/state":

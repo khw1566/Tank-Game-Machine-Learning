@@ -95,6 +95,11 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .v4cells { display: grid; gap: 2px; margin-top: 3px; font-size: 10px; }
 .v4cells div { padding: 1px 3px; border-radius: 3px; text-align: center; white-space: nowrap; overflow: hidden; }
 .v4cells .lbl { text-align: left; color: var(--muted); background: none; }
+.tip.rich { white-space: normal; max-width: 420px; line-height: 1.45; }
+.tip.rich b { display: block; margin-bottom: 2px; }
+.tip.rich ul { margin: 4px 0 0 16px; padding: 0; }
+#recTable tr.sel td { background: rgba(37, 99, 235, .15); }
+#recTable tr { cursor: pointer; }
 table.heat { border-collapse: collapse; font-size: 10px; }
 table.heat th, table.heat td { padding: 1px 3px; text-align: center; border: 1px solid var(--bg, #fff); min-width: 26px; }
 table.heat th.rh { text-align: left; white-space: nowrap; position: sticky; left: 0; background: var(--panel, #fff); z-index: 1; }
@@ -161,7 +166,8 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
   <div class="kpis" id="kpis"></div>
 
   <section class="panel">
-    <h2>커리큘럼 <span class="sub" id="curSub"></span></h2>
+    <h2>커리큘럼 <span class="sub" id="curSub"></span><span class="spacer"></span><label class="sub" data-tip="이전 커리큘럼(v1: 주행 → 지형 주행 → 사격 → 1대1 → 팀전 → 최종전 10단계)과 v1 전용 최종 시험 패널을 보이거나 숨깁니다. v1 실행 기록은 지워지지 않습니다."><input type="checkbox" id="showV1"> 이전 버전(v1) 단계 보기</label></h2>
+    <p class="hint">단계 위에 마우스를 올리면 무엇을 학습하고 무엇을 하면 성공인지 보입니다.</p>
     <div class="stages" id="stages"></div>
     <div id="terrainLessons" style="margin-top:12px"></div>
   </section>
@@ -177,7 +183,26 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
     <div class="tablewrap" style="max-height:560px;overflow:auto"><table id="v4Quality" class="heat"></table></div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="recordsPanel">
+    <h2>기록 모음 · 보고서 <span class="sub" id="recSub"></span>
+      <span class="spacer"></span><button id="btnRecLoad">새로고침</button></h2>
+    <p class="hint">모든 실행의 학습 보고서·평가 보고서와, 전체 기록이 남은 경기의 보고서를 한곳에서 고르고 넘겨 봅니다. 줄을 누르면 아래에서 바로 열리고 ◀ ▶ 로 같은 조건의 다음 보고서로 넘어갑니다.</p>
+    <div id="recRunReports" class="hint"></div>
+    <div class="controls">
+      <div class="ctl"><label>실행</label><select id="recRun"><option value="">모든 실행</option></select></div>
+      <div class="ctl"><label>버전</label><select id="recVer"><option value="v4">v4만</option><option value="">전체</option><option value="v1">v1만</option></select></div>
+      <div class="ctl"><label>단계</label><select id="recStage"><option value="">전체</option></select></div>
+      <div class="ctl"><label>전차</label><select id="recTank"><option value="">전체</option></select></div>
+      <div class="ctl"><label>결과</label><select id="recRes"><option value="">전체</option><option value="1">성공</option><option value="0">실패</option></select></div>
+    </div>
+    <div class="tablewrap" style="max-height:300px;overflow:auto"><table id="recTable"></table></div>
+    <div id="recViewer" hidden style="margin-top:10px">
+      <div class="controls"><button id="recPrev">◀ 이전</button><span id="recTitle" class="sub"></span><button id="recNext">다음 ▶</button><span class="spacer"></span><a id="recOpen" target="_blank" class="sub">새 창에서 열기</a> <button id="recClose">닫기</button></div>
+      <iframe id="recFrame" style="width:100%;height:720px;border:1px solid var(--line);border-radius:6px;background:#fff"></iframe>
+    </div>
+  </section>
+
+  <section class="panel" id="v1FinalPanel">
     <h2>10단계 최종 시험 · 티거 1 대 연합군 6</h2>
     <p class="hint">선택한 실행의 저장 모델을 복사해 평가합니다. 셔먼 3대 + T-34 3대, 360m 맵, 200m 출발, 3분 제한. 7개체는 서로 다른 모델을 사용하며, 기존 모델이 없는 개체는 새 정책으로 초기화합니다.</p>
     <div class="controls"><div class="ctl"><label>평가 방식</label><select id="evalModes">
@@ -280,7 +305,8 @@ const $ = (id) => document.getElementById(id);
 const STAGE_LABEL = {drive: "주행", drive_terrain: "지형 주행", gunnery_static: "정지 표적 사격", gunnery_moving: "이동 표적 사격",
   gunnery_search: "수색·사격", duel_scripted: "1대1 vs 규칙 AI", duel_selfplay: "1대1 자기대전", team_scripted: "팀전 vs 규칙 AI", team_selfplay: "팀 자기대전", final_battle: "최종전 1 대 6",
   m1_move_basic: "v4 기동·기본 주행", m2_move_obstacles: "v4 기동·장애물 지대", m3_move_under_fire: "v4 기동·포화 속 이동", m4_ambush: "v4 기동·기습 대응", m5_crossing: "v4 기동·개활지 횡단",
-  g1_gunnery: "v4 사격·정지/은폐 표적", g2_gunnery_moving: "v4 사격·이동 표적", g4_return_fire: "v4 사격·반격 대결", g6_close_front: "v4 사격·근거리 정면"};
+  g1_gunnery: "v4 사격·정지/은폐 표적", g2_gunnery_moving: "v4 사격·이동 표적", g4_return_fire: "v4 사격·반격 대결", g6_close_front: "v4 사격·근거리 정면",
+  t1_pick_fights: "v4 전술·유리한 교전", t2_peek: "v4 전술·사격 후 재배치", t3_capture: "v4 전술·거점 확보", t4_defend: "v4 전술·거점 방어(전차별)", t5_flank: "v4 전술·측면(전차별)", t6_retreat: "v4 전술·열세 후퇴(전차별)"};
 const TANK_LABEL = {tiger1: "티거 I", sherman75: "셔먼 75mm", t34_76: "T-34/76"};
 const PHASE = {starting: "시작 중", collecting: "학습 중(수집)", updating: "학습 중(PPO 갱신)", paused: "일시정지", saving: "저장 중", stopped: "중지됨", evaluating: "평가 중(학습 없음)"};
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -512,8 +538,8 @@ function render() {
   const recent = {};
   for (let i = EPS.length - 1; i >= 0; i--) { const e = EPS[i]; if (ti >= 0 && e[col("tank")] !== ti) continue; const s = e[col("stage_idx")]; (recent[s] ||= []); if (recent[s].length < win) recent[s].push(e[col("success")]); }
   const curIdx = cs.stage_idx ?? -1;
-  $("stages").innerHTML = INFO.stages.map((s, i) => { const r = recent[i]; const rate = r ? r.reduce((a, b) => a + b, 0) / r.length : null;
-    return `<div class="stage ${i < curIdx ? "done" : i === curIdx ? "cur" : ""}" title="${s.id}"><div class="n">${i + 1}단계 · 기준 ${s.promote ? pct(s.promote.threshold) : "-"}</div><div class="t">${STAGE_LABEL[s.id]}</div><div class="r">${rate == null ? "&nbsp;" : `최근 ${pct(rate)} (${r.length}판)`}</div></div>`; }).join("");
+  $("stages").innerHTML = visibleStages().map(({s, i}) => { const r = recent[i]; const rate = r ? r.reduce((a, b) => a + b, 0) / r.length : null;
+    return `<div class="stage ${i < curIdx ? "done" : i === curIdx ? "cur" : ""}" data-stage="${s.id}"><div class="n">${s.v4 ? "v4 " + (i - V1_COUNT() + 1) : "v1 " + (i + 1)}단계 · 기준 ${s.promote ? pct(s.promote.threshold) : "-"}</div><div class="t">${(STAGE_LABEL[s.id] || s.id).replace("v4 ", "")}</div><div class="r">${rate == null ? "&nbsp;" : `최근 ${pct(rate)} (${r.length}판)`}</div></div>`; }).join("");
   $("curSub").textContent = st.review_prob != null ? `복습 확률 ${pct(st.review_prob)} · 승급은 최근 판 성공률이 기준을 넘고 최소 판 수를 채우면 자동` : "";
   $("terrainLessons").innerHTML = tc ? `<p class="hint">목표점 5m 안 · 속도 1m/s 이하 · 0.6초 정지 → 다음 목표. 20초 무진전 시 종료. ${tc.fixed ? "선택한 코스 고정 연습" : `각 코스 최근 ${tc.window}판 기준으로 승급하며, 시간 경과만으로 건너뛰지 않습니다.`}</p>` +
     `<div class="stages">${tc.courses.map((c, i) => `<div class="stage ${i === tc.index ? "cur" : ""}"><div class="n">시험공간 ${i + 1}</div><div class="t">${esc(c.label)}</div><div class="r">${pct(c.success_rate)} · ${c.episodes}판</div></div>`).join("")}</div>` +
@@ -541,6 +567,88 @@ function render() {
   if (evaluation && st.error) $("evalSummary").innerHTML = `<p class="bad">${esc(st.error)}</p>` + $("evalSummary").innerHTML;
   drawCharts();
 }
+// 단계 설명(툴팁): v4 는 서버의 커리큘럼 정의에서, v1 은 여기 고정 문구
+const V1_TIP = {drive: "빈 맵 웨이포인트 주행", drive_terrain: "장애물·숲·경사가 있는 시험 코스 주행", gunnery_static: "정지 표적 사격(포수 조준경 고정)",
+  gunnery_moving: "움직이는 표적 사격(포수 조준경 고정)", gunnery_search: "시점 자유: 둘러보고 찾아서 쏘기", duel_scripted: "1대1 vs 규칙 AI",
+  duel_selfplay: "1대1 vs 상대 전차의 학습된 정책", team_scripted: "티거 1 vs 연합군 3(규칙 AI)", team_selfplay: "티거 1 vs 셔먼 3 + T-34 2 자기대전", final_battle: "티거 1 vs 연합군 6 빠른 교전"};
+function stageInfo(id) { return (INFO?.stages || []).find(s => s.id === id) || {}; }
+function stageTip(id, variant) {
+  const s = stageInfo(id);
+  if (!s.v4) return `<b>${esc(STAGE_LABEL[id] || id)} (이전 버전 v1)</b>${esc(V1_TIP[id] || "")}`;
+  const notes = s.variant_notes || {};
+  const vs = variant ? [[variant, notes[variant]]] : Object.entries(notes);
+  return `<b>${esc((STAGE_LABEL[id] || id).replace("v4 ", ""))}</b>` +
+    `<div><span class="muted">학습</span> ${esc(s.learn)}</div><div><span class="muted">목표</span> ${esc(s.goal)}</div>` +
+    (s.promote ? `<div><span class="muted">승급</span> 변형마다(공통 모델은 변형 × 전차마다) 최근 ${s.promote.window}판 성공률 ${pct(s.promote.threshold)} 이상</div>` : "") +
+    (vs.length ? `<div class="muted" style="margin-top:4px">변형 — 같은 과제 안에서 이기는 선택이 다르다</div><ul>${vs.map(([k, v]) => `<li><b style="display:inline">${esc(k)}</b> ${esc(v || "")}</li>`).join("")}</ul>` : "");
+}
+function hookRichTips() {
+  document.addEventListener("mouseover", e => {
+    const el = e.target.closest?.("[data-tip],[data-stage]"); const tip = $("tip");
+    if (!el) { if (tip.classList.contains("rich")) { tip.style.display = "none"; tip.classList.remove("rich"); } return; }
+    tip.innerHTML = el.dataset.stage ? stageTip(el.dataset.stage, el.dataset.variant) : esc(el.dataset.tip);
+    tip.classList.add("rich"); tip.style.display = "block";
+  });
+  document.addEventListener("mousemove", e => {
+    const tip = $("tip"); if (!tip.classList.contains("rich")) return;
+    tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + "px";
+    tip.style.top = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8) + "px";
+  });
+}
+function showV1() { return $("showV1").checked; }
+function V1_COUNT() { return (INFO.stages || []).filter(s => !s.v4).length; }
+function visibleStages() { return (INFO.stages || []).map((s, i) => ({s, i})).filter(({s}) => s.v4 || showV1()); }
+function fillStageSelects() {
+  const opts = visibleStages().map(({s, i}) => `<option value="${s.id}" title="${esc((s.learn || V1_TIP[s.id] || "") + (s.goal ? " / 목표: " + s.goal : ""))}">${i + 1}. ${STAGE_LABEL[s.id]}</option>`).join("");
+  const cur = $("stageSel").value; $("stageSel").innerHTML = opts; if (cur) $("stageSel").value = cur;
+  $("startForm").start_stage.innerHTML = `<option value="">처음(1단계) / 저장된 단계</option>` + opts;
+  $("v1FinalPanel").hidden = !showV1();
+}
+
+// ---------------------------------------------------------------- 기록 모음
+let REC = null, recList = [], recIdx = -1;
+async function loadRecords() {
+  try { REC = await api("/api/records"); } catch (e) { $("recSub").textContent = "불러오기 실패: " + e.message; return; }
+  const runSel = $("recRun"), cur = runSel.value;
+  runSel.innerHTML = `<option value="">모든 실행</option>` + REC.runs.map(r => `<option value="${esc(r.run)}">${esc(r.run)}${r.v4 ? " · v4" : ""}</option>`).join("");
+  runSel.value = cur;
+  const stages = [...new Set(REC.records.map(r => r.stage))];
+  const st = $("recStage"), cs = st.value;
+  st.innerHTML = `<option value="">전체</option>` + stages.map(x => `<option value="${esc(x)}">${esc((STAGE_LABEL[x] || x).replace("v4 ", ""))}</option>`).join(""); st.value = cs;
+  if ($("recTank").options.length === 1) INFO.tanks.forEach(t => $("recTank").add(new Option(TANK_LABEL[t], t)));
+  renderRecords();
+}
+function renderRecords() {
+  if (!REC) return;
+  const run = $("recRun").value, ver = $("recVer").value, stg = $("recStage").value, tank = $("recTank").value, res = $("recRes").value;
+  const runInfo = REC.runs.filter(r => (!run || r.run === run) && (!ver || (ver === "v4") === r.v4) && r.reports.length);
+  $("recRunReports").innerHTML = runInfo.length ? "실행 보고서: " + runInfo.map(r => r.reports.map(f => `<a target="_blank" href="/files/${encodeURIComponent(r.run)}/${f}" data-rec-run="${esc(r.run)}" data-rec-file="${f}">${esc(r.run)} · ${f.startsWith("training") ? "학습 보고서" : "평가 보고서"}</a>`).join(" · ")).join(" · ") : "실행 보고서 없음 — 위 작업 패널의 \"학습 보고서 만들기\"로 만듭니다.";
+  recList = REC.records.filter(r => (!run || r.run === run) && (!ver || (ver === "v4") === r.v4) && (!stg || r.stage === stg) && (!tank || r.tank === tank) && (!res || String(+r.success) === res));
+  $("recSub").textContent = `경기 보고서 ${recList.length}개 / 전체 ${REC.records.length}개 · 실행 ${REC.runs.length}개`;
+  const reasonL = {objective_reached: "목표 도달", survived: "생존", enemies_destroyed: "적 전멸", target_hit: "명중", zone_held: "구역 점유", learner_knocked_out: "격파당함", time_limit: "시간 초과"};
+  $("recTable").innerHTML = `<tr><th>시각</th><th>실행</th><th>모델 · 스텝</th><th>전차</th><th>단계 · 변형</th><th>결과</th><th class="num">보상</th><th class="num">길이(초)</th></tr>` +
+    (recList.length ? recList.slice(0, 300).map((r, k) => `<tr data-k="${k}" class="${k === recIdx ? "sel" : ""}"><td>${r.t ? new Date(r.t * 1000).toLocaleString("ko-KR", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"}) : "-"}</td><td>${esc(r.run)}</td><td class="muted">${esc(r.policy.split("/").slice(1).join(" · "))}</td><td>${TANK_LABEL[r.tank] || esc(r.tank)}</td><td data-stage="${esc(r.stage)}" data-variant="${esc(r.variant)}">${esc((STAGE_LABEL[r.stage] || r.stage).replace("v4 ", ""))}${r.variant ? " · " + esc(r.variant) : ""}</td><td class="${r.success ? "ok" : "bad"}">${r.success ? "성공" : "실패"} <span class="muted">${esc(reasonL[r.reason] || r.reason)}</span></td><td class="num">${fmt(r.return, 2)}</td><td class="num">${fmt(r.dur, 1)}</td></tr>`).join("") +
+      (recList.length > 300 ? `<tr><td colspan="8" class="muted">최근 300개만 표시 — 조건을 좁히세요</td></tr>` : "")
+      : `<tr><td colspan="8" class="muted">조건에 맞는 보고서 없음</td></tr>`);
+}
+function openRecord(k) {
+  if (k < 0 || k >= recList.length) return;
+  recIdx = k; const r = recList[k], url = "/files/" + r.report.split("/").map(encodeURIComponent).join("/");
+  $("recViewer").hidden = false; $("recFrame").src = url; $("recOpen").href = url;
+  $("recTitle").textContent = `${k + 1}/${recList.length} · ${r.run} · ${TANK_LABEL[r.tank] || r.tank} · ${(STAGE_LABEL[r.stage] || r.stage).replace("v4 ", "")}${r.variant ? " · " + r.variant : ""} · ${r.success ? "성공" : "실패"}`;
+  $("recPrev").disabled = k <= 0; $("recNext").disabled = k >= recList.length - 1;
+  [...$("recTable").rows].forEach(tr => tr.classList.toggle("sel", +tr.dataset.k === k));
+}
+function wireRecords() {
+  ["recRun", "recVer", "recStage", "recTank", "recRes"].forEach(id => $(id).onchange = () => { recIdx = -1; renderRecords(); });
+  $("recTable").onclick = e => { const tr = e.target.closest("tr[data-k]"); if (tr) openRecord(+tr.dataset.k); };
+  $("recRunReports").onclick = e => { const a = e.target.closest("a[data-rec-file]"); if (!a || e.ctrlKey || e.metaKey) return; e.preventDefault(); recIdx = -1; $("recViewer").hidden = false; $("recFrame").src = a.href; $("recOpen").href = a.href; $("recTitle").textContent = a.textContent; $("recPrev").disabled = $("recNext").disabled = true; };
+  $("recPrev").onclick = () => openRecord(recIdx - 1);
+  $("recNext").onclick = () => openRecord(recIdx + 1);
+  $("recClose").onclick = () => { $("recViewer").hidden = true; $("recFrame").src = "about:blank"; };
+  $("btnRecLoad").onclick = loadRecords;
+}
+
 const MODEL_LABEL = {shared: "공통", tiger1: "티거", sherman75: "셔먼", t34_76: "T-34"};
 const MODEL_COLOR = {shared: "#3b82f6", tiger1: "#94a3b8", sherman75: "#22c55e", t34_76: "#ef4444"};
 function heat(rate, thr) {
@@ -559,12 +667,12 @@ function renderV4() {
     return `<div class="v4part"><div class="pt"><i style="background:${sts[0]?.color}"></i>${title}</div>` + sts.map(s => {
       const here = Object.entries(models).filter(([, m]) => m.stage === s.id);
       const badges = here.map(([m]) => `<span style="background:${MODEL_COLOR[m]}">${MODEL_LABEL[m] || m}</span>`).join("");
-      const cells = s.variants.map(vr => `<div class="lbl" style="color:${s.variant_colors[vr]}">${esc(vr)}</div>` + tanks.map(t => {
+      const cells = s.variants.map(vr => `<div class="lbl" style="color:${s.variant_colors[vr]}" data-stage="${s.id}" data-variant="${esc(vr)}">${esc(vr)}</div>` + tanks.map(t => {
         const r = v.recent[`${s.id}:${vr}@${t}`]; const rate = r ? r[0] / r[1] : null;
         return `<div style="${heat(rate, s.threshold)}" title="${esc(s.label)} · ${esc(vr)} · ${TANK_LABEL[t]}: ${r ? `${r[0]}/${r[1]}판` : "기록 없음"}">${rate == null ? "·" : Math.round(rate * 100)}</div>`;
       }).join("")).join("");
       const locked = scope === "tank" && shared && !shared.common_complete && !here.length;
-      return `<div class="v4stage ${here.length ? "cur" : ""}" style="border-left-color:${s.color}"><div class="sh"><span>${esc(s.label)}${locked ? ' <span class="muted">(공통 완료 후)</span>' : ""}</span><span class="badges">기준 ${pct(s.threshold)}${badges}</span></div>` +
+      return `<div class="v4stage ${here.length ? "cur" : ""}" style="border-left-color:${s.color}"><div class="sh"><span data-stage="${s.id}">${esc(s.label)}${locked ? ' <span class="muted">(공통 완료 후)</span>' : ""}</span><span class="badges">기준 ${pct(s.threshold)}${badges}</span></div>` +
         `<div class="v4cells" style="grid-template-columns: 90px repeat(${tanks.length}, 1fr)"><div class="lbl"></div>${tanks.map(t => `<div class="lbl" style="text-align:center">${MODEL_LABEL[t]}</div>`).join("")}${cells}</div></div>`;
     }).join("") + "</div>";
   }).join("");
@@ -574,8 +682,8 @@ function renderV4() {
   const cols = v.stages.flatMap(s => s.variants.map(vr => ({s, vr, key: `${s.id}:${vr}`})));
   const sf = x => x >= 1e6 ? (x / 1e6).toFixed(2) + "M" : (x / 1e3).toFixed(0) + "k";
   const events = S.curriculum_log || [];
-  let html = `<tr><th class="rh">모델 · 스텝</th>${v.stages.map(s => `<th colspan="${s.variants.length}" style="border-bottom:3px solid ${s.color}" title="${esc(s.label)}">${esc(STAGE_LABEL[s.id] || s.id).replace("v4 ", "")}</th>`).join("")}</tr>` +
-    `<tr><th class="rh"></th>${cols.map(c => `<th style="color:${c.s.variant_colors[c.vr]}" title="${esc(c.vr)}">${esc(c.vr).slice(0, 7)}</th>`).join("")}</tr>`;
+  let html = `<tr><th class="rh">모델 · 스텝</th>${v.stages.map(s => `<th colspan="${s.variants.length}" style="border-bottom:3px solid ${s.color}" data-stage="${s.id}">${esc(STAGE_LABEL[s.id] || s.id).replace("v4 ", "")}</th>`).join("")}</tr>` +
+    `<tr><th class="rh"></th>${cols.map(c => `<th style="color:${c.s.variant_colors[c.vr]}" data-stage="${c.s.id}" data-variant="${esc(c.vr)}">${esc(c.vr).slice(0, 7)}</th>`).join("")}</tr>`;
   const order = ["shared", ...tanks].filter(m => v.grid[m]);
   for (const m of order) {
     const buckets = Object.keys(v.grid[m]).map(Number).sort((a, b) => a - b);
@@ -801,9 +909,10 @@ async function init() {
   $("btnInstall").onclick = async () => { try { await api("/api/install", {}); pollDeps(false); } catch (e) { toast("실패: " + e.message, 5000); } };
   $("btnRecheck").onclick = () => { $("depsTitle").textContent = "확인 중…"; pollDeps(true); };
   pollDeps(false);
-  const stOpts = INFO.stages.map((s, i) => `<option value="${s.id}">${i + 1}. ${STAGE_LABEL[s.id]}</option>`).join("");
-  $("stageSel").innerHTML = stOpts;
-  $("startForm").start_stage.innerHTML = `<option value="">처음(1단계) / 저장된 단계</option>` + stOpts;
+  try { $("showV1").checked = localStorage.getItem("showV1") === "1"; } catch (e) {}
+  $("showV1").onchange = () => { try { localStorage.setItem("showV1", $("showV1").checked ? "1" : "0"); } catch (e) {} fillStageSelects(); if (S) render(); };
+  fillStageSelects(); hookRichTips(); wireRecords(); loadRecords();
+  setInterval(() => { if (!$("recViewer").hidden) return; loadRecords(); }, 60000);
   $("startForm").terrain_course.innerHTML = `<option value="">자동: 저장된 코스부터 순차 승급</option>` + (INFO.terrain_courses || []).map(c => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("");
   const tOpts = INFO.tanks.map(t => `<option value="${t}">${TANK_LABEL[t]}</option>`).join("");
   $("tankSel").innerHTML = `<option value="">전체</option>` + tOpts;
