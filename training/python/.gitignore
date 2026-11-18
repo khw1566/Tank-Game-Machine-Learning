@@ -3,3 +3,4 @@ runs/
 runs_before_persistent_*/
 __pycache__/
 *.pyc
+backup/
