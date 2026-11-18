@@ -1,3 +1,6 @@
 training/snapshots/** -text
 training/snapshots/**/*.exe filter=lfs diff=lfs merge=lfs -text
 training/snapshots/**/*.zip filter=lfs diff=lfs merge=lfs -text
+
+runnable/**/*.zip filter=lfs diff=lfs merge=lfs -text
+runnable/**/*.exe filter=lfs diff=lfs merge=lfs -text

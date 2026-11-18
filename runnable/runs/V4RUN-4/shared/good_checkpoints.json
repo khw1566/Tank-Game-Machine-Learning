@@ -1,0 +1,314 @@
+{
+ "good": [
+  {
+   "step": 700080,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_000700080.zip",
+   "success": 0.0,
+   "std_mean": 0.4997172951698303,
+   "approx_kl": 0.0057890708558261395,
+   "t": 1794957952.8
+  },
+  {
+   "step": 800040,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_000800040.zip",
+   "success": 0.0,
+   "std_mean": 0.4997999966144562,
+   "approx_kl": 0.006126307416707277,
+   "t": 1794957977.1
+  },
+  {
+   "step": 862680,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_000862680.zip",
+   "success": 0.0,
+   "std_mean": 0.5000199675559998,
+   "approx_kl": 0.005579689051955938,
+   "t": 1794957992.0
+  },
+  {
+   "step": 1600072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_001600072.zip",
+   "success": 0.0,
+   "std_mean": 0.493412584066391,
+   "approx_kl": 0.006893369369208813,
+   "t": 1794958278.9
+  },
+  {
+   "step": 1700072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_001700072.zip",
+   "success": 0.0139,
+   "std_mean": 0.4921199381351471,
+   "approx_kl": 0.006848101504147053,
+   "t": 1794958305.1
+  },
+  {
+   "step": 1800072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_001800072.zip",
+   "success": 0.0361,
+   "std_mean": 0.48937585949897766,
+   "approx_kl": 0.009783448651432991,
+   "t": 1794958331.9
+  },
+  {
+   "step": 1900072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_001900072.zip",
+   "success": 0.0639,
+   "std_mean": 0.4875759780406952,
+   "approx_kl": 0.008914900943636894,
+   "t": 1794958357.9
+  },
+  {
+   "step": 2000072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_002000072.zip",
+   "success": 0.0722,
+   "std_mean": 0.48564183712005615,
+   "approx_kl": 0.010464487597346306,
+   "t": 1794958383.3
+  },
+  {
+   "step": 2100072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_002100072.zip",
+   "success": 0.1167,
+   "std_mean": 0.4848465323448181,
+   "approx_kl": 0.008986704982817173,
+   "t": 1794958409.6
+  },
+  {
+   "step": 2200072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_002200072.zip",
+   "success": 0.1694,
+   "std_mean": 0.4832824468612671,
+   "approx_kl": 0.007014110684394836,
+   "t": 1794958436.7
+  },
+  {
+   "step": 2300072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_002300072.zip",
+   "success": 0.1778,
+   "std_mean": 0.4826107621192932,
+   "approx_kl": 0.008623179979622364,
+   "t": 1794958462.9
+  },
+  {
+   "step": 2400072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_002400072.zip",
+   "success": 0.2194,
+   "std_mean": 0.48262956738471985,
+   "approx_kl": 0.01039298065006733,
+   "t": 1794958489.7
+  },
+  {
+   "step": 2500072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_002500072.zip",
+   "success": 0.3111,
+   "std_mean": 0.48125848174095154,
+   "approx_kl": 0.007702394388616085,
+   "t": 1794958515.5
+  },
+  {
+   "step": 2529352,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_002529352.zip",
+   "success": 0.3167,
+   "std_mean": 0.48007845878601074,
+   "approx_kl": 0.008581253699958324,
+   "t": 1794958523.6
+  },
+  {
+   "step": 3100032,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_003100032.zip",
+   "success": 0.6167,
+   "std_mean": 0.4755389094352722,
+   "approx_kl": 0.007532933726906776,
+   "t": 1794959553.5
+  },
+  {
+   "step": 3200112,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_003200112.zip",
+   "success": 0.6583,
+   "std_mean": 0.47504326701164246,
+   "approx_kl": 0.005440559703856707,
+   "t": 1794959590.9
+  },
+  {
+   "step": 3300072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_003300072.zip",
+   "success": 0.675,
+   "std_mean": 0.4743155837059021,
+   "approx_kl": 0.006685431580990553,
+   "t": 1794959628.4
+  },
+  {
+   "step": 3400032,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_003400032.zip",
+   "success": 0.6889,
+   "std_mean": 0.47312578558921814,
+   "approx_kl": 0.006022667046636343,
+   "t": 1794959665.1
+  },
+  {
+   "step": 3500112,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_003500112.zip",
+   "success": 0.7333,
+   "std_mean": 0.47312578558921814,
+   "approx_kl": 0.006022667046636343,
+   "t": 1794959699.3
+  },
+  {
+   "step": 3600072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_003600072.zip",
+   "success": 0.7389,
+   "std_mean": 0.4725014269351959,
+   "approx_kl": 0.006493004038929939,
+   "t": 1794959737.5
+  },
+  {
+   "step": 3700032,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_003700032.zip",
+   "success": 0.7694,
+   "std_mean": 0.47064653038978577,
+   "approx_kl": 0.005530878901481628,
+   "t": 1794959775.2
+  },
+  {
+   "step": 3800112,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_003800112.zip",
+   "success": 0.7861,
+   "std_mean": 0.46925464272499084,
+   "approx_kl": 0.0059369588270783424,
+   "t": 1794959813.0
+  },
+  {
+   "step": 3900072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_003900072.zip",
+   "success": 0.8,
+   "std_mean": 0.46821022033691406,
+   "approx_kl": 0.006311370059847832,
+   "t": 1794959849.2
+  },
+  {
+   "step": 4000032,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_004000032.zip",
+   "success": 0.8528,
+   "std_mean": 0.46821022033691406,
+   "approx_kl": 0.006311370059847832,
+   "t": 1794959886.5
+  },
+  {
+   "step": 4100112,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_004100112.zip",
+   "success": 0.8583,
+   "std_mean": 0.46668505668640137,
+   "approx_kl": 0.007220557425171137,
+   "t": 1794959925.0
+  },
+  {
+   "step": 4200072,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_004200072.zip",
+   "success": 0.9,
+   "std_mean": 0.46602705121040344,
+   "approx_kl": 0.00708320178091526,
+   "t": 1794959963.1
+  },
+  {
+   "step": 4300032,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_004300032.zip",
+   "success": 0.9056,
+   "std_mean": 0.4646911025047302,
+   "approx_kl": 0.010219860821962357,
+   "t": 1794960001.1
+  },
+  {
+   "step": 4400112,
+   "stage": "m2_route",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_004400112.zip",
+   "success": null,
+   "std_mean": 0.46336686611175537,
+   "approx_kl": 0.00675374548882246,
+   "t": 1794960041.1
+  },
+  {
+   "step": 4500072,
+   "stage": "m2_route",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_004500072.zip",
+   "success": 0.75,
+   "std_mean": 0.4628128707408905,
+   "approx_kl": 0.005412249825894833,
+   "t": 1794960083.9
+  },
+  {
+   "step": 4600032,
+   "stage": "m2_route",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_004600032.zip",
+   "success": 0.4657,
+   "std_mean": 0.4628128707408905,
+   "approx_kl": 0.005412249825894833,
+   "t": 1794960126.7
+  }
+ ],
+ "best": {
+  "m1_drive": {
+   "step": 4300032,
+   "stage": "m1_drive",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\good\\best_m1_drive.zip",
+   "success": 0.9056,
+   "std_mean": 0.4646911025047302,
+   "approx_kl": 0.010219860821962357,
+   "t": 1794960001.1,
+   "source": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_004300032.zip"
+  },
+  "m2_route": {
+   "step": 4500072,
+   "stage": "m2_route",
+   "path": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\good\\best_m2_route.zip",
+   "success": 0.75,
+   "std_mean": 0.4628128707408905,
+   "approx_kl": 0.005412249825894833,
+   "t": 1794960083.9,
+   "source": "C:\\Users\\work\\Desktop\\Tank Game Machine Learning\\training\\python\\runs\\V4RUN-4\\shared\\step_004500072.zip"
+  }
+ },
+ "rollbacks": {
+  "m2_route": 1
+ },
+ "config": {
+  "kl_limit": 0.3,
+  "kl_patience": 3,
+  "ev_floor": 0.0,
+  "ev_patience": 6,
+  "std_cap": 1.0,
+  "std_ratio": 0.98,
+  "std_patience": 40,
+  "drop": 0.35,
+  "min_best": 0.4,
+  "success_patience": 12,
+  "good_after": 3,
+  "max_rollbacks": 3,
+  "keep_good": 30
+ }
+}
