@@ -29,16 +29,16 @@ ALLIED = ["sherman75", "t34_76"]
 # 단계별 보조 보상 배율(사다리를 오를수록 결과 보상만 남긴다)
 STAGES = [
     {"id": "v6_1v1", "label": "V6-1 · 1대1 엄폐 맵", "allies": 1, "rule": [0, 1], "distance": (120, 250),
-     "time_limit_s": 150, "shaping": 1.0, "envs_per_core": 2.5,
+     "time_limit_s": 150, "shaping": 1.0, "position": 1.0, "envs_per_core": 2.5,
      "promote": {"window": 60, "resolved": 0.6, "win": 0.4, "path_m": 30.0, "min_episodes": 60}},
     {"id": "v6_1v2", "label": "V6-2 · 1대2", "allies": 2, "rule": [1, 1], "distance": (180, 300),
-     "time_limit_s": 180, "shaping": 0.6, "envs_per_core": 1.6,
+     "time_limit_s": 180, "shaping": 0.6, "position": 0.8, "envs_per_core": 1.6,
      "promote": {"window": 60, "resolved": 0.6, "win": 0.35, "path_m": 0.0, "min_episodes": 60}},
     {"id": "v6_1v3", "label": "V6-3 · 1대3", "allies": 3, "rule": [1, 1], "distance": (220, 360),
-     "time_limit_s": 210, "shaping": 0.3, "envs_per_core": 1.2,
+     "time_limit_s": 210, "shaping": 0.3, "position": 0.5, "envs_per_core": 1.2,
      "promote": {"window": 60, "resolved": 0.55, "win": 0.35, "path_m": 0.0, "min_episodes": 60}},
     {"id": "v6_1v6", "label": "V6-4 · 1대6", "allies": 6, "rule": [2, 2], "distance": (260, 420),
-     "time_limit_s": 240, "shaping": 0.0, "envs_per_core": 0.85, "promote": None},
+     "time_limit_s": 240, "shaping": 0.0, "position": 0.3, "envs_per_core": 0.85, "promote": None},
 ]
 for _s in STAGES:
     _s.update({"part": "V6", "scope": "tank", "variants": MAP_IDS, "variants_desc": MAPS, "min_steps": 0,
@@ -155,6 +155,10 @@ def reward_config(stage: dict) -> dict:
               "combat": {"hit": 0.2 * k, "penetration": 0.0, "knockout": 0.0, "module_damaged": 0.0,
                          "module_destroyed": 0.0, "crew_wounded": 0.0, "crew_kia": 0.0,
                          "miss": -0.05 * k, "victim_scale": 0.0, "live_target_only": True}}
+    # 사격 위치 퍼텐셜: 적을 뚫을 수 있는 자리(근접·측면)로 갈수록 +, 적에게 뚫리는 자리일수록 −(변화량만)
+    q = float(stage.get("position", 0.0))
+    if q > 0:
+        reward["position"] = {"version": 1, "every": 5, "attack": 20.0 * q, "threat": 10.0 * q}
     reward.update(attack)
     reward["combat"].update(friendly_fire=-3.0, friendly_knockout=-60.0)
     return reward

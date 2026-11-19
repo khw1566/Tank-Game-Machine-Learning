@@ -93,6 +93,9 @@ var _ex_value := {}           # 전차별 마지막으로 정산한 전투력
 var _ex_attr := {}            # 전차별 마지막으로 사수 기여를 나눠 준 전투력
 var _ex_size := [0, 0]        # 경기 시작 때 팀별 전차 수
 var _ex_lost := [0.0, 0.0]    # 팀별 누적 전력 손실(0~1)
+# V6 사격 위치 퍼텐셜(config.reward.position): 지금 자리에서 적을 뚫을 확률 − 적이 나를 뚫을 확률. 변화량만 보상.
+var _pos_phi := {}
+static var _pen_cache := {}
 
 
 func _init(p_env, overrides := {}) -> void:
@@ -272,6 +275,9 @@ func decision() -> Dictionary:
 		_sc_last = me.global_position
 		var cover: Dictionary = w.get("cover", {})
 		var every := int(cover.get("every", 5))
+		var position: Dictionary = w.get("position", {})
+		if not position.is_empty() and env.decisions % int(position.get("every", 5)) == 0:
+			_position_step(position)
 		if env.decisions % every == 0:
 			if cover.is_empty():
 				_sc_exposure(me, dt * 5.0)
@@ -935,3 +941,51 @@ func exchange_summary() -> Dictionary:
 	if not _exchange_on():
 		return {}
 	return {"version": int(w.exchange.get("version", 1)), "team_size": _ex_size.duplicate(), "team_lost": [snappedf(_ex_lost[0], 0.001), snappedf(_ex_lost[1], 0.001)]}
+
+
+# ---------------------------------------------------------------- V6 사격 위치 퍼텐셜
+## config.reward.position = {every, attack, threat}
+##   Φ = attack × (내가 적 하나라도 뚫을 최대 확률) − threat × (적 누구라도 나를 뚫을 최대 확률)
+##   보상 = Φ(지금) − Φ(직전). 퍼텐셜 차이라 자리를 오가며 반복해 모을 수 없다(왕복하면 0).
+##   관통 확률은 실제 관통 판정(DamageModel)과 같은 규칙: 거리·방위(차체 정면 기준 각도)·주포.
+##   예: 셔먼이 티거 정면 300m(관통 ~10%)에서 측면 300m(~100%)로 돌면 attack × 0.9.
+##   정답 위치는 보상 계산에만 쓰고 관측에는 넣지 않는다.
+
+func _position_step(cfg: Dictionary) -> void:
+	for t in env.tanks:
+		if not t.damage.is_combat_effective():
+			continue
+		var attack := 0.0
+		var threat := 0.0
+		for e in env.tanks:
+			if e.team == t.team or not e.damage.is_combat_effective():
+				continue
+			attack = maxf(attack, pen_chance(t, e))
+			threat = maxf(threat, pen_chance(e, t))
+		var phi := float(cfg.get("attack", 20.0)) * attack - float(cfg.get("threat", 10.0)) * threat
+		if _pos_phi.has(t.name):
+			var d: float = phi - float(_pos_phi[t.name])
+			if absf(d) > 0.0001:
+				_add(t.name, d, "position")
+		_pos_phi[t.name] = phi
+
+
+## shooter 가 지금 자리에서 target 의 차체 상부를 쐈을 때 관통 확률(25m·5° 단위로 기억)
+static func pen_chance(shooter: Tank, target: Tank) -> float:
+	var rel := target.global_transform.basis.inverse() * (shooter.global_position - target.global_position)
+	var dist := Vector2(rel.x, rel.z).length()
+	var bearing := rad_to_deg(atan2(rel.x, -rel.z))
+	var gun: GunSpec = shooter.spec.gun
+	var key := "%s|%s|%d|%d" % [gun.id, target.spec.id, int(dist / 25.0), int(roundf(absf(bearing) / 5.0))]
+	if _pen_cache.has(key):
+		return _pen_cache[key]
+	var spec: TankSpec = target.spec
+	var aim := Vector3(0, spec.hull_bottom_y + (spec.hull_roof_y - spec.hull_bottom_y) * 0.75, 0)
+	var b := deg_to_rad(roundf(absf(bearing) / 5.0) * 5.0)
+	var origin := aim + Vector3(sin(b), 0.0, -cos(b)) * 60.0
+	var rng := RandomNumberGenerator.new()
+	var res := DamageModel.resolve_shot(TankDamageState.new(spec), 0.0, origin, (aim - origin).normalized(),
+		(int(dist / 25.0) + 0.5) * 25.0, gun, rng)
+	var p := float(res.pen_probability) if res.hit else 0.0
+	_pen_cache[key] = p
+	return p
