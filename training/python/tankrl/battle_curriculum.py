@@ -11,7 +11,7 @@ from . import curriculum, curriculum_v4, scenarios
 
 VERSION = 5
 BALANCE_VERSION = 2
-REWARD_VERSION = 2
+REWARD_VERSION = 3
 SHARED = curriculum_v4.SHARED
 TANKS = curriculum_v4.SHARED_TANKS
 STAGES = [
@@ -28,6 +28,15 @@ for _s in STAGES:
               goal="적 팀 전멸. 시간 초과는 무승부이며 승리 보상이 없다.",
               promote={"window": 40, "threshold": None, "min_episodes": 0, "max_episodes": None})
 STAGE_IDS = [s["id"] for s in STAGES]
+
+
+def attack_shaping_config() -> dict:
+    return {"attack_shaping_version": 1, "near_miss_radius_ratio": 0.03,
+            "near_miss_max_radius_m": 12.0, "near_miss_bonus": 0.15, "near_miss_budget": 3.0,
+            "aim_cone_deg": 30.0, "aim_alignment_bonus": 2.0, "aim_alignment_budget": 6.0,
+            "aim_overlap_per_s": 0.3, "aim_overlap_budget": 8.0,
+            "aimed_fire_bonus": 2.0, "aimed_fire_budget": 8.0,
+            "friendly_aim_fire_penalty": 4.0}
 
 
 def arena(stage_id: str, variant: str, tank: str, seed: int):
@@ -171,10 +180,12 @@ class BattleCurriculum:
                              "module_damaged": 1.5, "module_destroyed": 5.0,
                              "crew_wounded": 2.0, "crew_kia": 5.0,
                              "miss": -0.05, "victim_scale": 1.0, "live_target_only": True}}
+        reward.update(attack_shaping_config())
+        reward["combat"].update(friendly_fire=-3.0, friendly_knockout=-60.0)
         return st, lu, {"scenario": sc, "learner": actual, "model": self.tank, "selfplay": True,
                         "reward": reward, "kind": "combat", "time_limit_s": st["time_limit_s"],
                         "curriculum_version": VERSION, "stageset": "battle-2", "balance_version": BALANCE_VERSION,
-                        "learning_objective": {"id": st["id"], "label": st["label"], "version": 1}}
+                        "learning_objective": {"id": st["id"], "label": st["label"], "version": REWARD_VERSION}}
 
     def report_battle(self, sid, success, global_step, variant, learner, stats, episode):
         key = self.key(variant, learner)

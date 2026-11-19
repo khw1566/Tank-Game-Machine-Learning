@@ -15,6 +15,7 @@ extends Node3D
 const PROTOCOL := "tankgame-train"
 const PROTOCOL_VERSION := 1
 const FINAL_BATTLE_VERSION := 1   # 최종 1대6: 지정 지형(custom_ridges·mounds), 생울타리·돌담·건물 배치, 엄폐 보상
+const ATTACK_SHAPING_VERSION := 1
 const EPISODE_FORMAT := "tankgame-train-episode"
 ## 결정(행동 선택) 간격 = 관측 갱신 간격(3틱 = 0.1초, 10Hz)
 const REPEAT := TankAgent.PERCEIVE_EVERY
@@ -146,7 +147,8 @@ func _ready() -> void:
 		"scenario_version": ScenarioLayout.VERSION, "situation_obs_version": SituationObs.VERSION if situation else 0,
 		"driving_reward_version": 2,
 		"threat_obs_version": ThreatObs.VERSION if threat_inputs else 0, "projectile_version": TrainingProjectileField.VERSION,
-		"pace_version": 1, "perf_version": 1, "final_battle_version": FINAL_BATTLE_VERSION})
+		"pace_version": 1, "perf_version": 1, "final_battle_version": FINAL_BATTLE_VERSION,
+		"attack_shaping_version": ATTACK_SHAPING_VERSION})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 
 
@@ -789,7 +791,8 @@ func _on_shot(shooter: Tank, r: Dictionary) -> void:
 	if rewarder:
 		rewarder.on_shot(shooter, r)
 	var e := {"t": snappedf(float(tick) / Engine.physics_ticks_per_second, 0.01), "shooter": shooter.name,
-		"target": r.get("target_name", ""), "hit": r.get("hit", false), "shell": r.get("shell", "")}
+		"target": r.get("target_name", ""), "hit": r.get("hit", false), "shell": r.get("shell", ""),
+		"reward_events": r.get("reward_events", [])}
 	if r.get("hit", false):
 		e.merge({"zone": r.get("zone", ""), "penetrated": r.get("penetrated", false), "ricochet": r.get("ricochet", false),
 			"effective_mm": r.get("effective_mm", 0), "distance_m": snappedf(float(r.get("distance_m", r.get("distance", 0.0))), 0.1),

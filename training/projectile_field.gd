@@ -82,6 +82,7 @@ func step(dt: float) -> void:
 				continue
 			projectile.near = {"target_name": str(target.name), "target_team": target.team,
 				"miss_distance_m": miss, "point": TankSpec._v(closest),
+				"local_point": TankSpec._v(target.global_transform.affine_inverse() * closest), "sample_time_s": time,
 				"range_m": float(projectile.distance) + p.distance_to(closest),
 				"penetration_ratio": _near_penetration_ratio(target, p, center, projectile)}
 			near_passes[str(target.name)] = {"time": time, "position": closest}

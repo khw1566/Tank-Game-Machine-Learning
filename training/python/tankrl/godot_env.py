@@ -191,6 +191,8 @@ class GodotVecEnv(VecEnv):
         cfg = curriculum_v4.make_config(stage, extra, actual, lu, seed, uid, record, meta, self.reward_overrides)
         cfg["curriculum_version"] = self.curriculum.version
         cfg["learner_team"] = lu[0]["team"]
+        if int(cfg.get("reward", {}).get("attack_shaping_version", 0)) > int(self.procs[i].hello.get("attack_shaping_version", 0)):
+            raise RuntimeError("조준·지근탄·아군 사격 보상 v1을 지원하는 최신 게임 실행 파일이 필요합니다")
         if extra.get("map_seed") is not None:
             # 고정 맵(최종 1대6): 맵 시드를 고정해 Godot 이 매 판 지형을 다시 만들지 않게 한다
             cfg["map"]["seed"] = int(extra["map_seed"])

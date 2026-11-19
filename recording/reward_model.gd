@@ -17,6 +17,7 @@ const DEFAULT_WEIGHTS := {
 	"knockout": 5.0,            # 적 전차 전투불능
 	"miss": -0.05,              # 빗나감/차단(탄 소모)
 	"friendly_fire": -1.0,      # 아군 피격 시 위 점수에 곱하는 배율(음수 = 감점)
+	"friendly_knockout": 0.0,   # 아군 격파 시 추가 감점(음수). 기존 기록은 0으로 재현.
 	"victim_scale": 1.0,        # 피격 전차는 공격자가 얻은 피해 점수 × 이 값만큼 감점(0 이면 감점 없음)
 	"time_per_s": -0.002,       # 살아 있는 전차 1대당 초당 점수(교착 방지용 작은 감점)
 	"win": 10.0,                # 에피소드 승리 팀 전원
@@ -70,6 +71,8 @@ func shot_rewards(shooter: String, shooter_team: int, target: String, target_tea
 	var reason := "+".join(reasons)
 	if target_team == shooter_team:
 		out.append(_e(shooter, shooter_team, dmg * absf(weights.friendly_fire) * -1.0, "friendly_" + reason))
+		if "knockout" in reasons and float(weights.friendly_knockout) < 0:
+			out.append(_e(shooter, shooter_team, float(weights.friendly_knockout), "friendly_knockout"))
 	else:
 		out.append(_e(shooter, shooter_team, dmg, reason))
 	if weights.victim_scale != 0.0 and target != "":
@@ -103,6 +106,10 @@ static func short_reason(reason: String) -> String:
 		"win": "승리", "loss": "패배", "time": "시간"}
 	names.merge({"near_miss": "지근탄", "closing": "거리 단축", "close_150m": "150m 접근", "close_100m": "100m 접근",
 		"close_60m": "60m 접근", "close_30m": "30m 접근", "timeout": "교전 시간 초과", "wreck_hit": "잔해 사격"})
+	names.merge({"aim_alignment": "적 방향 조준", "aim_overlap": "조준점 일치", "aimed_fire": "유효 조준 사격",
+		"friendly_aim_fire": "아군 방향 발포", "friendly_knockout": "아군 격파 추가 감점"})
+	if names.has(reason):
+		return names[reason]
 	var prefix := ""
 	var body := reason
 	if body.begins_with("took_"):

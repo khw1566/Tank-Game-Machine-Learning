@@ -798,7 +798,8 @@ func _trace_shell(from: Vector3, vel: Vector3) -> Dictionary:
 			if not space.intersect_ray(visibility).is_empty():
 				continue
 			near = {"target_name": enemy.name, "target_team": enemy.team, "miss_distance_m": miss,
-				"range_m": from.distance_to(center), "point": TankSpec._v(point)}
+				"range_m": from.distance_to(center), "point": TankSpec._v(point),
+				"local_point": TankSpec._v(enemy.global_transform.affine_inverse() * point)}
 		if not best.is_empty():
 			if best.has("tank"):
 				best["distance"] = traveled + best_t

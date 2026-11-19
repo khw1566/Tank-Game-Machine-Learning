@@ -6,5 +6,5 @@ cd /d "%~dp0"
 set "FINAL_PY=%~dp0.venv\Scripts\python.exe"
 if not exist "%FINAL_PY%" set "FINAL_PY=python"
 set "PYTHONUTF8=1"
-"%FINAL_PY%" -u train.py --godot "..\..\build\TankGame_final.exe" --curriculum final --branch-from "V5run 1" --run FINAL-1 --rotate tiger1,sherman75,t34_76 --rotate-steps 2000000 --cycles 10 --n-envs 8 --device auto --save-every 100000 --record-every 100 %*
+"%FINAL_PY%" -u train.py --godot "..\..\build\TankGame_final_reports.exe" --curriculum final --branch-from "V5run 1" --run FINAL-1 --rotate tiger1,sherman75,t34_76 --rotate-steps 2000000 --cycles 10 --n-envs 8 --device auto --save-every 100000 --record-every 100 %*
 endlocal

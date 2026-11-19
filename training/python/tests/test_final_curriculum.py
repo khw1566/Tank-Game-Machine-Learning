@@ -40,6 +40,18 @@ class FinalCurriculumTest(unittest.TestCase):
         self.assertGreater(r["cover"]["overwatch_per_s"], 0)
         self.assertLess(abs(r["cover"]["exposure_budget"]) + r["cover"]["overwatch_budget"], r["win"] / 4)
 
+    def test_attack_rewards_favor_hits_and_bound_auxiliary_rewards(self):
+        r = fc.reward_config()
+        self.assertEqual(r["attack_shaping_version"], 1)
+        self.assertLess(r["near_miss_bonus"], r["combat"]["hit"])
+        self.assertEqual(r["combat"]["friendly_fire"], -3.0)
+        self.assertEqual(r["combat"]["friendly_knockout"], -60.0)
+        auxiliary = sum(r[k] for k in ("near_miss_budget", "near_pen_budget", "aim_alignment_budget",
+                                        "aim_overlap_budget", "aimed_fire_budget", "closing_budget"))
+        auxiliary += sum(r["close_bonuses"]) + r["cover"]["overwatch_budget"]
+        self.assertLess(auxiliary, r["win"] / 4)
+        self.assertLess(r["close_after_stall_s"], 30)
+
     def test_state_roundtrip(self):
         c = fc.FinalCurriculum("t34_76")
         c.initialize_from("V5run 1/shared/step_001609086", 1609086)

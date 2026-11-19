@@ -505,10 +505,16 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
         model.learn(total_timesteps=steps, callback=Cb(), reset_num_timesteps=False, progress_bar=False)
     finally:
         try:
-            save(snapshot=True)
-        finally:
+            # Final saving no longer needs live simulators. Release their memory
+            # before ZIP validation, hashing and serialization under memory pressure.
             env.close()
-            ctl.env = ctl.model = ctl.curriculum = None
+        finally:
+            ctl.env = None
+            try:
+                __import__('gc').collect()
+                save(snapshot=True)
+            finally:
+                ctl.model = ctl.curriculum = None
     return bool(getattr(cur, "common_complete", False)) and tank == curriculum_v4.SHARED
 
 

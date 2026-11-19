@@ -20,7 +20,7 @@ import random
 from . import battle_curriculum, curriculum, curriculum_v4, scenarios
 
 VERSION = 6
-REWARD_VERSION = 1
+REWARD_VERSION = 2
 MAP_VERSION = 1
 TANKS = ["tiger1", "sherman75", "t34_76"]
 ALLIED_LINEUP = ["sherman75"] * 3 + ["t34_76"] * 3
@@ -239,14 +239,14 @@ def arena(map_id: str, tank: str, seed: int):
 
 
 def reward_config() -> dict:
-    return {"battle_shaping": True, "progressive_combat_v2": True, "reward_version": battle_curriculum.REWARD_VERSION,
+    reward = {"battle_shaping": True, "progressive_combat_v2": True, "reward_version": battle_curriculum.REWARD_VERSION,
             "final_reward_version": REWARD_VERSION,
             "time_per_s": -0.02, "win": 200.0, "loss": -80.0, "timeout_penalty": -35.0, "spot": 0.0,
             "shaping_scale": 0.0, "survive_win": 30.0,
             "near_miss_radius_m": 4.0, "near_miss_bonus": 2.0, "near_miss_budget": 3.0,
             "near_pen_bonus": 2.0, "near_pen_budget": 4.0,
             # 1대6 에서는 무작정 돌격보다 엄폐가 중요: 접근 보조 보상을 V5 의 절반으로
-            "close_after_failures": 3, "close_after_stall_s": 30.0,
+            "close_after_failures": 2, "close_after_stall_s": 15.0,
             "closing_per_m": 0.03, "closing_budget": 3.5,
             "close_distances": [150, 100, 60, 30], "close_bonuses": [0.25, 0.5, 0.75, 1.0],
             "cover": {"version": 1, "every": 5, "seen_hull_per_s": -0.1, "max_observers": 3,
@@ -255,6 +255,9 @@ def reward_config() -> dict:
                        "module_damaged": 1.5, "module_destroyed": 5.0,
                        "crew_wounded": 2.0, "crew_kia": 5.0,
                        "miss": -0.05, "victim_scale": 1.0, "live_target_only": True}}
+    reward.update(battle_curriculum.attack_shaping_config())
+    reward["combat"].update(friendly_fire=-3.0, friendly_knockout=-60.0)
+    return reward
 
 
 class FinalCurriculum:
@@ -334,7 +337,7 @@ class FinalCurriculum:
                         "reward": reward_config(), "kind": "combat", "time_limit_s": st["time_limit_s"],
                         "curriculum_version": VERSION, "stageset": "final-1v6", "map_seed": mc["seed"],
                         "balance_version": battle_curriculum.BALANCE_VERSION, "final_battle_version": 1,
-                        "learning_objective": {"id": st["id"], "label": st["label"], "version": 1}}
+                        "learning_objective": {"id": st["id"], "label": st["label"], "version": REWARD_VERSION}}
 
     def report_battle(self, sid, success, global_step, variant, learner, stats, episode):
         key = self.key(variant, learner)

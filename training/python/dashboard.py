@@ -51,7 +51,7 @@ TANKS = ["tiger1", "sherman75", "t34_76"]
 MODELS = TANKS + [curriculum_v4.SHARED]   # 저장 모델 폴더: 전차별 + v4 공통 모델
 # 브라우저로 보내는 에피소드 열(짧게): progress.csv 의 열 이름
 EP_COLS = ["wall_time", "global_step", "env", "tank", "stage_idx", "current_stage", "success", "return",
-           "decisions", "hits", "pens", "kills", "shots", "spawn_distance_m", "rec", "objective"]
+           "decisions", "hits", "pens", "kills", "shots", "spawn_distance_m", "rec", "objective", "model"]
 RECENT_COLS = ["wall_time", "global_step", "env", "uid", "tank", "stage", "success", "reason", "winner", "return",
                "decisions", "duration_s", "spawn_distance_m", "hits", "pens", "kills", "shots", "learner_policy",
                "opponents", "episode_file", "replay_dir"]
@@ -80,6 +80,13 @@ def default_godot() -> str:
         if p.exists():
             return str(p)
     return ""
+
+
+def default_combat_godot(final: bool = False) -> str:
+    names = ["TankGame_final_reports.exe", "TankGame_final_attack.exe"]
+    names += ["TankGame_final_scores.exe", "TankGame_final.exe"] if final else ["TankGame_battle.exe"]
+    build = HERE.parents[1] / "build"
+    return str(next((build / name for name in names if (build / name).exists()), build / names[-1]))
 
 
 def num(v: str):
@@ -169,6 +176,9 @@ class RunWatch:
                 out.append(1 if r.get("replay_dir") else 0)
             elif c == 'objective':
                 out.append(r.get(c, ''))
+            elif c == 'model':
+                policy = r.get('learner_policy', '').rsplit('/step_', 1)[0]
+                out.append(policy.rsplit('/', 1)[-1] if policy else r.get('tank', ''))
             else:
                 out.append(num(r.get(c, "")))
         return out
@@ -222,6 +232,10 @@ class RunWatch:
         out["v4"] = self.v4_summary(rows)
         out["tanks"] = self.tank_info()
         out["run_json"] = self.run_summary()
+        version = read_json(self.run_dir / "run.json").get("curriculum_version", 1)
+        out["stage_ids"] = {1: V1_STAGE_IDS, curriculum_v4.VERSION: curriculum_v4.STAGE_IDS,
+                            battle_curriculum.VERSION: battle_curriculum.STAGE_IDS,
+                            final_curriculum.VERSION: final_curriculum.STAGE_IDS}.get(version, V1_STAGE_IDS)
         log = self.run_dir / "train_log.txt"
         out["log_tail"] = tail_text(log, 6000) if log.exists() else ""
         return out
@@ -423,7 +437,7 @@ class Dashboard:
             progress = d / "progress.csv"
             v4 = read_json(d / "run.json").get("curriculum_version") in (curriculum_v4.VERSION, battle_curriculum.VERSION,
                                                                          final_curriculum.VERSION)
-            files = [f for f in ("training_report.html", "evaluation_report.html") if (d / f).exists()]
+            files = [f for f in ("training_report.html", "evaluation_report.html", "analysis/shot_distribution/report.html") if (d / f).exists()]
             if not progress.exists() and not files:
                 continue
             runs.append({"run": d.name, "v4": v4, "reports": files,
@@ -506,8 +520,8 @@ class Dashboard:
                 "tanks": TANKS, "cpu_count": os.cpu_count() or 1, "settings": self.settings,
                 "runs_dir": str(self.runs_dir), "platform": sys.platform, "deps": self.deps_info(),
                 "recommended": self.recommended(),
-                "battle_godot": str(HERE.parents[1] / "build" / "TankGame_battle.exe"),
-                "final_godot": str(HERE.parents[1] / "build" / "TankGame_final.exe"),
+                "battle_godot": default_combat_godot(),
+                "final_godot": default_combat_godot(final=True),
                 "terrain_courses": COURSES}
 
     # ------------------------------------------------------------ 학습용 Python·패키지
@@ -618,13 +632,10 @@ class Dashboard:
                     "--cycles", str(int(a.get("cycles", 3)))]
         else:
             cmd += ["--tank", a.get("tank", "tiger1"), "--timesteps", str(int(a.get("timesteps", 1000000)))]
-        if a.get("curriculum") and a.get("tank") != curriculum_v4.SHARED and not a.get("rotate"):
+        if a.get("curriculum") and a.get("tank") != curriculum_v4.SHARED:
             cmd += ["--curriculum", a["curriculum"]]
-        if a.get("curriculum") == "final" and a.get("rotate"):
-            # 최종 1대6: 전차별 모델 교대 학습. 첫 실행은 V5 공통 모델(branch_from)에서 각 전차 모델을 만든다
-            cmd += ["--curriculum", "final"]
-            if a.get("branch_from"):
-                cmd += ["--branch-from", str(a["branch_from"])]
+        if a.get("branch_from"):
+            cmd += ["--branch-from", str(a["branch_from"])]
         if a.get("init_model") and not a.get("resume"):
             cmd += ["--init-model", a["init_model"]]
         if a.get("start_stage"):
@@ -701,9 +712,20 @@ class Dashboard:
 
     def control(self, run: str, msg: dict) -> dict:
         d = self.run_dir(run)
+        if msg.get("cmd") == "set_stage":
+            allowed = self.stage_ids(run)
+            if msg.get("stage") not in allowed:
+                raise ValueError("현재 커리큘럼에 없는 단계입니다. 최종 1대6은 '새 학습 / 이어서'에서 "
+                                 "최종 학습을 선택하고 V5 실행을 시작 모델로 지정하세요.")
         with open(d / "control.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(msg | {"t": round(time.time(), 2)}, ensure_ascii=False) + "\n")
         return {"ok": True}
+
+    def stage_ids(self, run: str) -> list[str]:
+        version = read_json(self.run_dir(run) / "run.json").get("curriculum_version", 1)
+        return {1: V1_STAGE_IDS, curriculum_v4.VERSION: curriculum_v4.STAGE_IDS,
+                battle_curriculum.VERSION: battle_curriculum.STAGE_IDS,
+                final_curriculum.VERSION: final_curriculum.STAGE_IDS}.get(version, V1_STAGE_IDS)
 
     def restart_args(self, run: str, overrides: dict) -> dict:
         """Preserve device and PPO settings across environment-count changes."""
@@ -712,12 +734,21 @@ class Dashboard:
         if not rj.get("sessions"):
             raise ValueError("run.json 이 없어 이전 설정을 알 수 없습니다")
         args = dict(rj["sessions"][-1]["args"])
+        # Older dashboard restarts omitted these arguments. Recover the source
+        # from the original session so later tank rotations can still initialize.
+        for session in reversed(rj["sessions"]):
+            if not args.get("branch_from") and session.get("args", {}).get("branch_from"):
+                args["branch_from"] = session["args"]["branch_from"]
         a = {"run": run, "godot": args.get("godot"), "project": args.get("project") or "",
              "n_envs": args.get("n_envs"), "record_every": args.get("record_every"),
              "save_every": args.get("save_every"), "review_prob": args.get("review_prob"),
              "speed_cap": args.get("speed_cap", 0), "seed": args.get("seed"),
              "torch_threads": args.get("torch_threads", 0), "resume": True,
              "device": args.get("device", "auto")}
+        version = rj.get("curriculum_version", 1)
+        a["curriculum"] = {1: "v1", curriculum_v4.VERSION: "v4", battle_curriculum.VERSION: "battle",
+                           final_curriculum.VERSION: "final"}.get(version, args.get("curriculum", "v1"))
+        a["branch_from"] = args.get("branch_from", "")
         for key in ("n_steps", "batch_size", "n_epochs", "lr", "ent_coef", "sde_freq", "pool_dir", "terrain_course"):
             if args.get(key) is not None:
                 a[key] = args[key]

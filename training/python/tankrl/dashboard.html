@@ -384,7 +384,7 @@ function hookTip(cv) {
 
 const CHARTS = [
   {id: "agent_return", title: "개체별 독립 학습 보상", note: "서로 다른 모델 · 각 개체의 누적 스텝"},
-  {id: "succ", title: "성공률 (세부 목표별, 이동평균)", note: "점선 = 현재 단계 승급 기준"},
+  {id: "succ", title: "성공률 (세부 목표별, 이동평균)", note: "점선 = 승급 기준 · 체크포인트 복귀 구간은 별도 곡선"},
   {id: "ret", title: "에피소드 보상 합 (이동평균)", note: "목표별로 별도 집계 · 색상은 보고서와 동일"},
   {id: "acc", title: "명중률 · 관통률 (사격·전투 단계)", note: "목표별 색상 · 실선 명중 / 점선 관통"},
   {id: "len", title: "에피소드 길이 (결정 수, 이동평균)", note: "1 결정 = 게임 0.1초"},
@@ -438,8 +438,24 @@ function groupOf(e) {
 }
 function objectiveSeries(list, metric, win, predicate = () => true) {
   const groups = new Map();
-  list.forEach(([e]) => { if (!predicate(e)) return; const g = groupOf(e); if (!groups.has(g.key)) groups.set(g.key, g); });
-  return [...groups.values()].map(g => ({name: g.name, color: g.color, dash: g.dash, pts: rolling(list, metric, win, e => groupOf(e).key === g.key && predicate(e))}));
+  // A restored checkpoint can move policy steps backwards. Never connect those
+  // runs across the reset or carry the old moving-average window into the new run.
+  const previous = new Map(), segments = new Map();
+  list.forEach(([e, i]) => {
+    const model = e[col("model")] || e[col("current_stage")] + "|" + e[col("tank")];
+    const step = e[col("global_step")], last = previous.get(model);
+    if (last != null && step < last) segments.set(model, (segments.get(model) || 0) + 1);
+    previous.set(model, step);
+    if (!predicate(e)) return;
+    const g = groupOf(e), segment = segments.get(model) || 0;
+    const key = g.key + "|model:" + model + "|segment:" + segment;
+    const tank = e[col("model")];
+    const suffix = tank && tank !== "shared" && $("grpSel").value !== "tank" ? " · " + (TANK_LABEL[tank] || tank) : "";
+    if (!groups.has(key)) groups.set(key, {...g, name: g.name + suffix, segment, rows: []});
+    groups.get(key).rows.push([e, i]);
+  });
+  return [...groups.values()].map(g => ({name: g.name + (g.segment ? ` · 재개 ${g.segment + 1}` : ""), color: g.color,
+    dash: g.segment ? [5, 3] : g.dash, pts: rolling(g.rows, metric, win)}));
 }
 function changeLines() {
   const xm = $("xSel").value, t = $("tankSel").value;
@@ -514,6 +530,8 @@ function kpi(k, v, s = "", bar = null) {
 }
 function render() {
   const st = S.status || {}, cs = st.curriculum || {}, alive = S.alive;
+  const stageKey = (S.stage_ids || []).join(",");
+  if ($("stageSel").dataset.stages !== stageKey) { fillStageSelects(); $("stageSel").dataset.stages = stageKey; }
   const ph = alive ? (st.phase || "starting") : (st.phase && st.phase !== "stopped" ? "끊김" : "stopped");
   const b = $("badge"); b.className = "badge " + (ph === "paused" ? "pause" : ph === "updating" ? "upd" : alive ? "run" : "");
   $("badgeText").textContent = alive ? (PHASE[ph] || ph) : (ph === "끊김" ? "응답 없음(꺼짐?)" : "중지됨");
@@ -612,7 +630,10 @@ function V1_COUNT() { return (INFO.stages || []).filter(s => !s.v4).length; }
 function visibleStages() { return (INFO.stages || []).map((s, i) => ({s, i})).filter(({s}) => S?.status?.curriculum?.battle ? s.battle || showV1() && !s.v4 : s.v4 || showV1()); }
 function fillStageSelects() {
   const opts = visibleStages().map(({s, i}) => `<option value="${s.id}" title="${esc((s.learn || V1_TIP[s.id] || "") + (s.goal ? " / 목표: " + s.goal : ""))}">${i + 1}. ${STAGE_LABEL[s.id]}</option>`).join("");
-  const cur = $("stageSel").value; $("stageSel").innerHTML = opts; if (cur) $("stageSel").value = cur;
+  const cur = $("stageSel").value;
+  $("stageSel").innerHTML = (INFO.stages || []).filter(s => (S?.stage_ids || []).includes(s.id))
+    .map(s => `<option value="${s.id}">${esc(STAGE_LABEL[s.id] || s.label || s.id)}</option>`).join("");
+  if (cur) $("stageSel").value = cur;
   $("startForm").start_stage.innerHTML = `<option value="">처음(1단계) / 저장된 단계</option>` + opts;
   $("v1FinalPanel").hidden = !showV1();
 }
@@ -634,7 +655,7 @@ function renderRecords() {
   if (!REC) return;
   const run = $("recRun").value, ver = $("recVer").value, stg = $("recStage").value, tank = $("recTank").value, res = $("recRes").value;
   const runInfo = REC.runs.filter(r => (!run || r.run === run) && (!ver || (ver === "v4") === r.v4) && r.reports.length);
-  $("recRunReports").innerHTML = runInfo.length ? "실행 보고서: " + runInfo.map(r => r.reports.map(f => `<a target="_blank" href="/files/${encodeURIComponent(r.run)}/${f}" data-rec-run="${esc(r.run)}" data-rec-file="${f}">${esc(r.run)} · ${f.startsWith("training") ? "학습 보고서" : "평가 보고서"}</a>`).join(" · ")).join(" · ") : "실행 보고서 없음 — 위 작업 패널의 \"학습 보고서 만들기\"로 만듭니다.";
+  $("recRunReports").innerHTML = runInfo.length ? "실행 보고서: " + runInfo.map(r => r.reports.map(f => `<a target="_blank" href="/files/${encodeURIComponent(r.run)}/${f}" data-rec-run="${esc(r.run)}" data-rec-file="${f}">${esc(r.run)} · ${f.startsWith("training") ? "학습 보고서" : f.startsWith("analysis/") ? "명중·지근탄 통합 분석" : "평가 보고서"}</a>`).join(" · ")).join(" · ") : "실행 보고서 없음 — 위 작업 패널의 \"학습 보고서 만들기\"로 만듭니다.";
   recList = REC.records.filter(r => (!run || r.run === run) && (!ver || (ver === "v4") === r.v4) && (!stg || r.stage === stg) && (!tank || r.tank === tank) && (!res || String(+r.success) === res));
   $("recSub").textContent = `경기 보고서 ${recList.length}개 / 전체 ${REC.records.length}개 · 실행 ${REC.runs.length}개`;
   const reasonL = {objective_reached: "목표 도달", survived: "생존", enemies_destroyed: "적 전멸", target_hit: "명중", zone_held: "구역 점유", learner_knocked_out: "격파당함", time_limit: "시간 초과"};
@@ -871,6 +892,12 @@ function wire() {
     document.querySelectorAll("[data-m-label]").forEach(el => el.style.display = el.dataset.mLabel.split(" ").includes(f.mode.value) ? "" : "none");
     const v4 = ["shared", "battle"].includes(f.mode.value) || (f.mode.value === "single" && f.curriculum.value !== "v1");
     f.terrain_course.closest(".ctl").style.display = v4 ? "none" : "";
+    const curriculum = f.mode.value === "final" ? "final" : f.mode.value === "battle" ? "battle" : f.mode.value === "shared" ? "v4" : f.curriculum.value;
+    const selected = f.start_stage.value;
+    f.start_stage.innerHTML = '<option value="">처음 / 저장된 단계</option>' + (INFO.stages || []).filter(s =>
+      curriculum === "final" ? s.final : curriculum === "battle" ? s.battle && !s.final : curriculum === "v4" ? s.v4 && !s.battle : !s.v4)
+      .map(s => `<option value="${s.id}">${esc(STAGE_LABEL[s.id] || s.label || s.id)}</option>`).join("");
+    if ([...f.start_stage.options].some(o => o.value === selected)) f.start_stage.value = selected;
   };
   f.curriculum.onchange = f.mode.onchange;
   f.run.oninput = () => { f.resume.checked = [...$("runList").options].some(o => o.value === f.run.value); f.init_model.disabled = f.resume.checked; };

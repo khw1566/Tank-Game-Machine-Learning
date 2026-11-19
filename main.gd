@@ -386,7 +386,7 @@ func _update_overlay() -> void:
 	var hist := recorder.score_history.duplicate()
 	hist.append([now, recorder.team_scores[0], recorder.team_scores[1]])
 	score_graph.set_history(hist)
-	score_label.text = "점수  독일 %.2f   연합군 %.2f" % [recorder.team_scores[0], recorder.team_scores[1]]
+	score_label.text = ReportBuilder.team_score_text(tanks, recorder.team_scores)
 	var lines := []
 	for e in recorder.recent_rewards:
 		lines.append("%s %+.2f %s %s" % [ReportBuilder._mmss(e.t), e.value, e.tank_name, RewardModel.short_reason(e.reason)])
