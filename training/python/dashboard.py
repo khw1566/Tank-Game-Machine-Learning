@@ -91,6 +91,11 @@ def default_combat_godot(final: bool = False) -> str:
     return str(next((build / name for name in names if (build / name).exists()), build / names[-1]))
 
 
+def default_v6_godot() -> str:
+    """V6 게임(비례 보상·적 슬롯 6·balance v3). 없으면 기대 경로를 돌려준다(시작할 때 '없음' 안내)."""
+    return str(HERE.parents[1] / "build" / "TankGame_v6.exe")
+
+
 def num(v: str):
     try:
         f = float(v)
@@ -499,8 +504,8 @@ class Dashboard:
                 info = read_json(d / curriculum_v4.SHARED / "checkpoint.json")
                 best = (key, {"path": str(model), "run": d.name, "stage": c.get("stage", ""),
                               "version": f"{d.name}/step_{int(info.get('num_timesteps', 0)):09d}"})
-        return {"mode": "final", "run_prefix": "FINAL", "timesteps": 80_000_000, "final_source": self.final_source(),
-                "rotate_steps": 3_000_000, "cycles": 3, "n_envs": max(1, min(8, (os.cpu_count() or 4) - 2)),
+        return {"mode": "v6", "run_prefix": "V6", "timesteps": 80_000_000, "final_source": self.final_source(),
+                "rotate_steps": 2_000_000, "cycles": 10, "n_envs": max(1, min(10, (os.cpu_count() or 4) - 2)),
                 "record_every": 100, "save_every": 100_000, "init_model": None}
 
     def final_source(self) -> str:
@@ -521,8 +526,9 @@ class Dashboard:
     def info(self) -> dict:
         return {"stages": [{"id": s["id"], "kind": s["kind"], "promote": s.get("promote"),
                             "time_limit_s": s["time_limit_s"], "v4": s["id"] not in V1_STAGE_IDS,
-                            "battle": s["id"] in battle_curriculum.STAGE_IDS + final_curriculum.STAGE_IDS,
-                            "final": s["id"] in final_curriculum.STAGE_IDS, "min_steps": s.get("min_steps", 0),
+                            "battle": s["id"] in battle_curriculum.STAGE_IDS + final_curriculum.STAGE_IDS + v6_curriculum.STAGE_IDS,
+                            "final": s["id"] in final_curriculum.STAGE_IDS, "v6": s["id"] in v6_curriculum.STAGE_IDS,
+                            "min_steps": s.get("min_steps", 0),
                             "label": s.get("label", ""), "learn": s.get("learn", ""), "goal": s.get("goal", ""),
                             "lesson": s.get("lesson", ""),
                             "variant_notes": s.get("variants_desc", {}), "variants": s.get("variants", [])} for s in STAGES],
@@ -531,6 +537,7 @@ class Dashboard:
                 "recommended": self.recommended(),
                 "battle_godot": default_combat_godot(),
                 "final_godot": default_combat_godot(final=True),
+                "v6_godot": default_v6_godot(),
                 "terrain_courses": COURSES}
 
     # ------------------------------------------------------------ 학습용 Python·패키지
