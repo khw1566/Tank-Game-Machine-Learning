@@ -105,6 +105,48 @@ table.heat th, table.heat td { padding: 1px 3px; text-align: center; border: 1px
 table.heat th.rh { text-align: left; white-space: nowrap; position: sticky; left: 0; background: var(--panel, #fff); z-index: 1; }
 table.heat tr.chg th.rh, table.heat tr.chg td { border-top: 2px solid var(--muted); }
 table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
+/* 명령 확인 · 시작 진행 */
+.cmdlog { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 12.5px; }
+.cmdlog:empty { display: none; }
+.cmd { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.cmd .st { font-weight: 600; white-space: nowrap; }
+.cmd.sent .st { color: var(--muted); } .cmd.received .st { color: var(--warn); } .cmd.applied .st { color: var(--ok); } .cmd.error .st, .cmd.stale .st { color: var(--bad); }
+.pendingval { outline: 2px dashed var(--warn); outline-offset: 1px; }
+button.busy { position: relative; color: transparent !important; }
+button.busy::after { content: ""; position: absolute; inset: 0; margin: auto; width: 12px; height: 12px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.lsteps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 4px; font-size: 12.5px; }
+.lsteps li { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--soft); color: var(--muted); }
+.lsteps li.done { color: var(--ok); background: transparent; } .lsteps li.done::before { content: "✓ "; }
+.lsteps li.cur { color: var(--ink); border-color: var(--accent); background: transparent; font-weight: 600; } .lsteps li.cur::before { content: "◌ "; display: inline-block; animation: spin 1.2s linear infinite; }
+.lsteps li.fail { color: var(--bad); border-color: var(--bad); } .lsteps li.fail::before { content: "✕ "; }
+#badgeSub { font-size: 12px; color: var(--muted); max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 커리큘럼 버전 이력 */
+.flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.flow .fam { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--soft); font-size: 12.5px; }
+.flow .fam b { font-weight: 650; margin-right: 2px; }
+.flow .arrow { color: var(--muted); }
+.vchip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 1px 8px; font-size: 12px; cursor: pointer; }
+.vchip.cur { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
+.pill { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 999px; color: #fff; line-height: 18px; white-space: nowrap; }
+details.ver { border: 1px solid var(--line); border-left: 4px solid var(--vc, var(--line)); border-radius: 8px; margin: 6px 0; }
+details.ver.cur { box-shadow: 0 0 0 1px var(--accent); }
+details.ver > summary { cursor: pointer; list-style: none; padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+details.ver > summary::-webkit-details-marker { display: none; }
+details.ver > summary::before { content: "▸"; color: var(--muted); }
+details.ver[open] > summary::before { content: "▾"; }
+details.ver .vn { font-weight: 650; }
+details.ver .vf { color: var(--muted); font-size: 12.5px; flex-basis: 100%; padding-left: 14px; }
+.verbody { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 10px 18px; padding: 0 12px 10px 24px; font-size: 13px; }
+.verbody h4 { margin: 4px 0; font-size: 12px; color: var(--muted); font-weight: 500; }
+.verbody ul { margin: 0; padding-left: 18px; }
+.schips { display: flex; flex-wrap: wrap; gap: 4px; }
+.schips span { border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; font-size: 12px; background: var(--soft); }
+.schips span.tank { border-style: dashed; }
+.schips span.curstage { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.why { border-left: 3px solid var(--warn); padding: 2px 8px; color: var(--ink); }
+.runlinks { display: flex; flex-wrap: wrap; gap: 4px; }
+.runlinks button { font-size: 12px; padding: 1px 8px; }
 </style>
 </head>
 <body>
@@ -112,6 +154,7 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
   <h1>학습 대시보드</h1>
   <select id="runSel" aria-label="실행 선택"></select>
   <span id="badge" class="badge"><span class="dot"></span><span id="badgeText">-</span></span>
+  <span id="badgeSub"></span>
   <span class="spacer"></span>
   <button id="btnNew" class="primary">새 학습 / 이어서</button>
 </header>
@@ -124,6 +167,12 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
       <button id="btnRecheck">다시 확인</button>
     </div>
     <pre class="log" id="depsLog" hidden style="margin-top:8px;max-height:180px"></pre>
+  </section>
+  <section class="panel" id="launchBox" hidden>
+    <h2><span id="launchTitle">학습 시작 중</span> <span class="sub" id="launchSub"></span><span class="spacer"></span><button id="launchHide" hidden>닫기</button></h2>
+    <ol class="lsteps" id="launchSteps"></ol>
+    <div id="launchMsg" class="hint" style="margin-top:6px"></div>
+    <pre class="log" id="launchErr" hidden style="margin-top:6px;max-height:200px"></pre>
   </section>
   <section class="panel">
     <h2>학습 장치</h2>
@@ -161,16 +210,23 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
         <select id="stageSel"></select><button id="btnStage">변경</button>
       </div></div>
     </div>
+    <div id="cmdLog" class="cmdlog" aria-live="polite"></div>
   </section>
 
   <div class="kpis" id="kpis"></div>
 
   <section class="panel">
-    <h2>커리큘럼 <span class="sub" id="curSub"></span><span class="spacer"></span><label class="sub" data-tip="이전 커리큘럼(v1: 주행 → 지형 주행 → 사격 → 1대1 → 팀전 → 최종전 10단계)과 v1 전용 최종 시험 패널을 보이거나 숨깁니다. v1 실행 기록은 지워지지 않습니다."><input type="checkbox" id="showV1"> 이전 버전(v1) 단계 보기</label></h2>
-    <p class="hint">단계 위에 마우스를 올리면 무엇을 학습하고 무엇을 하면 성공인지 보입니다.</p>
+    <h2>커리큘럼 <span id="curVer"></span> <span class="sub" id="curSub"></span></h2>
+    <p class="hint">이 실행이 쓰는 커리큘럼 버전의 단계만 보입니다. 단계 위에 마우스를 올리면 무엇을 학습하고 무엇을 하면 성공인지 보입니다. 다른 버전은 아래 '커리큘럼 버전 이력'에서 보세요.</p>
     <div class="stages" id="stages"></div>
     <div id="battleProgress"></div>
     <div id="terrainLessons" style="margin-top:12px"></div>
+  </section>
+
+  <section class="panel" id="histPanel">
+    <h2>커리큘럼 버전 이력 <span class="sub">정석 → 회피 위주 → 전투 위주 → 최종 1대6 · 칸을 누르면 단계·바뀐 점·바꾼 이유·그 버전의 실행이 보입니다</span></h2>
+    <div class="flow" id="histFlow"></div>
+    <div id="histList"></div>
   </section>
 
   <section class="panel" id="v4Panel" hidden>
@@ -280,6 +336,7 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
       <div class="ctl wide"><label>프로젝트 폴더 (Godot 편집기 실행 파일을 쓸 때만, exe 면 비움)</label><input type="text" name="project" placeholder="..\.."></div>
       <div class="ctl"><label>실행 이름 (같은 이름 + 이어서 = 계속 학습)</label><input type="text" name="run" list="runList"><datalist id="runList"></datalist></div>
       <div class="ctl"><label>학습 방식</label><select name="mode"><option value="final">최종 1대6 · 맵 5종 · 전차별 모델 (V5 공통 모델에서 시작)</option><option value="battle">전투 자기 대전 · 평지 → 지형 → 전차별 분화</option><option value="shared">커리큘럼 v4 · 세 전차 공통 → 전차별 자동 분기</option><option value="single">전차 하나</option><option value="rotate">여러 전차 교대(자기대전)</option></select></div>
+      <p class="hint wide" id="modeHint" style="margin:0"></p>
       <div class="ctl" data-m="single"><label>커리큘럼</label><select name="curriculum"><option value="battle">전투 자기 대전</option><option value="v4">v4 (현재)</option><option value="v1">v1 (이전 버전)</option></select></div>
       <div class="ctl" data-m="single"><label>전차</label><select name="tank"></select></div>
       <div class="ctl" data-m="single shared battle"><label>총 결정 수(스텝)</label><input type="number" name="timesteps" value="3000000" step="100000"></div>
@@ -323,12 +380,13 @@ const STAGE_LABEL = {final_1v6: "최종 1대6 · 엄폐 전투", battle_flat: "�
   s2_outnumbered: "v4 전술·열세 대응(전차별)",
   t1_pick_fights: "v4 전술·유리한 교전", t2_peek: "v4 전술·사격 후 재배치", t3_capture: "v4 전술·거점 확보", t4_defend: "v4 전술·거점 방어(전차별)", t5_flank: "v4 전술·측면(전차별)", t6_retreat: "v4 전술·열세 후퇴(전차별)"};
 const TANK_LABEL = {tiger1: "티거 I", sherman75: "셔먼 76mm", t34_76: "T-34-85"};
-const PHASE = {starting: "시작 중", collecting: "학습 중(수집)", updating: "학습 중(PPO 갱신)", paused: "일시정지", saving: "저장 중", stopped: "중지됨", evaluating: "평가 중(학습 없음)"};
+const PHASE = {launching: "시작 중", starting: "준비 중", collecting: "학습 중(수집)", updating: "학습 중(PPO 갱신)", paused: "일시정지", saving: "저장 중", stopped: "중지됨", evaluating: "평가 중(학습 없음)"};
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const COLORS = () => [1,2,3,4,5,6,7,8,9].map(i => css("--c" + i));
 
 let PRINT_SCALE = 0;
 let INFO = null, RUN = "", S = null, EPS = [], EPCOL = {}, SB3 = {}, SB3KEYS = [], timer = null, busy = false;
+let RUNS = [], PENDING = [], FAST_UNTIL = 0, LAUNCH_SEEN = null, LAUNCH_DISMISSED = "", HIST_SIG = "", OPENV = null;
 
 function toast(msg, ms = 2600) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), ms); }
 async function api(path, body) {
@@ -625,16 +683,26 @@ function render() {
   if ($("stageSel").dataset.stages !== stageKey) { fillStageSelects(); $("stageSel").dataset.stages = stageKey; }
   const ph = alive ? (st.phase || "starting") : (st.phase && st.phase !== "stopped" ? "끊김" : "stopped");
   const b = $("badge"); b.className = "badge " + (ph === "paused" ? "pause" : ph === "updating" ? "upd" : alive ? "run" : "");
-  $("badgeText").textContent = alive ? (PHASE[ph] || ph) : (ph === "끊김" ? "응답 없음(꺼짐?)" : "중지됨");
-  // 버튼 상태
-  $("btnPause").disabled = !alive || st.paused; $("btnResume").disabled = !alive || !st.paused;
-  $("btnStop").disabled = !alive || st.stop_requested; $("btnCkpt").disabled = !alive;
-  ["btnRec", "btnReview", "btnStage"].forEach(id => $(id).disabled = !alive);
+  $("badgeText").textContent = alive ? (PHASE[ph] || ph) : (ph === "끊김" ? "응답 없음(꺼짐?)" : st.error ? "시작 실패" : "중지됨");
+  const since = st.phase_since ? Math.max(0, Date.now() / 1000 - st.phase_since) : null;
+  const sub = [];
+  if (alive && st.step && ["launching", "starting", "saving"].includes(ph)) sub.push(st.step);
+  if (alive && since != null && ["launching", "starting", "updating", "saving"].includes(ph)) sub.push(`${dur(since)}째`);
+  if (alive && st.paused && ph !== "paused") sub.push("일시정지 예약(이번 PPO 갱신 후 멈춤)");
+  if (alive && st.stop_requested) sub.push("저장 후 중지 진행 중");
+  if (alive && st.pending_commands) sub.push(`대기 명령 ${st.pending_commands}개`);
+  $("badgeSub").textContent = sub.join(" · ");
+  // 버튼 상태(보낸 명령이 처리되는 동안은 같은 버튼을 다시 못 누르게)
+  const waiting = (cmd) => PENDING.some(c => c.cmd === cmd && !c.done);
+  $("btnPause").disabled = !alive || st.paused || waiting("pause"); $("btnResume").disabled = !alive || !st.paused || waiting("resume");
+  $("btnStop").disabled = !alive || st.stop_requested || waiting("stop"); $("btnCkpt").disabled = !alive || waiting("checkpoint");
+  ["btnRec", "btnReview"].forEach(id => $(id).disabled = !alive);
+  $("btnStage").disabled = !alive || waiting("set_stage");
   $("btnEnvs").disabled = !S.run_json?.args;
   $("ctlNote").textContent = alive ? "" : "학습이 돌고 있지 않습니다. 환경 수 적용 = 저장된 정책에서 이어서 다시 시작.";
-  const setIf = (id, v) => { if (document.activeElement !== $(id) && !$(id)._dirty && v != null) $(id).value = v; };
+  const setIf = (id, v) => { const el = $(id); if (el._pending != null) { el.value = el._pending; return; } if (document.activeElement !== el && !el._dirty && v != null) el.value = v; };
   setIf("nEnvs", st.n_envs ?? S.run_json?.args?.n_envs); setIf("recEvery", st.record_every); setIf("reviewProb", st.review_prob);
-  if (document.activeElement !== $("speedCap")) { const v = String(st.speed_cap ?? 0); if (![...$("speedCap").options].some(o => o.value === v)) $("speedCap").add(new Option(v + "배", v)); $("speedCap").value = v; }
+  if (document.activeElement !== $("speedCap") && $("speedCap")._pending == null) { const v = String(st.speed_cap ?? 0); if (![...$("speedCap").options].some(o => o.value === v)) $("speedCap").add(new Option(v + "배", v)); $("speedCap").value = v; }
   if (document.activeElement !== $("stageSel") && cs.stage) $("stageSel").value = cs.stage;
   // KPI
   const target = st.target_timesteps, steps = st.num_timesteps || 0;
@@ -644,7 +712,7 @@ function render() {
   const tc = cs.terrain, rate = tc?.success_rate ?? cs.success_rate, threshold = tc?.threshold ?? cs.threshold;
   $("kpis").innerHTML = [
     kpi("학습 전차", TANK_LABEL[st.tank] || st.tank || "-", (st.learner_policy || "").split("/").pop() + rot),
-    kpi("현재 단계", cs.stage ? `${cs.stage_idx + 1}/${INFO.stages.length} ${STAGE_LABEL[cs.stage]}` : "-", tc ? `${tc.index + 1}/${tc.count} ${esc(tc.label)} · ${tc.fixed ? "고정 연습" : "자동 승급"}` : cs.stage ? cs.battle ? `단계 수집 ${fmt(cs.battle.steps_in_stage)} / 최소 ${fmt(cs.battle.min_steps)} 스텝` : `단계 안 ${fmt(cs.episodes_in_stage)}판 (최소 ${fmt(cs.min_episodes)}, 최대 ${fmt(cs.max_episodes)})` : ""),
+    kpi("현재 단계", cs.stage ? `${Math.max(0, (S.stage_ids || []).indexOf(cs.stage)) + 1}/${(S.stage_ids || []).length || "-"} ${STAGE_LABEL[cs.stage] || cs.stage}` : "-", tc ? `${tc.index + 1}/${tc.count} ${esc(tc.label)} · ${tc.fixed ? "고정 연습" : "자동 승급"}` : cs.stage ? cs.battle ? `단계 수집 ${fmt(cs.battle.steps_in_stage)} / 최소 ${fmt(cs.battle.min_steps)} 스텝` : `단계 안 ${fmt(cs.episodes_in_stage)}판 (최소 ${fmt(cs.min_episodes)}, 최대 ${fmt(cs.max_episodes)})` : ""),
     kpi(cs.battle ? "자기 대전 승률 (참고)" : "성공률 / 승급 기준", cs.stage ? (cs.battle ? pct(rate) : `${pct(rate)} / ${threshold ? pct(threshold) : "마지막"}`) : "-", tc ? `${tc.label} 최근 ${tc.episodes}/${tc.window}판` : cs.window ? `최근 ${cs.window}판` : "", cs.stage ? {v: rate, mark: threshold, color: threshold && rate >= threshold ? css("--ok") : null} : null),
     kpi("초당 결정 수", fmt(st.steps_per_s, 0), `환경 ${st.n_envs ?? "-"}개 · 환경당 ${st.n_envs ? fmt(st.steps_per_s / st.n_envs, 0) : "-"}`),
     kpi("실시간 대비", st.realtime_x ? `×${fmt(st.realtime_x, 0)}` : "-", st.speed_cap ? `제한 ×${st.speed_cap}` : "제한 없음(최대 속도)"),
@@ -657,14 +725,17 @@ function render() {
   const recent = {};
   for (let i = EPS.length - 1; i >= 0; i--) { const e = EPS[i]; if (ti >= 0 && e[col("tank")] !== ti) continue; const s = e[col("stage_idx")]; (recent[s] ||= []); if (recent[s].length < win) recent[s].push(e[col("success")]); }
   const curIdx = cs.stage_idx ?? -1;
-  $("stages").innerHTML = visibleStages().map(({s, i}) => { const r = recent[i]; const rate = r ? r.reduce((a, b) => a + b, 0) / r.length : null;
-    return `<div class="stage ${i < curIdx ? "done" : i === curIdx ? "cur" : ""}" data-stage="${s.id}"><div class="n">${s.final ? "최종" : s.battle ? "전투 " + (["battle_flat", "battle_terrain", "battle_roles"].indexOf(s.id) + 1) : s.v4 ? "v4 " + (i - V1_COUNT() + 1) : "v1 " + (i + 1)}단계 · 기준 ${s.battle ? (s.min_steps ? "교전 지표" : "계속 학습") : s.promote ? pct(s.promote.threshold) : "-"}</div><div class="t">${(STAGE_LABEL[s.id] || s.id).replace("v4 ", "")}</div><div class="r">${rate == null ? "&nbsp;" : `최근 ${pct(rate)} (${r.length}판)`}</div></div>`; }).join("");
+  $("stages").innerHTML = visibleStages().map(({s, i}, k) => { const r = recent[i]; const rate = r ? r.reduce((a, b) => a + b, 0) / r.length : null;
+    return `<div class="stage ${i < curIdx ? "done" : i === curIdx ? "cur" : ""}" data-stage="${s.id}"><div class="n">${k + 1}단계 · 기준 ${s.battle ? (s.min_steps ? "교전 지표" : "계속 학습") : s.promote ? pct(s.promote.threshold) : "-"}</div><div class="t">${(STAGE_LABEL[s.id] || s.id).replace("v4 ", "")}</div><div class="r">${rate == null ? "&nbsp;" : `최근 ${pct(rate)} (${r.length}판)`}</div></div>`; }).join("");
   $("curSub").textContent = cs.battle ? "자기 대전 승률은 참고 지표입니다. 공통 단계는 명중·관통·교전 완료 기준으로 진행합니다." : st.review_prob != null ? `복습 확률 ${pct(st.review_prob)} · 승급은 최근 판 성공률이 기준을 넘고 최소 판 수를 채우면 자동` : "";
   $("battleProgress").innerHTML = cs.battle ? `<div class="tableWrap"><table><thead><tr><th>전투 배치 × 전차</th><th>최근 판수</th><th>명중 발생</th><th>관통 발생</th><th>교전 완료</th>${cs.stage === "final_1v6" ? "<th>생존</th><th>가린 채 관측</th><th>2대+ 노출</th>" : ""}</tr></thead><tbody>${Object.entries(cs.battle.metrics || {}).map(([key, m]) => `<tr><td>${esc(key)}</td><td>${m.episodes}/40</td><td>${pct(m.hit)}</td><td>${pct(m.pen)}</td><td>${pct(m.resolved)}</td>${cs.stage === "final_1v6" ? `<td>${pct(m.survived)}</td><td>${pct(m.overwatch)}</td><td>${pct(m.multi_seen)}</td>` : ""}</tr>`).join("")}</tbody></table></div>` : "";
   $("terrainLessons").innerHTML = tc ? `<p class="hint">목표점 5m 안 · 속도 1m/s 이하 · 0.6초 정지 → 다음 목표. 20초 무진전 시 종료. ${tc.fixed ? "선택한 코스 고정 연습" : `각 코스 최근 ${tc.window}판 기준으로 승급하며, 시간 경과만으로 건너뛰지 않습니다.`}</p>` +
     `<div class="stages">${tc.courses.map((c, i) => `<div class="stage ${i === tc.index ? "cur" : ""}"><div class="n">시험공간 ${i + 1}</div><div class="t">${esc(c.label)}</div><div class="r">${pct(c.success_rate)} · ${c.episodes}판</div></div>`).join("")}</div>` +
     ((S.terrain_recent || []).length ? `<p class="hint">최근 시험: ${S.terrain_recent.slice(-5).map(r => `${esc(r.course)} ${r.success === "1" ? "성공" : esc(r.reason)} · 잔여 ${esc(r.best_remaining_m)}m`).join(" / ")}</p>` : "") : "";
-  renderV4(); renderTanks(); renderPromos(); renderEpisodes(); renderJobs();
+  const ver = verOf(S.cv);
+  $("curVer").innerHTML = ver ? `<span class="pill" style="background:${ver.color}">${esc(ver.name)} · ${esc(ver.tag)}</span>` : "";
+  $("v1FinalPanel").hidden = S.cv !== "v1";
+  renderV4(); renderTanks(); renderPromos(); renderEpisodes(); renderJobs(); renderCmds(); renderLaunch(); renderHistory();
   $("log").textContent = S.log_tail || "(로그 없음 — 대시보드에서 시작한 학습만 train_log.txt 에 남습니다)";
   if (!$("log")._user) $("log").scrollTop = 1e9;
   const rj = S.run_json || {};
@@ -716,9 +787,11 @@ function hookRichTips() {
     tip.style.top = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8) + "px";
   });
 }
-function showV1() { return $("showV1").checked; }
-function V1_COUNT() { return (INFO.stages || []).filter(s => !s.v4).length; }
-function visibleStages() { return (INFO.stages || []).map((s, i) => ({s, i})).filter(({s}) => S?.status?.curriculum?.battle ? s.battle || showV1() && !s.v4 : s.v4 || showV1()); }
+function visibleStages() {
+  // 이 실행의 커리큘럼 버전 단계만(실행이 없으면 현재 버전)
+  const ids = S?.stage_ids?.length ? S.stage_ids : (HIST().slice(-1)[0]?.stages || []).map(s => s.id);
+  return (INFO.stages || []).map((s, i) => ({s, i})).filter(({s}) => ids.includes(s.id));
+}
 function fillStageSelects() {
   const opts = visibleStages().map(({s, i}) => `<option value="${s.id}" title="${esc((s.learn || V1_TIP[s.id] || "") + (s.goal ? " / 목표: " + s.goal : ""))}">${i + 1}. ${STAGE_LABEL[s.id]}</option>`).join("");
   const cur = $("stageSel").value;
@@ -726,7 +799,136 @@ function fillStageSelects() {
     .map(s => `<option value="${s.id}">${esc(STAGE_LABEL[s.id] || s.label || s.id)}</option>`).join("");
   if (cur) $("stageSel").value = cur;
   $("startForm").start_stage.innerHTML = `<option value="">처음(1단계) / 저장된 단계</option>` + opts;
-  $("v1FinalPanel").hidden = !showV1();
+}
+
+// ---------------------------------------------------------------- 커리큘럼 버전 이력
+const FAM_LABEL = {v1: "정석", v4: "회피 위주", v5: "전투 위주", v6: "최종 1대6"};
+const HIST = () => INFO?.history || [];
+const verOf = (key) => HIST().find(v => v.key === key);
+function renderHistory(force) {
+  const H = HIST(); if (!H.length) return;
+  const cur = S?.cv ?? (RUNS.find(r => r.run === RUN) || {}).cv ?? "";
+  const curStage = S?.status?.curriculum?.stage || "";
+  const sig = [cur, curStage, RUN, RUNS.map(r => r.run + ":" + r.cv + ":" + (r.alive ? 1 : 0)).join(",")].join("|");
+  if (!force && sig === HIST_SIG) return;
+  HIST_SIG = sig;
+  if (!OPENV || OPENV._cur !== cur) { OPENV = new Set(cur ? [cur] : [H[H.length - 1].key]); OPENV._cur = cur; }
+  const fams = [];
+  for (const v of H) { let f = fams.find(x => x.family === v.family); if (!f) fams.push(f = {family: v.family, items: []}); f.items.push(v); }
+  $("histFlow").innerHTML = fams.map(f => `<span class="fam"><b>${esc(FAM_LABEL[f.family] || f.family)}</b>${f.items.map(v =>
+    `<button class="vchip ${v.key === cur ? "cur" : ""}" data-ver="${v.key}" style="border-left:3px solid ${v.color}" title="${esc(v.focus)}">${esc(v.name)}</button>`).join("")}</span>`).join('<span class="arrow">→</span>');
+  $("histList").innerHTML = H.slice().reverse().map(v => {
+    const runs = RUNS.filter(r => r.cv === v.key);
+    const parts = [];
+    for (const s of v.stages) { let p = parts.find(x => x.part === s.part); if (!p) parts.push(p = {part: s.part, items: []}); p.items.push(s); }
+    let n = 0;
+    const stages = parts.map(p => `<div style="margin:2px 0"><span class="muted" style="font-size:12px">${esc(p.part)}</span> <span class="schips">${p.items.map(s =>
+      `<span class="${s.scope === "tank" ? "tank" : ""} ${v.key === cur && s.id === curStage ? "curstage" : ""}" title="${esc((s.scope === "tank" ? "전차별 모델 단계. " : "") + (s.goal || ""))}">${++n}. ${esc(s.label)}</span>`).join("")}</span></div>`).join("");
+    return `<details class="ver ${v.key === cur ? "cur" : ""}" data-key="${v.key}" style="--vc:${v.color}" ${OPENV.has(v.key) ? "open" : ""}>
+      <summary><span class="vn">${esc(v.name)}</span><span class="pill" style="background:${v.color}">${esc(v.tag)}</span>
+        <span class="muted">${esc(v.date)} · ${v.stages.length}단계 · 실행 ${runs.length}개 · ${esc(v.status)}</span>${v.key === cur ? `<span class="pill" style="background:var(--accent)">지금 보는 실행</span>` : ""}
+        <span class="vf">${esc(v.focus)}</span></summary>
+      <div class="verbody">
+        <div><h4>단계 (점선 = 전차별 모델)</h4>${stages}<h4 style="margin-top:8px">모델 · 관측</h4>${esc(v.model)} · ${esc(v.obs)}</div>
+        <div><h4>이 버전에서 바뀐 점</h4><ul>${v.changes.map(c => `<li>${esc(c)}</li>`).join("")}</ul>
+          <h4 style="margin-top:8px">${v.why_next ? "다음 버전으로 바꾼 이유" : "상태"}</h4><div class="why">${esc(v.why_next || "현재 사용 중인 버전입니다")}</div>
+          <h4 style="margin-top:8px">이 버전의 실행</h4><div class="runlinks">${runs.length ? runs.map(r => `<button data-run="${esc(r.run)}" ${r.run === RUN ? "disabled" : ""}>${r.alive ? "● " : ""}${esc(r.run)}</button>`).join("") : `<span class="muted">이 PC의 runs 폴더에 없음</span>`}
+          ${v.start_mode ? `<button class="primary" data-start="${v.key}">이 버전으로 새 학습…</button>` : ""}</div>
+          <h4 style="margin-top:8px">문서</h4><span class="muted">${v.docs.map(d => "training/" + esc(d)).join(" · ")}</span></div>
+      </div></details>`;
+  }).join("");
+}
+function wireHistory() {
+  $("histList").addEventListener("toggle", e => { const d = e.target.closest?.("details.ver"); if (!d || !OPENV) return; d.open ? OPENV.add(d.dataset.key) : OPENV.delete(d.dataset.key); }, true);
+  $("histPanel").onclick = e => {
+    const chip = e.target.closest("[data-ver]");
+    if (chip) { const d = $("histList").querySelector(`details[data-key="${chip.dataset.ver}"]`); if (d) { d.open = true; d.scrollIntoView({behavior: "smooth", block: "nearest"}); } return; }
+    const run = e.target.closest("[data-run]");
+    if (run) { $("runSel").value = run.dataset.run; switchRun(run.dataset.run); scrollTo({top: 0, behavior: "smooth"}); return; }
+    const st = e.target.closest("[data-start]");
+    if (st) openStart(verOf(st.dataset.start));
+  };
+}
+
+// ---------------------------------------------------------------- 명령 확인 · 시작 진행
+const CMD_STATE = {sent: "⏳ 보냄", received: "📥 받음", applied: "✓ 적용됨", error: "⚠ 실패", stale: "⚠ 응답 없음"};
+function renderCmds() {
+  const st = S?.status || {}, now = Date.now() / 1000;
+  const acks = Object.fromEntries((st.acks || []).map(a => [a.id, a]));
+  for (const c of PENDING) {
+    const a = acks[c.id];
+    if (a) {
+      c.state = a.state; c.text = a.text;
+      if (a.state !== "received" && !c.done) { c.done = now; c.took = a.t - c.t; }
+    } else if (!c.done && now - c.t > 6) {
+      const stale = !S?.alive || (st.updated && now - st.updated > 10);
+      if (stale) { c.state = "stale"; c.text = `학습 프로세스가 응답하지 않습니다(상태 갱신 ${dur(now - (st.updated || c.t))} 전). 명령은 파일에 남아 있어 다시 살아나면 실행됩니다.`; }
+      else if (!("acks" in st)) {
+        // 확인 응답을 모르는 이전 train.py: 상태 값이 바뀌었는지로 판단
+        const ok = c.check ? c.check(st) : null;
+        if (ok) { c.state = "applied"; c.text = "상태에 반영됨"; c.done = now; c.took = now - c.t; }
+        else { c.state = "received"; c.text = "전달함 — 이 학습은 이전 버전 train.py 라 확인 응답이 없습니다. 다시 시작하면 확인 응답이 켜집니다."; }
+      }
+    }
+    if (c.field && (c.done || c.state === "stale")) { const el = $(c.field); if (el._pending === c.value) { el._pending = null; el.classList.remove("pendingval"); } }
+  }
+  PENDING = PENDING.filter(c => !c.done || now - c.done < 25).slice(-6);
+  $("cmdLog").innerHTML = PENDING.slice().reverse().map(c => `<div class="cmd ${c.state}"><span class="st">${CMD_STATE[c.state] || c.state}</span><span>${esc(c.label)}</span>` +
+    `<span class="muted">${esc(c.text || "")}${c.took != null ? ` · ${c.took.toFixed(1)}초 만에` : ` · ${dur(now - c.t)}`}</span></div>`).join("");
+}
+async function ctl(msg, label, o = {}) {
+  const btn = o.btn;
+  if (btn) { btn.classList.add("busy"); btn.disabled = true; }
+  try {
+    const r = await api("/api/control", {run: RUN, ...msg});
+    PENDING.push({id: r.id, t: r.t || Date.now() / 1000, label, cmd: msg.cmd, state: "sent", text: "학습 프로세스로 보냄", field: o.field, value: o.value, check: o.check});
+    if (o.field) { $(o.field)._pending = o.value; $(o.field)._dirty = false; $(o.field).classList.add("pendingval"); }
+    renderCmds(); fast();
+  } catch (e) { toast("실패: " + e.message, 5000); }
+  finally { if (btn) { btn.classList.remove("busy"); if (S) render(); else btn.disabled = false; } }
+}
+const LSTEPS = ["시작 요청", "패키지 확인", "프로세스 실행", "Python·torch 불러오기", "게임 실행·연결", "모델 불러오기", "첫 수집"];
+function launchIndex(st, job) {
+  const ph = st.phase, t = st.step || job?.step || "";
+  if (ph === "launching") return /패키지/.test(t) ? 1 : /프로세스 실행/.test(t) ? 2 : /불러오는 중\(Python/.test(t) ? 3 : 0;
+  if (ph === "starting" || ph === "saving" && /첫 수집/.test(t)) return /게임/.test(t) ? 4 : /모델/.test(t) ? 5 : /첫 수집/.test(t) ? 6 : 3;
+  return job && job.state === "running" && !["collecting", "updating", "paused"].includes(ph) ? 0 : LSTEPS.length;
+}
+function renderLaunch() {
+  const st = S?.status || {}, box = $("launchBox");
+  const job = (S?.jobs || []).filter(j => j.run === RUN && /시작/.test(j.title)).pop();
+  const running = job && job.state === "running";
+  const active = S?.alive && ["launching", "starting"].includes(st.phase) || running;
+  const failed = (!S?.alive && st.error) || (job && job.state === "error" && Date.now() / 1000 - (job.t_end || 0) < 600);
+  if (active) LAUNCH_SEEN = {run: RUN, t: Date.now()};
+  const justDone = !active && !failed && LAUNCH_SEEN?.run === RUN && Date.now() - LAUNCH_SEEN.t < 8000;
+  const key = RUN + ":" + (job?.id || st.phase_since || "");
+  box.hidden = !(active || failed || justDone) || LAUNCH_DISMISSED === key;
+  if (box.hidden) return;
+  let idx = failed ? launchIndex({phase: "launching", step: st.step}, job) : launchIndex(st, job);
+  if (failed && st.error && /바로 끝났습니다/.test(st.error)) idx = 3;
+  $("launchTitle").textContent = failed ? `${RUN}: 학습 시작 실패` : justDone ? `${RUN}: 학습이 시작됐습니다` : `${RUN}: ${job && /다시 시작/.test(job.title) ? "다시 시작 중" : "학습 시작 중"}`;
+  const t0 = job?.t || st.phase_since;
+  $("launchSub").textContent = active && t0 ? `${dur(Date.now() / 1000 - t0)} 경과` : "";
+  $("launchSteps").innerHTML = LSTEPS.map((name, i) => `<li class="${i < idx ? "done" : i === idx ? (failed ? "fail" : "cur") : ""}">${name}</li>`).join("");
+  $("launchMsg").textContent = failed ? "" : justDone ? "첫 수집을 시작했습니다. 아래 그래프와 표가 곧 채워집니다." : (st.step || job?.step || "요청을 보냈습니다") + (idx >= 4 ? " — 게임 여러 개를 띄우는 동안 수십 초 걸릴 수 있습니다" : "");
+  const err = failed ? (st.error || job?.result || "") : "";
+  $("launchErr").hidden = !err; $("launchErr").textContent = err;
+  $("launchHide").hidden = active;
+  $("launchHide").onclick = () => { LAUNCH_DISMISSED = key; box.hidden = true; };
+}
+
+// ---------------------------------------------------------------- 폴링 주기: 명령·시작 직후에는 빠르게
+let pollTimer = null;
+function fast(sec = 15) { FAST_UNTIL = Math.max(FAST_UNTIL, Date.now() + sec * 1000); schedulePoll(200); }
+function needFast() {
+  const ph = S?.status?.phase;
+  return Date.now() < FAST_UNTIL || PENDING.some(c => !c.done && c.state !== "stale") || ["launching", "starting", "saving"].includes(ph)
+    || (S?.jobs || []).some(j => j.state === "running" && j.run === RUN);
+}
+function schedulePoll(ms) {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(async () => { try { await poll(); } finally { schedulePoll(needFast() ? 700 : 2000); } }, ms);
 }
 
 // ---------------------------------------------------------------- 기록 모음
@@ -903,44 +1105,58 @@ async function poll() {
 async function loadRuns(select) {
   const j = await api("/api/runs");
   const sel = $("runSel"), cur = select || RUN;
-  sel.innerHTML = j.runs.length ? j.runs.map(r => `<option value="${esc(r.run)}">${r.alive ? "● " : ""}${esc(r.run)}${r.tank ? " · " + (TANK_LABEL[r.tank] || r.tank) : ""}${r.stage ? " · " + STAGE_LABEL[r.stage] : ""}</option>`).join("") : `<option value="">(실행 없음 — 새 학습을 시작하세요)</option>`;
+  RUNS = j.runs;
+  const opt = r => `<option value="${esc(r.run)}">${r.alive ? "● " : ""}${esc(r.run)}${r.tank ? " · " + (TANK_LABEL[r.tank] || r.tank) : ""}${r.stage ? " · " + (STAGE_LABEL[r.stage] || r.stage) : ""}</option>`;
+  // 커리큘럼 버전별로 묶어서(최신 버전이 위)
+  const order = HIST().slice().reverse().map(v => v.key).concat(["eval", ""]);
+  const groups = order.map(k => {
+    const rs = j.runs.filter(r => (r.cv || "") === k || (k === "" && !order.includes(r.cv || "")));
+    if (!rs.length) return "";
+    const v = verOf(k);
+    return `<optgroup label="${esc(v ? `${v.name} · ${v.tag}` : k === "eval" ? "평가 실행" : "기타")}">${rs.map(opt).join("")}</optgroup>`;
+  }).join("");
+  if (sel.dataset.sig !== groups) { sel.innerHTML = j.runs.length ? groups : `<option value="">(실행 없음 — 새 학습을 시작하세요)</option>`; sel.dataset.sig = groups; }
   $("runList").innerHTML = j.runs.map(r => `<option value="${esc(r.run)}">`).join("");
   const pick = j.runs.find(r => r.run === cur) ? cur : (j.runs.find(r => r.alive) || j.runs[0] || {}).run || "";
   sel.value = pick;
   if (pick !== RUN) switchRun(pick);
+  renderHistory();
   return j.runs;
 }
 function switchRun(run) {
-  RUN = run; EPS = []; SB3 = {}; S = null; $("tankSel")._set = false;
-  ["nEnvs", "recEvery", "reviewProb", "trainDevice"].forEach(id => $(id)._dirty = false);
+  RUN = run; EPS = []; SB3 = {}; S = null; $("tankSel")._set = false; PENDING = []; $("cmdLog").innerHTML = ""; $("launchBox").hidden = true;
+  ["nEnvs", "recEvery", "reviewProb", "trainDevice", "speedCap"].forEach(id => { $(id)._dirty = false; $(id)._pending = null; $(id).classList.remove("pendingval"); });
   if (!run) { $("kpis").innerHTML = `<div class="kpi" style="grid-column:1/-1"><div class="empty">아직 학습 실행이 없습니다. 오른쪽 위 "새 학습 / 이어서"로 시작하세요.</div></div>`; return; }
   poll();
 }
 
 // ------------------------------------------------------------------ 동작
-async function ctl(msg, ok) { try { await api("/api/control", {run: RUN, ...msg}); toast(ok); setTimeout(poll, 700); } catch (e) { toast("실패: " + e.message, 5000); } }
 function wire() {
   $("runSel").onchange = e => switchRun(e.target.value);
-  $("btnPause").onclick = () => ctl({cmd: "pause"}, "일시정지 요청");
-  $("btnResume").onclick = () => ctl({cmd: "resume"}, "재개");
-  $("btnStop").onclick = () => { if (confirm("정책을 저장하고 학습을 멈출까요? (나중에 같은 실행 이름으로 이어서 할 수 있습니다)")) ctl({cmd: "stop"}, "저장 후 중지 요청 — 현재 결정까지 마치고 저장합니다"); };
-  $("btnCkpt").onclick = () => ctl({cmd: "checkpoint"}, "체크포인트 저장 요청");
-  $("speedCap").onchange = e => S?.alive ? ctl({cmd: "set", speed_cap: +e.target.value}, "배속 제한 변경") : toast("학습이 돌고 있을 때 바뀝니다");
+  $("btnPause").onclick = () => ctl({cmd: "pause"}, "일시정지", {btn: $("btnPause"), check: st => st.paused});
+  $("btnResume").onclick = () => ctl({cmd: "resume"}, "재개", {btn: $("btnResume"), check: st => !st.paused});
+  $("btnStop").onclick = () => { if (confirm("정책을 저장하고 학습을 멈출까요? (나중에 같은 실행 이름으로 이어서 할 수 있습니다)")) ctl({cmd: "stop"}, "저장 후 중지", {btn: $("btnStop"), check: st => st.stop_requested || st.phase === "stopped"}); };
+  $("btnCkpt").onclick = () => { const before = S?.status?.last_save?.t || 0; ctl({cmd: "checkpoint"}, "체크포인트 저장", {btn: $("btnCkpt"), check: st => (st.last_save?.t || 0) > before}); };
+  $("speedCap").onchange = e => { const v = +e.target.value; S?.alive ? ctl({cmd: "set", speed_cap: v}, `배속 제한 → ${v ? v + "배" : "무제한"}`, {field: "speedCap", value: String(v), check: st => +st.speed_cap === v}) : toast("학습이 돌고 있을 때 바뀝니다"); };
   ["nEnvs", "recEvery", "reviewProb", "trainDevice"].forEach(id => $(id).oninput = () => $(id)._dirty = true);
-  $("btnRec").onclick = () => { $("recEvery")._dirty = false; ctl({cmd: "set", record_every: +$("recEvery").value}, "리플레이 기록 간격 변경"); };
-  $("btnReview").onclick = () => { $("reviewProb")._dirty = false; ctl({cmd: "set", review_prob: +$("reviewProb").value}, "복습 확률 변경"); };
-  $("btnStage").onclick = () => { const s = $("stageSel").value; if (confirm(`커리큘럼 단계를 "${STAGE_LABEL[s]}"(으)로 바꿀까요? 승급 기록에 '수동 변경'으로 남습니다.`)) ctl({cmd: "set_stage", stage: s}, "단계 변경 요청"); };
+  $("btnRec").onclick = () => { const v = +$("recEvery").value; ctl({cmd: "set", record_every: v}, `리플레이 기록 간격 → ${v}판`, {btn: $("btnRec"), field: "recEvery", value: String(v), check: st => +st.record_every === v}); };
+  $("btnReview").onclick = () => { const v = +$("reviewProb").value; ctl({cmd: "set", review_prob: v}, `복습 확률 → ${pct(v)}`, {btn: $("btnReview"), field: "reviewProb", value: String(v), check: st => Math.abs(st.review_prob - v) < 1e-6}); };
+  $("btnStage").onclick = () => { const s = $("stageSel").value; if (confirm(`커리큘럼 단계를 "${STAGE_LABEL[s]}"(으)로 바꿀까요? 승급 기록에 '수동 변경'으로 남습니다.`)) ctl({cmd: "set_stage", stage: s}, `단계 변경 → ${STAGE_LABEL[s] || s}`, {btn: $("btnStage"), check: st => st.curriculum?.stage === s}); };
   $("btnEnvs").onclick = async () => {
     const n = +$("nEnvs").value; if (!(n >= 1)) return;
     const msg = S?.alive ? `환경 수를 ${n}개로 바꿉니다. 정책을 저장하고 학습을 멈춘 뒤 같은 설정으로 이어서 다시 시작합니다(수십 초).` : `저장된 정책에서 환경 ${n}개로 이어서 학습을 시작할까요?`;
     if (!confirm(msg)) return;
-    try { await api("/api/restart", {run: RUN, n_envs: n}); $("nEnvs")._dirty = false; toast("다시 시작 중… 작업 칸에서 진행을 볼 수 있습니다", 4000); } catch (e) { toast("실패: " + e.message, 5000); }
+    const b = $("btnEnvs"); b.classList.add("busy"); b.disabled = true;
+    try { await api("/api/restart", {run: RUN, n_envs: n}); $("nEnvs")._dirty = false; LAUNCH_DISMISSED = ""; toast("다시 시작 요청을 받았습니다 — 위 진행 칸에서 단계별로 보입니다", 4000); fast(60); } catch (e) { toast("실패: " + e.message, 5000); }
+    finally { b.classList.remove("busy"); b.disabled = false; }
   };
   $("btnDevice").onclick = async () => {
     const device = $("trainDevice").value;
     if (!confirm(`학습 장치를 ${device}(으)로 바꾸고 저장된 정책에서 이어서 시작할까요? 실행 중이면 먼저 저장하고 중지합니다.`)) return;
-    try { await api("/api/restart", {run: RUN, device}); $("trainDevice")._dirty = false; toast("학습 장치 변경 후 다시 시작 중…", 4000); }
+    const b = $("btnDevice"); b.classList.add("busy"); b.disabled = true;
+    try { await api("/api/restart", {run: RUN, device}); $("trainDevice")._dirty = false; LAUNCH_DISMISSED = ""; toast("학습 장치 변경 후 다시 시작 요청을 받았습니다 — 위 진행 칸에서 보입니다", 4000); fast(60); }
     catch (e) { toast("실패: " + e.message, 6000); }
+    finally { b.classList.remove("busy"); b.disabled = false; }
   };
   ["tankSel", "xSel", "winSel", "grpSel", "varFilter"].forEach(id => $(id).onchange = drawCharts);
   $("stgFilter").onchange = () => { fillVariants(); drawCharts(); };
@@ -977,8 +1193,8 @@ function wire() {
     finally { $("btnEvaluate").disabled = false; }
   };
   $("reportLink").onclick = e => { const a = e.target.closest("a[data-pdf]"); if (!a) return; e.preventDefault(); savePdf("/api/pdf", {path: a.dataset.pdf}, null); };
-  $("btnReport").onclick = async () => { try { await api("/api/report", {run: RUN}); toast("보고서 만드는 중…"); } catch (e) { toast("실패: " + e.message, 5000); } };
-  $("btnNew").onclick = openStart;
+  $("btnReport").onclick = async () => { try { await api("/api/report", {run: RUN}); toast("보고서 만드는 중… 작업 칸에서 진행을 볼 수 있습니다"); fast(); } catch (e) { toast("실패: " + e.message, 5000); } };
+  $("btnNew").onclick = () => openStart();
   const f = $("startForm");
   f.mode.onchange = () => {
     if (f.mode.value === "battle" && /TankGame(?:_battle)?\.exe$/i.test(f.godot.value)) f.godot.value = INFO.battle_godot;
@@ -987,6 +1203,9 @@ function wire() {
       f.branch_from.value = f.branch_from.value || RUN; f.run.value = "FINAL-1"; f.resume.checked = false;
     }
     if (f.mode.value === "final" && (!f.godot.value || /TankGame(?:_battle)?\.exe$/i.test(f.godot.value))) f.godot.value = INFO.final_godot;
+    const vkey = {final: "v6", battle: "v5", shared: "v4.1-cover", rotate: "v1"}[f.mode.value] || {v1: "v1", v4: "v4.1-cover", battle: "v5"}[f.curriculum.value];
+    const mv = verOf(vkey);
+    $("modeHint").innerHTML = mv ? `<span class="pill" style="background:${mv.color}">${esc(mv.name)} · ${esc(mv.tag)}</span> ${esc(mv.focus)}${mv.status === "현재" ? "" : ` <span class="muted">(${esc(mv.status)})</span>`}` : "";
     document.querySelectorAll("[data-m]").forEach(el => el.style.display = el.dataset.m.split(" ").includes(f.mode.value) ? "" : "none");
     document.querySelectorAll("[data-m-label]").forEach(el => el.style.display = el.dataset.mLabel.split(" ").includes(f.mode.value) ? "" : "none");
     const v4 = ["shared", "battle"].includes(f.mode.value) || (f.mode.value === "single" && f.curriculum.value !== "v1");
@@ -1014,11 +1233,18 @@ function wire() {
       rotate_steps: +f.rotate_steps.value, cycles: +f.cycles.value, init_model: f.resume.checked ? "" : f.init_model.value.trim()});
     else Object.assign(a, {tank: f.tank.value, timesteps: +f.timesteps.value, curriculum: f.curriculum.value,
       init_model: f.resume.checked || f.curriculum.value === "v1" ? "" : f.init_model.value.trim()});
-    try { const r = await api("/api/start", a); INFO.settings.device = a.device; $("dlg").close(); toast("학습 시작: " + r.run, 3000); setTimeout(() => loadRuns(r.run), 1500); }
-    catch (err) { toast("시작 실패: " + err.message, 6000); }
+    const go = $("btnGo"); if (go.disabled) return;
+    go.disabled = true; go.textContent = "시작 요청 중…";
+    try {
+      const r = await api("/api/start", a); INFO.settings.device = a.device; $("dlg").close(); LAUNCH_DISMISSED = "";
+      toast(`${r.run}: 시작 요청을 받았습니다 — 위 '학습 시작 중' 칸에서 진행이 보입니다`, 4000);
+      await loadRuns(r.run); fast(60);
+    }
+    catch (err) { toast("시작 실패: " + err.message, 8000); }
+    finally { go.disabled = false; go.textContent = "시작"; }
   };
 }
-function openStart() {
+function openStart(preset) {
   const f = $("startForm"), s = INFO.settings;
   f.godot.value = s.godot || ""; f.project.value = s.project || ""; f.python.value = s.python || ""; f.python.placeholder = INFO.deps?.python ? `(자동: ${INFO.deps.python})` : "(자동)";
   const a = S?.run_json?.args;
@@ -1048,6 +1274,14 @@ function openStart() {
     // 기본은 새 정책(예전 모델의 행동 습관·gSDE 잡음 문제를 물려받지 않게). 이어받으려면 경로를 직접 넣는다.
     f.init_model.placeholder = rec.init_model ? rec.init_model.path : "(새 정책)";
     $("initHint").textContent = rec.init_model ? `비우면 새 정책 · 최근 공통 모델 ${rec.init_model.version}(${rec.init_model.stage})을 이어받으려면 회색 경로를 입력` : "";
+  }
+  if (preset?.start_mode) {   // 버전 이력의 "이 버전으로 새 학습"
+    const d = new Date(), pad = n => String(n).padStart(2, "0");
+    f.mode.value = preset.start_mode; f.resume.checked = false;
+    if (preset.curriculum_arg && preset.start_mode === "single") f.curriculum.value = preset.curriculum_arg;
+    f.run.value = preset.start_mode === "final" ? "FINAL-" + pad(d.getMonth() + 1) + pad(d.getDate()) + "_" + pad(d.getHours()) + pad(d.getMinutes())
+      : `${preset.key.replace(/[^a-z0-9.]/gi, "")}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+    $("initHint").textContent = "";
   }
   f.init_model.disabled = f.resume.checked;
   f.start_stage.value = "";
@@ -1097,9 +1331,10 @@ async function init() {
   $("btnInstall").onclick = async () => { try { await api("/api/install", {}); pollDeps(false); } catch (e) { toast("실패: " + e.message, 5000); } };
   $("btnRecheck").onclick = () => { $("depsTitle").textContent = "확인 중…"; pollDeps(true); };
   pollDeps(false);
-  try { $("showV1").checked = localStorage.getItem("showV1") === "1"; } catch (e) {}
-  $("showV1").onchange = () => { try { localStorage.setItem("showV1", $("showV1").checked ? "1" : "0"); } catch (e) {} fillStageSelects(); if (S) render(); };
-  fillStageSelects(); hookRichTips(); wireRecords(); loadRecords();
+  // 서버 정의의 단계 이름으로 빠진 이름을 채운다(예: 엄폐 찾기)
+  for (const s of INFO.stages || []) if (!STAGE_LABEL[s.id] && s.label) STAGE_LABEL[s.id] = (s.v4 && !s.battle ? "v4 " + (s.part ? s.part + "·" : "") : "") + s.label;
+  for (const v of HIST()) for (const s of v.stages) STAGE_LABEL[s.id] ||= s.label;
+  fillStageSelects(); hookRichTips(); wireRecords(); wireHistory(); loadRecords(); renderHistory(true);
   setInterval(() => { if (!$("recViewer").hidden) return; loadRecords(); }, 60000);
   $("startForm").terrain_course.innerHTML = `<option value="">자동: 저장된 코스부터 순차 승급</option>` + (INFO.terrain_courses || []).map(c => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("");
   const tOpts = INFO.tanks.map(t => `<option value="${t}">${TANK_LABEL[t]}</option>`).join("");
@@ -1108,7 +1343,7 @@ async function init() {
   buildCharts(); wire();
   const runs = await loadRuns();
   if (!runs.length) openStart();
-  timer = setInterval(poll, 2000);
+  schedulePoll(0);
   setInterval(() => loadRuns().catch(() => {}), 10000);
   addEventListener("resize", () => S && drawCharts());
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => S && drawCharts());
