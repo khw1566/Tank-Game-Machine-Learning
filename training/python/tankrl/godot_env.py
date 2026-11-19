@@ -24,6 +24,7 @@ from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
 from . import protocol
 from .curriculum import STAGE_IDS, Curriculum, lineup, make_config, tank_names
+from .pace import require_pace_support
 
 PROGRESS_FIELDS = ["wall_time", "global_step", "env", "uid", "tank", "stage", "stage_idx", "current_stage",
                    "success", "reason", "winner", "return", "decisions", "duration_s", "spawn_distance_m",
@@ -185,6 +186,7 @@ class GodotVecEnv(VecEnv):
                           self.reward_overrides)
         if int(self.procs[i].hello.get("spawn_safety_version", 0)) < 1:
             raise RuntimeError("안전 스폰·장애물 파괴를 지원하는 최신 게임 실행 파일로 다시 빌드하세요.")
+        require_pace_support(self.procs[i].hello, cfg)
         if "terrain_course" in cfg and int(self.procs[i].hello.get("terrain_course_version", 0)) < cfg["terrain_course"]["version"]:
             raise RuntimeError("현재 지형주행 코스를 지원하지 않는 게임입니다. 최신 소스로 게임을 다시 빌드하세요.")
         ext = [k for k, d in enumerate(lu) if d["ctrl"] == "external"]

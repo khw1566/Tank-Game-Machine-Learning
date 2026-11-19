@@ -34,6 +34,9 @@ var hits_taken := 0
 var penetrations_taken := 0
 ## 무력화 원인 (빈 문자열 = 아직 전투 가능)
 var knockout_cause := ""
+## 모듈 종류 -> 그 종류의 모듈 id 목록(제원에서 한 번 만든다). module_state_by_kind 가 매 틱 수십 번 불리므로
+## 전체 모듈을 훑지 않도록 미리 나눠 둔다(결과는 같다)
+var _kind_ids := {}
 
 
 func _init(p_spec: TankSpec) -> void:
@@ -42,6 +45,9 @@ func _init(p_spec: TankSpec) -> void:
 		crew.append({"id": c.id, "home_role": c.home_role, "status": CREW_OK})
 	for m in spec.modules:
 		modules[m.id] = MOD_OK
+		if not _kind_ids.has(m.kind):
+			_kind_ids[m.kind] = []
+		_kind_ids[m.kind].append(m.id)
 	modules["track_left"] = MOD_OK
 	modules["track_right"] = MOD_OK
 	modules["gun_barrel"] = MOD_OK
@@ -114,13 +120,12 @@ func module_state_by_kind(kind: String) -> String:
 	if kind == "barrel":
 		return modules.get("gun_barrel", MOD_OK)
 	var worst := MOD_OK
-	for m in spec.modules:
-		if m.kind == kind:
-			var st: String = modules[m.id]
-			if st == MOD_DESTROYED:
-				return MOD_DESTROYED
-			if st == MOD_DAMAGED:
-				worst = MOD_DAMAGED
+	for id in _kind_ids.get(kind, []):
+		var st: String = modules[id]
+		if st == MOD_DESTROYED:
+			return MOD_DESTROYED
+		if st == MOD_DAMAGED:
+			worst = MOD_DAMAGED
 	return worst
 
 

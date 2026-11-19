@@ -62,6 +62,19 @@ var time := 0.0
 var _next_track := 1
 var _scan_cache := PackedFloat32Array()
 var _scan_count := 0
+## 게임 속도 설정(configure). 기본값 = 원래 상수(설정이 없는 옛 에피소드도 그대로 재현)
+var memory_s := MEMORY_S
+var identify_px := IDENTIFY_PX
+var detect_range_scale := 1.0
+var min_fraction := LineOfSight.MIN_FRACTION
+
+
+## 탐지·식별을 쉽게 하는 게임 속도 설정. pace = {memory_s, identify_px, detect_range, min_fraction}
+func configure(pace: Dictionary) -> void:
+	memory_s = float(pace.get("memory_s", MEMORY_S))
+	identify_px = float(pace.get("identify_px", IDENTIFY_PX))
+	detect_range_scale = float(pace.get("detect_range", 1.0))
+	min_fraction = float(pace.get("min_fraction", LineOfSight.MIN_FRACTION))
 
 
 func _init(p_map: HillMap, p_tank: Tank, p_view: TankView, p_sounds: SoundField = null) -> void:
@@ -71,11 +84,23 @@ func _init(p_map: HillMap, p_tank: Tank, p_view: TankView, p_sounds: SoundField 
 	sounds = p_sounds
 
 
+## 라벨 389개를 만드는 데 문자열 포맷이 수백 번 들어가므로 한 번만 만든다(매 관측마다 부르면 학습 시간의 ~30%)
+static var _labels_cache: Array = []
+
+
 static func size() -> int:
-	return labels().size()
+	if _labels_cache.is_empty():
+		_labels_cache = _build_labels()
+	return _labels_cache.size()
 
 
 static func labels() -> Array:
+	if _labels_cache.is_empty():
+		_labels_cache = _build_labels()
+	return _labels_cache.duplicate()
+
+
+static func _build_labels() -> Array:
 	var out := []
 	for l in Tank.OBSERVATION_LABELS:
 		out.append("self." + l)
@@ -107,14 +132,34 @@ static func labels() -> Array:
 func observe(tanks: Array, dt: float) -> PackedFloat32Array:
 	time += dt
 	var out := PackedFloat32Array()
+	var t0 := Time.get_ticks_usec()
 	_self_features(out)
 	_view_features(out)
+	var t1 := Time.get_ticks_usec()
 	_update_contacts(tanks)
 	_contact_features(out)
+	var t2 := Time.get_ticks_usec()
 	_scan_features(out)
+	var t3 := Time.get_ticks_usec()
 	_sound_features(out, tanks)
+	var t4 := Time.get_ticks_usec()
+	perf_self_us += t1 - t0
+	perf_contacts_us += t2 - t1
+	perf_scan_us += t3 - t2
+	perf_sound_us += t4 - t3
+	perf_observations += 1
 	vector = out
 	return out
+
+
+## 학습 성능 계측(µs 누적, 모든 관측 합). training_env 가 에피소드마다 읽고 0 으로 돌린다
+static var perf_self_us := 0
+static var perf_contacts_us := 0
+static var perf_scan_us := 0
+static var perf_sound_us := 0
+static var perf_observations := 0
+static var perf_los_rays := 0
+static var perf_scans := 0
 
 
 # ---------------------------------------------------------------- 자기·시점
@@ -159,7 +204,8 @@ func _update_contacts(tanks: Array) -> void:
 		var sp = TankView.screen_point(xf, fov, center)
 		if not view.on_screen(sp, 0.03):
 			continue
-		var s := LineOfSight.spot(map, tank, t, sensor, mag)
+		var s := LineOfSight.spot(map, tank, t, sensor, mag, detect_range_scale, min_fraction)
+		perf_los_rays += int(s.get("rays", 0))
 		if not s.detected:
 			continue
 		var to := center - sensor
@@ -171,7 +217,7 @@ func _update_contacts(tanks: Array) -> void:
 			c = {"track": _next_track, "gun_err": null, "screen": null}
 			_next_track += 1
 			contacts[t.name] = c
-		var identified := px >= IDENTIFY_PX
+		var identified := px >= identify_px
 		c.enemy = t.team != tank.team
 		c.t = time
 		c.visible_now = true
@@ -196,7 +242,7 @@ func _update_contacts(tanks: Array) -> void:
 				# + x = 십자선 오른쪽, + y = 위 (rad)
 				c.gun_err = Vector2(atan2(l.x, -l.z), atan2(l.y, -l.z))
 	for k in contacts.keys():
-		if time - float(contacts[k].t) > MEMORY_S:
+		if time - float(contacts[k].t) > memory_s:
 			contacts.erase(k)
 
 
@@ -233,7 +279,7 @@ func _contact_features(out: PackedFloat32Array) -> void:
 			var known := ty != ""
 			var ge = c.gun_err
 			out.append_array(PackedFloat32Array([
-				1.0, 1.0 if c.visible_now else 0.0, clampf((time - float(c.t)) / MEMORY_S, 0.0, 1.0),
+				1.0, 1.0 if c.visible_now else 0.0, clampf((time - float(c.t)) / memory_s, 0.0, 1.0),
 				sin(b), cos(b), clampf(float(c.elev) / 0.2, -1.0, 1.0),
 				sp.x / TankView.ASPECT if sp != null else 0.0, sp.y if sp != null else 0.0,
 				log(maxf(float(c.size_px), 1.0)) / log(2.0) / 10.0, float(c.visible_frac),
@@ -254,6 +300,7 @@ func _scan_features(out: PackedFloat32Array) -> void:
 	if _scan_cache.size() == SCAN_ROWS * SCAN_COLS * 3 and _scan_count % SCAN_EVERY != 1:
 		out.append_array(_scan_cache)
 		return
+	perf_scans += 1
 	var cache := PackedFloat32Array()
 	var xf := view.eye_transform(tank, map)
 	var th := tan(deg_to_rad(view.fov()) * 0.5)

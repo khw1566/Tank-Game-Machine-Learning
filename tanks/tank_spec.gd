@@ -205,6 +205,36 @@ func plate(zone: String) -> Dictionary:
 	return armor.get(zone, {"t": 10.0})
 
 
+## 적용된 게임 속도 배율(apply_pace). 기록·보고서용
+var pace := {}
+
+
+## 게임 속도(학습 속도용 공통 배율). 모든 전차에 같은 배율을 곱하므로 전차 사이의 상대적 특성
+## (T-34 가 가장 빠르고 후진이 나쁨, 티거 포탑이 가장 느림 …)은 그대로 남는다.
+##   mobility: 기어별 속도·후진 속도 × k, 엔진 출력 × k(기어별 견인력 유지 → 같은 기어를 쓰므로 야지 속도도 × k),
+##             가속 배율·브레이크 × k(같은 시간에 k 배 속도에 도달). 기동간 조준 흔들림·차체 출렁임 계수는
+##             속도가 k 배가 되어도 같은 크기가 되도록 나눈다(기동간 사격 난이도·전술 균형 유지).
+##   turret:   포탑 선회·포 고저 속도 × k (선회 조준 흔들림 계수는 ÷ k)
+func apply_pace(mobility := 1.0, turret := 1.0) -> void:
+	if mobility > 0.0 and mobility != 1.0:
+		forward_gears_kmh = forward_gears_kmh.map(func(v): return float(v) * mobility)
+		reverse_gears_kmh = reverse_gears_kmh.map(func(v): return float(v) * mobility)
+		max_forward_kmh *= mobility
+		max_reverse_kmh *= mobility
+		engine_hp *= mobility
+		acceleration_scale *= mobility
+		brake_mps2 *= mobility
+		bloom_move_mrad_per_mps /= mobility
+		bloom_hull_turn_mrad_per_dps /= mobility
+		suspension_pitch_deg_per_mps2 /= mobility
+		suspension_roll_deg_per_mps2 /= mobility * mobility
+	if turret > 0.0 and turret != 1.0:
+		turret_traverse_deg_s *= turret
+		gun_elevation_rate_deg_s *= turret
+		bloom_traverse_mrad_per_dps /= turret
+	pace = {"mobility": mobility, "turret": turret}
+
+
 func max_forward_mps() -> float:
 	return max_forward_kmh / 3.6
 
@@ -277,7 +307,7 @@ func to_dict() -> Dictionary:
 		mod_out.append({"id": m.id, "kind": m.kind, "pos": _v(m.pos),
 			"radius": m.radius, "in_turret": m.in_turret})
 	return {
-		"id": id, "display_name": display_name, "nation": nation,
+		"id": id, "display_name": display_name, "nation": nation, "pace": pace,
 		"mass_t": mass_t, "engine_hp": engine_hp, "power_to_weight": snappedf(power_to_weight(), 0.1),
 		"shape": {
 			"hull_length": hull_length, "hull_width": hull_width, "hull_bottom_y": hull_bottom_y,

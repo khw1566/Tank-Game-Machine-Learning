@@ -1,0 +1,1 @@
+wall_time,global_step,env,uid,tank,stage,stage_idx,current_stage,success,reason,winner,return,decisions,duration_s,spawn_distance_m,map_seed,seed,hits,pens,kills,shots,learner_policy,opponents,episode_file,replay_dir,final_hash

@@ -24,7 +24,13 @@ def main():
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--time-limit', type=int, default=180)
     parser.add_argument('--initialize-only', action='store_true')
+    parser.add_argument('--n-envs', type=int, default=1,
+                        help='동시에 돌릴 전장(Godot 프로세스) 수. 개체별 모델은 그대로 7개이고 추론만 묶는다')
+    parser.add_argument('--prefetch', type=int, default=1,
+                        help='1 = 다음 경기용 Godot 를 미리 띄워 재시작 대기를 없앤다')
     args = parser.parse_args()
+    if not 1 <= args.n_envs <= 16:
+        parser.error('--n-envs must be 1..16')
     if args.n_steps < 2 or args.timesteps < 1 or args.save_every < 1 or not 1 <= args.time_limit <= 180:
         parser.error('Invalid training length, rollout size or time limit')
     train(args)
