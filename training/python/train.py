@@ -224,6 +224,10 @@ def final_source(args):
         if not path.exists():
             raise ValueError(f"시작 모델이 없습니다: {path}")
         return path, f"{path.parent.name}/{path.name}", {}
+    if not args.branch_from and args.curriculum == "v6" and (Path(args.runs_dir) / "V5run 1" / curriculum_v4.SHARED).exists():
+        # V6 는 V5 공통 모델에서 시작한다: 지정이 없으면 기본 실행 "V5run 1" 을 쓴다
+        args.branch_from = "V5run 1"
+        print('[train] 시작 모델 실행이 비어 있어 기본값 "V5run 1" 을 사용합니다', flush=True)
     if not args.branch_from:
         raise ValueError("최종 학습의 첫 실행에는 --branch-from <V5 실행 폴더>(예: runs/\"V5run 1\") 또는 --init-model 이 필요합니다")
     src_run = Path(args.branch_from)
