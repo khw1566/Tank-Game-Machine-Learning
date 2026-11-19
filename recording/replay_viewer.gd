@@ -352,7 +352,7 @@ func _update_ui() -> void:
 			ReportBuilder.TEAM_LABELS[int(td.team)], ["정상", "손상", "전투불능", "파괴"][clampi(ps.status, 0, 3)], ps.speed,
 			float(ps.reload), float(r[selected]) if selected < r.size() else 0.0],
 		"입력: 좌궤도 %+.2f  우궤도 %+.2f  브레이크 %.2f  포탑 %+.2f  포 %+.2f  발사 %d" % [a[0], a[1], a[2], a[3], a[4], int(a[5])],
-		"팀 점수: 독일 %.2f   연합군 %.2f" % [float(fr.score[0]), float(fr.score[1])], ""]
+		ReportBuilder.team_score_text(data.tanks(), fr.score), ""]
 	var dec := _decision_at(selected, t)
 	if not dec.is_empty():
 		var inf: Dictionary = dec.get("info", {}).duplicate()
@@ -418,9 +418,10 @@ func _recent_events(window: float) -> Array:
 			break
 		var r: Dictionary = e.r
 		var kind := MatchRecorder.shot_kind(r)
+		var friendly: bool = r.get("hit", false) and int(e.target) >= 0 and data.tank_team(int(e.shooter)) == data.tank_team(int(e.target))
 		out.append("%s  %s → %s  %s %s %s" % [ReportBuilder._mmss(e.t), data.tank_name(int(e.shooter)),
 			data.tank_name(int(e.target)) if r.get("hit", false) else r.get("blocked_by", "-"),
-			ReportBuilder.KIND_LABEL.get(kind, kind), r.get("zone", ""), ",".join(r.get("events", []).filter(func(x): return str(x).begins_with("knocked_out")))])
+			("아군 오사 · " if friendly else "") + ReportBuilder.KIND_LABEL.get(kind, kind), r.get("zone", ""), ",".join(r.get("events", []).filter(func(x): return str(x).begins_with("knocked_out")))])
 		if out.size() >= 6:
 			break
 	return out

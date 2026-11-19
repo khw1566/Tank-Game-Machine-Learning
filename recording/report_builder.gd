@@ -28,10 +28,19 @@ static func build_files(events_path: String, episodes_csv := "") -> String:
 	if not d.ok():
 		push_error("ReportBuilder: " + (d.error if d.error != "" else "프레임 없음"))
 		return ""
-	var out_dir := events_path.get_base_dir()
+	return build_data(d, episodes_csv)
+
+
+static func build_data(d: ReplayData, episodes_csv := "") -> String:
+	var out_dir := d.path.get_base_dir()
+	ShotRewardAnalysis.enrich(d)
+	var distribution := ShotDistribution.collect(d)
+	_write_text(out_dir + "/shot_distribution.csv", ShotDistribution.csv_text(distribution))
+	_write_text(out_dir + "/shot_distribution.json", JSON.stringify(distribution))
 	_write_text(out_dir + "/shots.csv", shots_csv(d))
 	_write_text(out_dir + "/paths.csv", paths_csv(d))
 	_write_text(out_dir + "/score.csv", score_csv(d))
+	ShotImpactReport.write_assets(out_dir, d.shots)
 	var html := build_html(d, _read_episodes(episodes_csv))
 	var rp := out_dir + "/report.html"
 	_write_text(rp, html)
@@ -43,7 +52,7 @@ static func build_html(d: ReplayData, episodes: Array) -> String:
 	var s := PackedStringArray()
 	var summary: Dictionary = d.end.get("summary", {})
 	var winner := int(d.end.get("winner", -1))
-	s.append("<!doctype html><html lang='ko'><head><meta charset='utf-8'><title>전투 보고서 ep%d</title>" % int(h.get("episode", 0)))
+	s.append("<!doctype html><html lang='ko'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>전투 보고서 ep%d</title>" % int(h.get("episode", 0)))
 	s.append("<style>" + _css() + "</style></head><body>")
 	s.append("<h1>전투 보고서 — 에피소드 %d</h1>" % int(h.get("episode", 0)))
 	s.append("<p class='meta'>기록 %s · 맵 시드 %s · 경과 %s · 종료: %s · 결과: <b>%s</b> · 기록 형식 %s v%s</p>" % [
@@ -52,13 +61,25 @@ static func build_html(d: ReplayData, episodes: Array) -> String:
 		h.get("format", ""), h.get("version", "")])
 	var sc: Array = d.frames[-1].get("score", [0, 0])
 	s.append("<div class='tiles'>%s%s%s%s</div>" % [
-		_tile(TEAM_LABELS[0] + " 점수", "%.2f" % sc[0], TEAM_COLORS[0][0]),
-		_tile(TEAM_LABELS[1] + " 점수", "%.2f" % sc[1], TEAM_COLORS[1][0]),
+		_tile(TEAM_LABELS[0] + " 보상 합계", "%.2f" % sc[0], TEAM_COLORS[0][0]),
+		_tile(TEAM_LABELS[1] + " 보상 합계", "%.2f" % sc[1], TEAM_COLORS[1][0]),
 		_tile("사격 / 명중", "%d / %d" % [d.shots.size(), d.shots.filter(func(e): return e.r.get("hit", false)).size()], "#495057"),
 		_tile("전투불능", "%d대" % d.knockouts.size(), "#495057")])
+	s.append("<p class='note'>%s. 팀 합계는 출전 전차 수에 영향을 받습니다. 승패는 적 팀 전멸로 결정하며, 보상 합계로 판정하지 않습니다. 아군 사격은 감점이며 적 명중·관통·격파 실적에서 제외합니다.</p>" % team_score_text(d.tanks(), sc))
+	var outcomes := [0.0, 0.0]
+	var friendly := [0.0, 0.0]
+	for rw in d.rewards:
+		var team := int(rw.get("team", -1))
+		if team < 0 or team > 1:
+			continue
+		if str(rw.reason) in ["win", "loss", "survive_win"]:
+			outcomes[team] += float(rw.value)
+		if str(rw.reason).begins_with("friendly_"):
+			friendly[team] += float(rw.value)
+	s.append("<p class='note'>승패·생존 보상 합계: 독일 %+.2f / 연합군 %+.2f · 아군 사격자 감점 합계: 독일 %+.2f / 연합군 %+.2f (피격자 감점 별도)</p>" % [outcomes[0], outcomes[1], friendly[0], friendly[1]])
 
 	s.append("<h2>1. 전차별 요약</h2>")
-	s.append(_summary_table(d))
+	s.append("<div class='table-wrap'>" + _summary_table(d) + "</div>")
 
 	s.append("<h2>2. 맵상 동선과 타격 위치</h2>")
 	s.append("<p class='note'>위쪽 = −Z(연합군 출발), 아래쪽 = +Z(티거 출발). 선 = 이동 경로(○ 출발, ■ 마지막 위치, ✕ 전투불능). 가는 선 = 사격선, 점 = 탄착(빨강 관통 · 노랑 불관통 · 흰색 도탄 · 회색 차단). 점에 마우스를 올리면 판정 내역.</p>")
@@ -77,13 +98,15 @@ static func build_html(d: ReplayData, episodes: Array) -> String:
 	s.append(_episode_chart(episodes))
 
 	s.append("<h2>6. 피탄 분석</h2>")
-	s.append(_zone_table(d))
-	s.append(_angle_table(d))
+	s.append("<div class='table-wrap'>" + _zone_table(d) + "</div>")
+	s.append("<div class='table-wrap'>" + _angle_table(d) + "</div>")
 
 	s.append("<h2>7. 타격 기록</h2>")
 	s.append(_shot_table(d))
+	s.append(ShotDistribution.html(ShotDistribution.collect(d)))
+	s.append(ShotImpactReport.gallery(d.shots))
 
-	s.append("<h2>부록. 보상 가중치</h2><table class='small'><tr><th>항목</th><th>값</th></tr>")
+	s.append("<h2>부록. 보상 가중치</h2><div class='table-wrap'><table class='small'><tr><th>항목</th><th>값</th></tr>")
 	var w: Dictionary = h.get("reward_weights", {}).duplicate(true)
 	if h.get("score_source", "game") == "training":
 		var training: Dictionary = h.get("meta", {}).get("training", {}).get("reward", {})
@@ -93,35 +116,52 @@ static func build_html(d: ReplayData, episodes: Array) -> String:
 		s.append("<tr><td colspan='2'>점수는 각 개체의 실제 PPO 훈련 보상입니다. 지근탄·접근·시간·승패 보상을 포함하며 중복 합산하지 않습니다.</td></tr>")
 	for k in w:
 		s.append("<tr><td>%s</td><td>%s</td></tr>" % [k, w[k]])
-	s.append("</table><p class='note'>원본: %s</p></body></html>" % _esc(ProjectSettings.globalize_path(d.path)))
+	s.append("</table></div><p class='note'>원본: %s</p></body></html>" % _esc(ProjectSettings.globalize_path(d.path)))
 	return "\n".join(s)
 
 
 # ------------------------------------------------------------------ 표
+
+static func team_score_text(tanks: Array, scores: Array) -> String:
+	var counts := [0, 0]
+	for tank in tanks:
+		var team := int(tank.team)
+		if team >= 0 and team < 2:
+			counts[team] += 1
+	return "팀 보상 합계: 독일 %.2f (%d대, 대당 평균 %.2f) / 연합군 %.2f (%d대, 대당 평균 %.2f)" % [
+		float(scores[0]), counts[0], float(scores[0]) / maxi(1, counts[0]),
+		float(scores[1]), counts[1], float(scores[1]) / maxi(1, counts[1])]
 
 static func _summary_table(d: ReplayData) -> String:
 	var per := {}
 	for t in d.end.get("summary", {}).get("tanks", []):
 		per[int(t.id)] = t
 	var last: Array = d.frames[-1].get("r", [])
-	var s := PackedStringArray(["<table><tr><th></th><th>전차</th><th>팀</th><th>최종 상태</th><th>사격</th><th>명중</th><th>관통</th><th>격파</th><th>이동(m)</th><th>점수</th></tr>"])
+	var s := PackedStringArray(["<table><tr><th></th><th>전차</th><th>팀</th><th>최종 상태</th><th>사격</th><th>적 명중</th><th>적 관통</th><th>적 격파</th><th>아군 명중 / 격파</th><th>이동(m)</th><th>보상</th></tr>"])
 	for t in d.tanks():
 		var id := int(t.id)
 		var st := _tank_stats(d, id)
 		var p: Dictionary = per.get(id, {})
-		s.append("<tr><td><span class='sw' style='background:%s'></span></td><td>%s <small>(%s)</small></td><td>%s</td><td>%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td><td>%.0f</td><td>%.2f</td></tr>" % [
+		s.append("<tr><td><span class='sw' style='background:%s'></span></td><td>%s <small>(%s)</small></td><td>%s</td><td>%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td><td>%d / %d</td><td>%.0f</td><td>%.2f</td></tr>" % [
 			_tank_color(d, id), t.name, t.display_name, TEAM_LABELS[int(t.team)], p.get("status", _status_name(d, id)),
-			st.shots, st.hits, st.pens, st.kills, _path_length(d, id), float(last[id]) if id < last.size() else 0.0])
+			st.shots, st.hits, st.pens, st.kills, st.friendly_hits, st.friendly_kills, _path_length(d, id), float(last[id]) if id < last.size() else 0.0])
 	s.append("</table>")
 	return "".join(s)
 
 
 static func _tank_stats(d: ReplayData, id: int) -> Dictionary:
-	var st := {"shots": 0, "hits": 0, "pens": 0, "kills": 0}
+	var st := {"shots": 0, "hits": 0, "pens": 0, "kills": 0, "friendly_hits": 0, "friendly_kills": 0}
 	for e in d.shots:
 		if int(e.shooter) != id:
 			continue
 		st.shots += 1
+		var friendly := int(e.target) >= 0 and d.tank_team(int(e.target)) == d.tank_team(id)
+		if e.r.get("hit", false) and friendly:
+			st.friendly_hits += 1
+			for ev in e.r.get("events", []):
+				if str(ev).begins_with("knocked_out:"):
+					st.friendly_kills += 1
+			continue
 		if e.r.get("hit", false):
 			st.hits += 1
 			if e.r.get("penetrated", false):
@@ -149,9 +189,13 @@ static func _path_length(d: ReplayData, id: int) -> float:
 static func _shot_table(d: ReplayData) -> String:
 	if d.shots.is_empty():
 		return "<p class='note'>사격 없음</p>"
-	var s := PackedStringArray(["<div class='scroll'><table class='small'><tr><th>#</th><th>시각</th><th>사격</th><th>표적</th><th>거리(m)</th><th>탄종</th><th>구역</th><th>입사각°</th><th>유효장갑mm</th><th>관통력mm</th><th>관통확률</th><th>결과</th><th>피해</th><th>점수</th></tr>"])
+	var s := PackedStringArray(["<div class='scroll'><table class='small'><tr><th>타격 상세</th><th>시각</th><th>사격</th><th>표적</th><th>거리(m)</th><th>탄종</th><th>구역</th><th>입사각°</th><th>유효장갑mm</th><th>관통력mm</th><th>관통확률</th><th>결과</th><th>피해</th><th>점수</th></tr>"])
 	var rew_by_tick := {}
 	for rw in d.rewards:
+		# A win, incoming damage or shaping on the same tick is not this shot's reward.
+		var reason := str(rw.reason)
+		if not (reason.begins_with("hit") or reason.begins_with("friendly_") or reason in ["miss", "wreck_hit", "near_miss", "near_penetration", "aimed_fire"]):
+			continue
 		var k := "%d_%d" % [int(rw.tick), int(rw.tank)]
 		rew_by_tick[k] = rew_by_tick.get(k, 0.0) + float(rw.value)
 	var i := 0
@@ -168,12 +212,20 @@ static func _shot_table(d: ReplayData) -> String:
 				dmg.append("<b>%s</b>" % ev)
 		var rk := "%d_%d" % [int(e.tick), int(e.shooter)]
 		var hit: bool = r.get("hit", false)
-		s.append("<tr class='%s'><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % [
-			kind, i, _mmss(e.t), d.tank_name(int(e.shooter)), d.tank_name(int(e.target)) if hit else r.get("blocked_by", "-"),
+		var friendly := hit and int(e.target) >= 0 and d.tank_team(int(e.shooter)) == d.tank_team(int(e.target))
+		var score_text := ("%+.2f" % rew_by_tick[rk]) if rew_by_tick.has(rk) else "미기록"
+		if not r.get("reward_events", []).is_empty():
+			score_text = "%+.3f" % ShotRewardAnalysis.total(e, d.tank_name(int(e.shooter)))
+		var result_label: String = KIND_LABEL.get(kind, kind)
+		if not hit and not r.get("near_miss", {}).is_empty():
+			result_label = "지근탄 %.2fm" % float(r.near_miss.get("miss_distance_m", 0))
+		var detail := "<a href='impacts/shot_%04d.html' target='_blank'>#%d · 타격 시뮬레이션</a>" % [i, i] if ShotImpactReport.effective(r) else str(i)
+		s.append("<tr class='%s'><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % [
+			kind, detail, _mmss(e.t), d.tank_name(int(e.shooter)), d.tank_name(int(e.target)) if hit else r.get("blocked_by", "-"),
 			("%.0f" % r.distance_m) if hit else "-", r.get("shell", ""), r.get("zone", "-") if hit else "-",
 			("%.0f" % r.impact_angle_deg) if hit else "-", ("%.0f" % r.effective_mm) if hit else "-",
 			("%.0f" % r.pen_roll_mm) if hit else "-", ("%.0f%%" % (float(r.pen_probability) * 100.0)) if hit else "-",
-			KIND_LABEL.get(kind, kind), ", ".join(dmg), ("%+.2f" % rew_by_tick[rk]) if rew_by_tick.has(rk) else ""])
+			("아군 오사 · " if friendly else "") + result_label, ", ".join(dmg), score_text])
 	s.append("</table></div>")
 	return "".join(s)
 
@@ -376,7 +428,8 @@ static func _heatmap_svg(d: ReplayData, team: int) -> String:
 static func _score_chart(d: ReplayData, teams: bool) -> String:
 	var W := 900.0
 	var H := 260.0
-	var L := 52.0
+	var L := 82.0
+	var R := 36.0
 	var B := 28.0
 	var T := d.duration()
 	var series := []  # [label, color, PackedVector2Array]
@@ -404,18 +457,18 @@ static func _score_chart(d: ReplayData, teams: bool) -> String:
 	var pad := (hi - lo) * 0.08
 	lo -= pad
 	hi += pad
-	var fx := func(t): return L + (t / maxf(T, 1.0)) * (W - L - 10.0)
-	var fy := func(v): return 10.0 + (hi - v) / (hi - lo) * (H - B - 10.0)
+	var fx := func(t): return L + (t / maxf(T, 1.0)) * (W - L - R)
+	var fy := func(v): return 34.0 + (hi - v) / (hi - lo) * (H - B - 34.0)
 	var s := PackedStringArray(["<figure><svg viewBox='0 0 %d %d' width='100%%' class='chart'>" % [W, H]])
 	for v in nice_ticks(lo, hi):
 		s.append("<line x1='%.0f' x2='%.0f' y1='%.1f' y2='%.1f' class='grid'/><text x='%.0f' y='%.1f' class='ax' text-anchor='end'>%s</text>" % [L, W - 10, fy.call(v), fy.call(v), L - 6, fy.call(v) + 4, str(snappedf(v, 0.01))])
 	s.append("<line x1='%.0f' x2='%.0f' y1='%.1f' y2='%.1f' class='zero'/>" % [L, W - 10, fy.call(0.0), fy.call(0.0)])
 	for k in 6:
 		var t := T * k / 5.0
-		s.append("<text x='%.1f' y='%.0f' class='ax' text-anchor='middle'>%s</text>" % [fx.call(t), H - 8, _mmss(t)])
+		s.append("<text x='%.1f' y='%.0f' class='ax' text-anchor='%s'>%s</text>" % [fx.call(t), H - 8, "start" if k == 0 else "end" if k == 5 else "middle", _mmss(t)])
 	for ko in d.knockouts:
 		var x: float = fx.call(float(ko.t))
-		s.append("<line x1='%.1f' x2='%.1f' y1='10' y2='%.0f' class='ko'/><text x='%.1f' y='20' class='ax'>✕%s</text>" % [x, x, H - B, x + 3, d.tank_name(int(ko.tank))])
+		s.append("<line x1='%.1f' x2='%.1f' y1='30' y2='%.0f' class='ko'/><text x='%.1f' y='20' class='ax' text-anchor='%s'>✕%s</text>" % [x, x, H - B, x - 5 if x > W * .6 else x + 5, "end" if x > W * .6 else "start", _esc(d.tank_name(int(ko.tank)))])
 	for se in series:
 		var pts := PackedStringArray()
 		var step := maxi(1, se[2].size() / 900)
@@ -435,7 +488,8 @@ static func _episode_chart(rows: Array) -> String:
 		return "<p class='note'>episodes.csv 없음</p>"
 	var W := 900.0
 	var H := 240.0
-	var L := 52.0
+	var L := 82.0
+	var R := 36.0
 	var B := 28.0
 	var lo := 0.0
 	var hi := 1.0
@@ -443,7 +497,7 @@ static func _episode_chart(rows: Array) -> String:
 		lo = minf(lo, minf(r.s0, r.s1))
 		hi = maxf(hi, maxf(r.s0, r.s1))
 	var n := rows.size()
-	var fx := func(i): return L + (float(i) / maxf(n - 1, 1)) * (W - L - 10.0)
+	var fx := func(i): return L + (float(i) / maxf(n - 1, 1)) * (W - L - R)
 	var fy := func(v): return 10.0 + (hi - v) / maxf(hi - lo, 1e-6) * (H - B - 10.0)
 	var s := PackedStringArray(["<figure><svg viewBox='0 0 %d %d' width='100%%' class='chart'>" % [W, H]])
 	for v in nice_ticks(lo, hi):
@@ -463,7 +517,7 @@ static func _episode_chart(rows: Array) -> String:
 		wins[r.winner if r.winner >= 0 else 2] += 1
 	for k in mini(n, 6):
 		var i := int(round((n - 1) * k / maxf(mini(n, 6) - 1, 1)))
-		s.append("<text x='%.1f' y='%.0f' class='ax' text-anchor='middle'>ep%d</text>" % [fx.call(i), H - 8, rows[i].ep])
+		s.append("<text x='%.1f' y='%.0f' class='ax' text-anchor='%s'>ep%d</text>" % [fx.call(i), H - 8, "start" if k == 0 else "end" if k == mini(n, 6) - 1 else "middle", rows[i].ep])
 	s.append("</svg><figcaption><span class='key'><i style='background:%s'></i>%s</span><span class='key'><i style='background:%s'></i>%s</span> — 에피소드 %d개, 승리 %s %d / %s %d / 무승부 %d (큰 점 = 승리)</figcaption></figure>" % [
 		TEAM_COLORS[0][0], TEAM_LABELS[0], TEAM_COLORS[1][0], TEAM_LABELS[1], n, TEAM_LABELS[0], wins[0], TEAM_LABELS[1], wins[1], wins[2]])
 	return "".join(s)
@@ -604,19 +658,4 @@ static func _esc(s: String) -> String:
 
 
 static func _css() -> String:
-	return """
-body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;margin:24px auto;max-width:980px;color:#212529;background:#fff;padding:0 16px}
-h1{font-size:22px;margin-bottom:4px}h2{font-size:17px;margin-top:32px;border-bottom:2px solid #dee2e6;padding-bottom:4px}
-.meta,.note{color:#495057;font-size:13px}table{border-collapse:collapse;font-size:13px;margin:8px 0}
-th,td{border:1px solid #dee2e6;padding:3px 7px;text-align:right}th{background:#f1f3f5}td:nth-child(2),td:nth-child(3){text-align:left}
-table.small{font-size:12px}.scroll{max-height:520px;overflow:auto}.scroll td{white-space:nowrap}
-tr.penetration td{background:#fff5f5}tr.non_penetration td{background:#fff9db}tr.blocked td,tr.miss td{color:#868e96}
-.tiles{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.tile{border-left:5px solid;padding:6px 12px;background:#f8f9fa;min-width:150px}
-.tl{font-size:12px;color:#495057}.tv{font-size:20px;font-weight:bold}
-.sw,.legend i,.key i{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;margin-right:4px}
-.legend span,.key{margin-right:14px;font-size:13px}svg.map{border:1px solid #ced4da;max-width:100%;height:auto}
-.lbl{font-size:11px;fill:#212529;paint-order:stroke;stroke:#fff;stroke-width:3px}
-.chart{border:1px solid #e9ecef;background:#fff}.grid{stroke:#e9ecef}.zero{stroke:#adb5bd}.ax{font-size:11px;fill:#495057}
-.ko{stroke:#868e96;stroke-dasharray:4 3}figure{margin:8px 0}figcaption{font-size:13px;color:#495057}.row{display:flex;gap:16px;flex-wrap:wrap}
-@media print{.scroll{max-height:none;overflow:visible}}
-"""
+	return ReportTheme.css()

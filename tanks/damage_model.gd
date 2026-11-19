@@ -38,6 +38,8 @@ static func resolve_shot(state: TankDamageState, turret_yaw: float, local_origin
 		gun_pitch := 0.0) -> Dictionary:
 	var spec := state.spec
 	var result := {
+		"ray_origin_local": TankSpec._v(local_origin), "ray_dir_local": TankSpec._v(local_dir.normalized()),
+		"target_turret_yaw": turret_yaw, "target_gun_pitch": gun_pitch,
 		"target": spec.id, "gun": gun.id, "shell": gun.shell_name, "shell_type": gun.shell_type, "distance_m": snappedf(distance_m, 0.1),
 		"hit": false, "part": "", "zone": "", "plate_mm": 0.0, "slope_deg": 0.0,
 		"impact_angle_deg": 0.0, "effective_mm": 0.0, "pen_mean_mm": 0.0,

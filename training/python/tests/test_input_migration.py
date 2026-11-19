@@ -66,6 +66,16 @@ class InputMigrationTests(unittest.TestCase):
             assert expand_fire_inputs(destination, ToyEnv(437).observation_space, root) == destination
             new.learn(8, reset_num_timesteps=False)  # Actual optimizer update catches mismatched Adam tensors.
             assert new.num_timesteps == 16
+            fire_model = root / "fire.zip"
+            new.save(fire_model)
+            battle_path = expand_fire_inputs(fire_model, ToyEnv(605).observation_space, root / "migrations",
+                                             allow_battle=True)
+            battle = PPO.load(battle_path, env=ToyEnv(605), device="cpu")
+            battle_obs = np.concatenate([expanded, rng.normal(size=(4, 168)).astype(np.float32)], axis=1)
+            np.testing.assert_allclose(new.predict(expanded, deterministic=True)[0],
+                                       battle.predict(battle_obs, deterministic=True)[0], atol=1e-6)
+            battle.learn(8, reset_num_timesteps=False)
+            assert battle.num_timesteps == 24
 
 
 if __name__ == "__main__":

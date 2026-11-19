@@ -169,6 +169,7 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
     <h2>커리큘럼 <span class="sub" id="curSub"></span><span class="spacer"></span><label class="sub" data-tip="이전 커리큘럼(v1: 주행 → 지형 주행 → 사격 → 1대1 → 팀전 → 최종전 10단계)과 v1 전용 최종 시험 패널을 보이거나 숨깁니다. v1 실행 기록은 지워지지 않습니다."><input type="checkbox" id="showV1"> 이전 버전(v1) 단계 보기</label></h2>
     <p class="hint">단계 위에 마우스를 올리면 무엇을 학습하고 무엇을 하면 성공인지 보입니다.</p>
     <div class="stages" id="stages"></div>
+    <div id="battleProgress"></div>
     <div id="terrainLessons" style="margin-top:12px"></div>
   </section>
 
@@ -270,14 +271,15 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
       <div class="ctl wide"><label>학습용 Python (비우면 training\python\.venv 가 있으면 그것, 없으면 대시보드를 실행한 Python)</label><input type="text" name="python" placeholder="(자동)"></div>
       <div class="ctl wide"><label>프로젝트 폴더 (Godot 편집기 실행 파일을 쓸 때만, exe 면 비움)</label><input type="text" name="project" placeholder="..\.."></div>
       <div class="ctl"><label>실행 이름 (같은 이름 + 이어서 = 계속 학습)</label><input type="text" name="run" list="runList"><datalist id="runList"></datalist></div>
-      <div class="ctl"><label>학습 방식</label><select name="mode"><option value="shared">커리큘럼 v4 · 세 전차 공통 → 전차별 자동 분기</option><option value="single">전차 하나</option><option value="rotate">여러 전차 교대(자기대전)</option></select></div>
-      <div class="ctl" data-m="single"><label>커리큘럼</label><select name="curriculum"><option value="v4">v4 (현재)</option><option value="v1">v1 (이전 버전)</option></select></div>
+      <div class="ctl"><label>학습 방식</label><select name="mode"><option value="final">최종 1대6 · 맵 5종 · 전차별 모델 (V5 공통 모델에서 시작)</option><option value="battle">전투 자기 대전 · 평지 → 지형 → 전차별 분화</option><option value="shared">커리큘럼 v4 · 세 전차 공통 → 전차별 자동 분기</option><option value="single">전차 하나</option><option value="rotate">여러 전차 교대(자기대전)</option></select></div>
+      <div class="ctl" data-m="single"><label>커리큘럼</label><select name="curriculum"><option value="battle">전투 자기 대전</option><option value="v4">v4 (현재)</option><option value="v1">v1 (이전 버전)</option></select></div>
       <div class="ctl" data-m="single"><label>전차</label><select name="tank"></select></div>
-      <div class="ctl" data-m="single shared"><label>총 결정 수(스텝)</label><input type="number" name="timesteps" value="3000000" step="100000"></div>
+      <div class="ctl" data-m="single shared battle"><label>총 결정 수(스텝)</label><input type="number" name="timesteps" value="3000000" step="100000"></div>
+      <div class="ctl wide" data-m="final"><label>시작 모델 실행 (V5 전투 공통 모델, 첫 실행에만 사용) <span class="sub">예: V5run 1</span></label><input type="text" name="branch_from" placeholder="V5run 1"></div>
       <div class="ctl" data-m="rotate"><label>교대할 전차</label><input type="text" name="rotate" value="tiger1,sherman75,t34_76"></div>
-      <div class="ctl" data-m="rotate shared"><label><span data-m-label="rotate">교대마다 스텝</span><span data-m-label="shared">분기 후 전차별 스텝(번갈아)</span></label><input type="number" name="rotate_steps" value="500000" step="50000"></div>
-      <div class="ctl" data-m="rotate shared"><label><span data-m-label="rotate">반복 횟수</span><span data-m-label="shared">분기 후 반복 횟수</span></label><input type="number" name="cycles" value="10"></div>
-      <div class="ctl wide" data-m="shared single"><label>시작 가중치 (새 실행일 때만, 비우면 새 정책) <span class="sub" id="initHint"></span></label><input type="text" name="init_model" placeholder="(새 정책)"></div>
+      <div class="ctl" data-m="rotate shared battle final"><label><span data-m-label="rotate">교대마다 스텝</span><span data-m-label="shared battle">분기 후 전차별 스텝(번갈아)</span><span data-m-label="final">전차별 교대 스텝(티거→셔먼→T-34)</span></label><input type="number" name="rotate_steps" value="500000" step="50000"></div>
+      <div class="ctl" data-m="rotate shared battle final"><label><span data-m-label="rotate">반복 횟수</span><span data-m-label="shared battle">분기 후 반복 횟수</span><span data-m-label="final">교대 반복 횟수</span></label><input type="number" name="cycles" value="10"></div>
+      <div class="ctl wide" data-m="shared single battle"><label>시작 가중치 (새 실행일 때만, 비우면 새 정책) <span class="sub" id="initHint"></span></label><input type="text" name="init_model" placeholder="(새 정책)"></div>
       <div class="ctl"><label>동시 환경 수</label><input type="number" name="n_envs" min="1" max="64"></div>
       <div class="ctl"><label>학습 장치</label><select name="device"><option value="auto">자동 (혼합 CUDA 우선)</option><option value="hybrid">혼합 (CPU 추론 + GPU 갱신)</option><option value="cuda">GPU (추론·갱신 모두 CUDA)</option><option value="cpu">CPU</option></select></div>
       <div class="ctl"><label>PPO 환경당 수집 수 (빈칸 = 기본 / 저장된 값)</label><input type="number" name="n_steps" min="1" placeholder="1024"></div>
@@ -304,7 +306,7 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-const STAGE_LABEL = {drive: "주행", drive_terrain: "지형 주행", gunnery_static: "정지 표적 사격", gunnery_moving: "이동 표적 사격",
+const STAGE_LABEL = {final_1v6: "최종 1대6 · 엄폐 전투", battle_flat: "평지 자기 대전", battle_terrain: "장애물·굴곡 자기 대전", battle_roles: "전차별 최종 전투", drive: "주행", drive_terrain: "지형 주행", gunnery_static: "정지 표적 사격", gunnery_moving: "이동 표적 사격",
   gunnery_search: "수색·사격", duel_scripted: "1대1 vs 규칙 AI", duel_selfplay: "1대1 자기대전", team_scripted: "팀전 vs 규칙 AI", team_selfplay: "팀 자기대전", final_battle: "최종전 1 대 6",
   m1_move_basic: "v4 기동·기본 주행", m2_move_obstacles: "v4 기동·장애물 지대", m3_move_under_fire: "v4 기동·포화 속 이동", m4_ambush: "v4 기동·기습 대응", m5_crossing: "v4 기동·개활지 횡단",
   g1_gunnery: "v4 사격·정지/은폐 표적", g2_gunnery_moving: "v4 사격·이동 표적", g4_return_fire: "v4 사격·반격 대결", g6_close_front: "v4 사격·근거리 정면",
@@ -312,7 +314,7 @@ const STAGE_LABEL = {drive: "주행", drive_terrain: "지형 주행", gunnery_st
   g2_posture: "v4 사격·교전 자세", t1_numbers: "v4 전술·수적 우위", t2_cover_fight: "v4 전술·엄폐 교전", s1_role: "v4 전술·전차 역할(전차별)",
   s2_outnumbered: "v4 전술·열세 대응(전차별)",
   t1_pick_fights: "v4 전술·유리한 교전", t2_peek: "v4 전술·사격 후 재배치", t3_capture: "v4 전술·거점 확보", t4_defend: "v4 전술·거점 방어(전차별)", t5_flank: "v4 전술·측면(전차별)", t6_retreat: "v4 전술·열세 후퇴(전차별)"};
-const TANK_LABEL = {tiger1: "티거 I", sherman75: "셔먼 75mm", t34_76: "T-34/76"};
+const TANK_LABEL = {tiger1: "티거 I", sherman75: "셔먼 76mm", t34_76: "T-34-85"};
 const PHASE = {starting: "시작 중", collecting: "학습 중(수집)", updating: "학습 중(PPO 갱신)", paused: "일시정지", saving: "저장 중", stopped: "중지됨", evaluating: "평가 중(학습 없음)"};
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const COLORS = () => [1,2,3,4,5,6,7,8,9].map(i => css("--c" + i));
@@ -382,7 +384,7 @@ function hookTip(cv) {
 
 const CHARTS = [
   {id: "agent_return", title: "개체별 독립 학습 보상", note: "서로 다른 모델 · 각 개체의 누적 스텝"},
-  {id: "succ", title: "성공률 (세부 목표별, 이동평균)", note: "점선 = 현재 단계 승급 기준"},
+  {id: "succ", title: "성공률 (세부 목표별, 이동평균)", note: "점선 = 승급 기준 · 체크포인트 복귀 구간은 별도 곡선"},
   {id: "ret", title: "에피소드 보상 합 (이동평균)", note: "목표별로 별도 집계 · 색상은 보고서와 동일"},
   {id: "acc", title: "명중률 · 관통률 (사격·전투 단계)", note: "목표별 색상 · 실선 명중 / 점선 관통"},
   {id: "len", title: "에피소드 길이 (결정 수, 이동평균)", note: "1 결정 = 게임 0.1초"},
@@ -436,8 +438,24 @@ function groupOf(e) {
 }
 function objectiveSeries(list, metric, win, predicate = () => true) {
   const groups = new Map();
-  list.forEach(([e]) => { if (!predicate(e)) return; const g = groupOf(e); if (!groups.has(g.key)) groups.set(g.key, g); });
-  return [...groups.values()].map(g => ({name: g.name, color: g.color, dash: g.dash, pts: rolling(list, metric, win, e => groupOf(e).key === g.key && predicate(e))}));
+  // A restored checkpoint can move policy steps backwards. Never connect those
+  // runs across the reset or carry the old moving-average window into the new run.
+  const previous = new Map(), segments = new Map();
+  list.forEach(([e, i]) => {
+    const model = e[col("model")] || e[col("current_stage")] + "|" + e[col("tank")];
+    const step = e[col("global_step")], last = previous.get(model);
+    if (last != null && step < last) segments.set(model, (segments.get(model) || 0) + 1);
+    previous.set(model, step);
+    if (!predicate(e)) return;
+    const g = groupOf(e), segment = segments.get(model) || 0;
+    const key = g.key + "|model:" + model + "|segment:" + segment;
+    const tank = e[col("model")];
+    const suffix = tank && tank !== "shared" && $("grpSel").value !== "tank" ? " · " + (TANK_LABEL[tank] || tank) : "";
+    if (!groups.has(key)) groups.set(key, {...g, name: g.name + suffix, segment, rows: []});
+    groups.get(key).rows.push([e, i]);
+  });
+  return [...groups.values()].map(g => ({name: g.name + (g.segment ? ` · 재개 ${g.segment + 1}` : ""), color: g.color,
+    dash: g.segment ? [5, 3] : g.dash, pts: rolling(g.rows, metric, win)}));
 }
 function changeLines() {
   const xm = $("xSel").value, t = $("tankSel").value;
@@ -512,6 +530,8 @@ function kpi(k, v, s = "", bar = null) {
 }
 function render() {
   const st = S.status || {}, cs = st.curriculum || {}, alive = S.alive;
+  const stageKey = (S.stage_ids || []).join(",");
+  if ($("stageSel").dataset.stages !== stageKey) { fillStageSelects(); $("stageSel").dataset.stages = stageKey; }
   const ph = alive ? (st.phase || "starting") : (st.phase && st.phase !== "stopped" ? "끊김" : "stopped");
   const b = $("badge"); b.className = "badge " + (ph === "paused" ? "pause" : ph === "updating" ? "upd" : alive ? "run" : "");
   $("badgeText").textContent = alive ? (PHASE[ph] || ph) : (ph === "끊김" ? "응답 없음(꺼짐?)" : "중지됨");
@@ -533,8 +553,8 @@ function render() {
   const tc = cs.terrain, rate = tc?.success_rate ?? cs.success_rate, threshold = tc?.threshold ?? cs.threshold;
   $("kpis").innerHTML = [
     kpi("학습 전차", TANK_LABEL[st.tank] || st.tank || "-", (st.learner_policy || "").split("/").pop() + rot),
-    kpi("현재 단계", cs.stage ? `${cs.stage_idx + 1}/${INFO.stages.length} ${STAGE_LABEL[cs.stage]}` : "-", tc ? `${tc.index + 1}/${tc.count} ${esc(tc.label)} · ${tc.fixed ? "고정 연습" : "자동 승급"}` : cs.stage ? `단계 안 ${fmt(cs.episodes_in_stage)}판 (최소 ${fmt(cs.min_episodes)}, 최대 ${fmt(cs.max_episodes)})` : ""),
-    kpi("성공률 / 승급 기준", cs.stage ? `${pct(rate)} / ${threshold ? pct(threshold) : "마지막"}` : "-", tc ? `${tc.label} 최근 ${tc.episodes}/${tc.window}판` : cs.window ? `최근 ${cs.window}판` : "", cs.stage ? {v: rate, mark: threshold, color: threshold && rate >= threshold ? css("--ok") : null} : null),
+    kpi("현재 단계", cs.stage ? `${cs.stage_idx + 1}/${INFO.stages.length} ${STAGE_LABEL[cs.stage]}` : "-", tc ? `${tc.index + 1}/${tc.count} ${esc(tc.label)} · ${tc.fixed ? "고정 연습" : "자동 승급"}` : cs.stage ? cs.battle ? `단계 수집 ${fmt(cs.battle.steps_in_stage)} / 최소 ${fmt(cs.battle.min_steps)} 스텝` : `단계 안 ${fmt(cs.episodes_in_stage)}판 (최소 ${fmt(cs.min_episodes)}, 최대 ${fmt(cs.max_episodes)})` : ""),
+    kpi(cs.battle ? "자기 대전 승률 (참고)" : "성공률 / 승급 기준", cs.stage ? (cs.battle ? pct(rate) : `${pct(rate)} / ${threshold ? pct(threshold) : "마지막"}`) : "-", tc ? `${tc.label} 최근 ${tc.episodes}/${tc.window}판` : cs.window ? `최근 ${cs.window}판` : "", cs.stage ? {v: rate, mark: threshold, color: threshold && rate >= threshold ? css("--ok") : null} : null),
     kpi("초당 결정 수", fmt(st.steps_per_s, 0), `환경 ${st.n_envs ?? "-"}개 · 환경당 ${st.n_envs ? fmt(st.steps_per_s / st.n_envs, 0) : "-"}`),
     kpi("실시간 대비", st.realtime_x ? `×${fmt(st.realtime_x, 0)}` : "-", st.speed_cap ? `제한 ×${st.speed_cap}` : "제한 없음(최대 속도)"),
     kpi("에피소드", fmt(S.ep_total), `${fmt((st.episodes_per_s || 0) * 60, 1)}판/분`),
@@ -547,8 +567,9 @@ function render() {
   for (let i = EPS.length - 1; i >= 0; i--) { const e = EPS[i]; if (ti >= 0 && e[col("tank")] !== ti) continue; const s = e[col("stage_idx")]; (recent[s] ||= []); if (recent[s].length < win) recent[s].push(e[col("success")]); }
   const curIdx = cs.stage_idx ?? -1;
   $("stages").innerHTML = visibleStages().map(({s, i}) => { const r = recent[i]; const rate = r ? r.reduce((a, b) => a + b, 0) / r.length : null;
-    return `<div class="stage ${i < curIdx ? "done" : i === curIdx ? "cur" : ""}" data-stage="${s.id}"><div class="n">${s.v4 ? "v4 " + (i - V1_COUNT() + 1) : "v1 " + (i + 1)}단계 · 기준 ${s.promote ? pct(s.promote.threshold) : "-"}</div><div class="t">${(STAGE_LABEL[s.id] || s.id).replace("v4 ", "")}</div><div class="r">${rate == null ? "&nbsp;" : `최근 ${pct(rate)} (${r.length}판)`}</div></div>`; }).join("");
-  $("curSub").textContent = st.review_prob != null ? `복습 확률 ${pct(st.review_prob)} · 승급은 최근 판 성공률이 기준을 넘고 최소 판 수를 채우면 자동` : "";
+    return `<div class="stage ${i < curIdx ? "done" : i === curIdx ? "cur" : ""}" data-stage="${s.id}"><div class="n">${s.final ? "최종" : s.battle ? "전투 " + (["battle_flat", "battle_terrain", "battle_roles"].indexOf(s.id) + 1) : s.v4 ? "v4 " + (i - V1_COUNT() + 1) : "v1 " + (i + 1)}단계 · 기준 ${s.battle ? (s.min_steps ? "교전 지표" : "계속 학습") : s.promote ? pct(s.promote.threshold) : "-"}</div><div class="t">${(STAGE_LABEL[s.id] || s.id).replace("v4 ", "")}</div><div class="r">${rate == null ? "&nbsp;" : `최근 ${pct(rate)} (${r.length}판)`}</div></div>`; }).join("");
+  $("curSub").textContent = cs.battle ? "자기 대전 승률은 참고 지표입니다. 공통 단계는 명중·관통·교전 완료 기준으로 진행합니다." : st.review_prob != null ? `복습 확률 ${pct(st.review_prob)} · 승급은 최근 판 성공률이 기준을 넘고 최소 판 수를 채우면 자동` : "";
+  $("battleProgress").innerHTML = cs.battle ? `<div class="tableWrap"><table><thead><tr><th>전투 배치 × 전차</th><th>최근 판수</th><th>명중 발생</th><th>관통 발생</th><th>교전 완료</th>${cs.stage === "final_1v6" ? "<th>생존</th><th>가린 채 관측</th><th>2대+ 노출</th>" : ""}</tr></thead><tbody>${Object.entries(cs.battle.metrics || {}).map(([key, m]) => `<tr><td>${esc(key)}</td><td>${m.episodes}/40</td><td>${pct(m.hit)}</td><td>${pct(m.pen)}</td><td>${pct(m.resolved)}</td>${cs.stage === "final_1v6" ? `<td>${pct(m.survived)}</td><td>${pct(m.overwatch)}</td><td>${pct(m.multi_seen)}</td>` : ""}</tr>`).join("")}</tbody></table></div>` : "";
   $("terrainLessons").innerHTML = tc ? `<p class="hint">목표점 5m 안 · 속도 1m/s 이하 · 0.6초 정지 → 다음 목표. 20초 무진전 시 종료. ${tc.fixed ? "선택한 코스 고정 연습" : `각 코스 최근 ${tc.window}판 기준으로 승급하며, 시간 경과만으로 건너뛰지 않습니다.`}</p>` +
     `<div class="stages">${tc.courses.map((c, i) => `<div class="stage ${i === tc.index ? "cur" : ""}"><div class="n">시험공간 ${i + 1}</div><div class="t">${esc(c.label)}</div><div class="r">${pct(c.success_rate)} · ${c.episodes}판</div></div>`).join("")}</div>` +
     ((S.terrain_recent || []).length ? `<p class="hint">최근 시험: ${S.terrain_recent.slice(-5).map(r => `${esc(r.course)} ${r.success === "1" ? "성공" : esc(r.reason)} · 잔여 ${esc(r.best_remaining_m)}m`).join(" / ")}</p>` : "") : "";
@@ -588,7 +609,7 @@ function stageTip(id, variant) {
   return `<b>${esc((STAGE_LABEL[id] || id).replace("v4 ", ""))}</b>` +
     (s.lesson ? `<div><span class="muted">원인 → 결과</span> ${esc(s.lesson)}</div>` : "") +
     `<div><span class="muted">학습</span> ${esc(s.learn)}</div><div><span class="muted">목표</span> ${esc(s.goal)}</div>` +
-    (s.promote ? `<div><span class="muted">승급</span> 변형마다(공통 모델은 변형 × 전차마다) 최근 ${s.promote.window}판 성공률 ${pct(s.promote.threshold)} 이상</div>` : "") +
+    (s.battle ? `<div><span class="muted">진행</span> ${s.min_steps ? `최소 ${fmt(s.min_steps)}스텝 후 배치 × 전차별 최근 40판: 명중 발생 35%, 관통 발생 15%, 전멸 종료 25%` : "설정한 스텝 동안 계속 학습"}</div>` : s.promote ? `<div><span class="muted">승급</span> 변형마다(공통 모델은 변형 × 전차마다) 최근 ${s.promote.window}판 성공률 ${pct(s.promote.threshold)} 이상</div>` : "") +
     (vs.length ? `<div class="muted" style="margin-top:4px">변형 — 같은 과제 안에서 이기는 선택이 다르다</div><ul>${vs.map(([k, v]) => `<li><b style="display:inline">${esc(k)}</b> ${esc(v || "")}</li>`).join("")}</ul>` : "");
 }
 function hookRichTips() {
@@ -606,10 +627,13 @@ function hookRichTips() {
 }
 function showV1() { return $("showV1").checked; }
 function V1_COUNT() { return (INFO.stages || []).filter(s => !s.v4).length; }
-function visibleStages() { return (INFO.stages || []).map((s, i) => ({s, i})).filter(({s}) => s.v4 || showV1()); }
+function visibleStages() { return (INFO.stages || []).map((s, i) => ({s, i})).filter(({s}) => S?.status?.curriculum?.battle ? s.battle || showV1() && !s.v4 : s.v4 || showV1()); }
 function fillStageSelects() {
   const opts = visibleStages().map(({s, i}) => `<option value="${s.id}" title="${esc((s.learn || V1_TIP[s.id] || "") + (s.goal ? " / 목표: " + s.goal : ""))}">${i + 1}. ${STAGE_LABEL[s.id]}</option>`).join("");
-  const cur = $("stageSel").value; $("stageSel").innerHTML = opts; if (cur) $("stageSel").value = cur;
+  const cur = $("stageSel").value;
+  $("stageSel").innerHTML = (INFO.stages || []).filter(s => (S?.stage_ids || []).includes(s.id))
+    .map(s => `<option value="${s.id}">${esc(STAGE_LABEL[s.id] || s.label || s.id)}</option>`).join("");
+  if (cur) $("stageSel").value = cur;
   $("startForm").start_stage.innerHTML = `<option value="">처음(1단계) / 저장된 단계</option>` + opts;
   $("v1FinalPanel").hidden = !showV1();
 }
@@ -631,7 +655,7 @@ function renderRecords() {
   if (!REC) return;
   const run = $("recRun").value, ver = $("recVer").value, stg = $("recStage").value, tank = $("recTank").value, res = $("recRes").value;
   const runInfo = REC.runs.filter(r => (!run || r.run === run) && (!ver || (ver === "v4") === r.v4) && r.reports.length);
-  $("recRunReports").innerHTML = runInfo.length ? "실행 보고서: " + runInfo.map(r => r.reports.map(f => `<a target="_blank" href="/files/${encodeURIComponent(r.run)}/${f}" data-rec-run="${esc(r.run)}" data-rec-file="${f}">${esc(r.run)} · ${f.startsWith("training") ? "학습 보고서" : "평가 보고서"}</a>`).join(" · ")).join(" · ") : "실행 보고서 없음 — 위 작업 패널의 \"학습 보고서 만들기\"로 만듭니다.";
+  $("recRunReports").innerHTML = runInfo.length ? "실행 보고서: " + runInfo.map(r => r.reports.map(f => `<a target="_blank" href="/files/${encodeURIComponent(r.run)}/${f}" data-rec-run="${esc(r.run)}" data-rec-file="${f}">${esc(r.run)} · ${f.startsWith("training") ? "학습 보고서" : f.startsWith("analysis/") ? "명중·지근탄 통합 분석" : "평가 보고서"}</a>`).join(" · ")).join(" · ") : "실행 보고서 없음 — 위 작업 패널의 \"학습 보고서 만들기\"로 만듭니다.";
   recList = REC.records.filter(r => (!run || r.run === run) && (!ver || (ver === "v4") === r.v4) && (!stg || r.stage === stg) && (!tank || r.tank === tank) && (!res || String(+r.success) === res));
   $("recSub").textContent = `경기 보고서 ${recList.length}개 / 전체 ${REC.records.length}개 · 실행 ${REC.runs.length}개`;
   const reasonL = {objective_reached: "목표 도달", survived: "생존", enemies_destroyed: "적 전멸", target_hit: "명중", zone_held: "구역 점유", learner_knocked_out: "격파당함", time_limit: "시간 초과"};
@@ -858,10 +882,22 @@ function wire() {
   $("btnNew").onclick = openStart;
   const f = $("startForm");
   f.mode.onchange = () => {
+    if (f.mode.value === "battle" && /TankGame(?:_battle)?\.exe$/i.test(f.godot.value)) f.godot.value = INFO.battle_godot;
+    if (f.mode.value === "final" && S?.run_json?.args?.curriculum !== "final" && f.run.value === RUN && RUN) {
+      // 보고 있던 V5 실행을 시작 모델로 쓰고, 최종 학습은 새 실행 폴더에 만든다(원본 보존)
+      f.branch_from.value = f.branch_from.value || RUN; f.run.value = "FINAL-1"; f.resume.checked = false;
+    }
+    if (f.mode.value === "final" && (!f.godot.value || /TankGame(?:_battle)?\.exe$/i.test(f.godot.value))) f.godot.value = INFO.final_godot;
     document.querySelectorAll("[data-m]").forEach(el => el.style.display = el.dataset.m.split(" ").includes(f.mode.value) ? "" : "none");
-    document.querySelectorAll("[data-m-label]").forEach(el => el.style.display = el.dataset.mLabel === f.mode.value ? "" : "none");
-    const v4 = f.mode.value === "shared" || (f.mode.value === "single" && f.curriculum.value === "v4");
+    document.querySelectorAll("[data-m-label]").forEach(el => el.style.display = el.dataset.mLabel.split(" ").includes(f.mode.value) ? "" : "none");
+    const v4 = ["shared", "battle"].includes(f.mode.value) || (f.mode.value === "single" && f.curriculum.value !== "v1");
     f.terrain_course.closest(".ctl").style.display = v4 ? "none" : "";
+    const curriculum = f.mode.value === "final" ? "final" : f.mode.value === "battle" ? "battle" : f.mode.value === "shared" ? "v4" : f.curriculum.value;
+    const selected = f.start_stage.value;
+    f.start_stage.innerHTML = '<option value="">처음 / 저장된 단계</option>' + (INFO.stages || []).filter(s =>
+      curriculum === "final" ? s.final : curriculum === "battle" ? s.battle && !s.final : curriculum === "v4" ? s.v4 && !s.battle : !s.v4)
+      .map(s => `<option value="${s.id}">${esc(STAGE_LABEL[s.id] || s.label || s.id)}</option>`).join("");
+    if ([...f.start_stage.options].some(o => o.value === selected)) f.start_stage.value = selected;
   };
   f.curriculum.onchange = f.mode.onchange;
   f.run.oninput = () => { f.resume.checked = [...$("runList").options].some(o => o.value === f.run.value); f.init_model.disabled = f.resume.checked; };
@@ -873,10 +909,12 @@ function wire() {
       device: f.device.value, terrain_course: f.terrain_course.value, n_steps: f.n_steps.value ? +f.n_steps.value : null,
       batch_size: f.batch_size.value ? +f.batch_size.value : null, n_epochs: f.n_epochs.value ? +f.n_epochs.value : null};
     if (f.mode.value === "rotate") Object.assign(a, {rotate: f.rotate.value, rotate_steps: +f.rotate_steps.value, cycles: +f.cycles.value});
-    else if (f.mode.value === "shared") Object.assign(a, {tank: "shared", curriculum: "v4", auto_branch: true, timesteps: +f.timesteps.value,
+    else if (f.mode.value === "final") Object.assign(a, {rotate: "tiger1,sherman75,t34_76", curriculum: "final", rotate_steps: +f.rotate_steps.value,
+      cycles: +f.cycles.value, branch_from: f.branch_from.value.trim()});
+    else if (["shared", "battle"].includes(f.mode.value)) Object.assign(a, {tank: "shared", curriculum: f.mode.value === "battle" ? "battle" : "v4", auto_branch: true, timesteps: +f.timesteps.value,
       rotate_steps: +f.rotate_steps.value, cycles: +f.cycles.value, init_model: f.resume.checked ? "" : f.init_model.value.trim()});
     else Object.assign(a, {tank: f.tank.value, timesteps: +f.timesteps.value, curriculum: f.curriculum.value,
-      init_model: f.resume.checked || f.curriculum.value !== "v4" ? "" : f.init_model.value.trim()});
+      init_model: f.resume.checked || f.curriculum.value === "v1" ? "" : f.init_model.value.trim()});
     try { const r = await api("/api/start", a); INFO.settings.device = a.device; $("dlg").close(); toast("학습 시작: " + r.run, 3000); setTimeout(() => loadRuns(r.run), 1500); }
     catch (err) { toast("시작 실패: " + err.message, 6000); }
   };
@@ -890,9 +928,10 @@ function openStart() {
   for (const key of ["n_steps", "batch_size", "n_epochs"]) f[key].value = a?.[key] ?? "";
   const rec = INFO.recommended || {};
   f.init_model.value = ""; f.extra.value = "";
-  if (a && !S.alive && (a.curriculum === "v4" || a.tank === "shared" || !rec.mode)) {   // 지금 보고 있는 실행을 이어서 하기 좋게 채운다
+  if (a && !S.alive && (["v4", "battle", "final"].includes(a.curriculum) || a.tank === "shared" || !rec.mode)) {   // 지금 보고 있는 실행을 이어서 하기 좋게 채운다
     f.run.value = RUN; f.resume.checked = true; f.n_envs.value = a.n_envs;
-    f.mode.value = a.tank === "shared" ? "shared" : a.rotate ? "rotate" : "single";
+    f.mode.value = a.curriculum === "final" ? "final" : a.tank === "shared" ? (a.curriculum === "battle" ? "battle" : "shared") : a.rotate ? "rotate" : "single";
+    f.branch_from.value = a.branch_from || "";
     f.curriculum.value = a.curriculum || "v1";
     if (a.rotate || a.tank === "shared") { f.rotate.value = a.rotate || f.rotate.value; f.rotate_steps.value = a.rotate_steps; f.cycles.value = a.cycles; }
     if (a.tank !== "shared") f.tank.value = a.tank;
@@ -904,6 +943,7 @@ function openStart() {
     f.run.value = `${rec.run_prefix || "cv41"}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}_shared`;
     f.resume.checked = false; f.mode.value = rec.mode || "shared"; f.curriculum.value = "v4";
     f.timesteps.value = rec.timesteps ?? 80000000; f.rotate_steps.value = rec.rotate_steps ?? 3000000; f.cycles.value = rec.cycles ?? 3;
+    if (rec.mode === "final") { f.run.value = "FINAL-1"; f.rotate_steps.value = 2000000; f.cycles.value = 10; f.branch_from.value = rec.final_source || "V5run 1"; f.godot.value = INFO.final_godot; }
     f.n_envs.value = rec.n_envs ?? Math.max(1, Math.min(8, INFO.cpu_count - 2));
     f.record_every.value = rec.record_every ?? 100; f.save_every.value = rec.save_every ?? 100000; f.speed_cap.value = 0;
     // 기본은 새 정책(예전 모델의 행동 습관·gSDE 잡음 문제를 물려받지 않게). 이어받으려면 경로를 직접 넣는다.

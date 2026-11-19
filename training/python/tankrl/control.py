@@ -214,6 +214,10 @@ class TrainController:
                                 "success_rate": round(cur.success_rate(cur.stage["id"], p.get("window", 100)), 4),
                                 "window": p.get("window"), "threshold": p.get("threshold"),
                                 "min_episodes": p.get("min_episodes"), "max_episodes": p.get("max_episodes")}
+            if hasattr(cur, "combat_metrics"):
+                st["curriculum"]["battle"] = {"min_steps": cur.stage["min_steps"],
+                                               "steps_in_stage": max(0, int(num_timesteps) - cur.stage_start_step),
+                                               "metrics": cur.combat_metrics()}
             if hasattr(cur, "pending_pairs"):
                 st["curriculum"]["pending_pairs"] = [cur.key(v, t) for v, t in cur.pending_pairs(cur.stage)]
                 st["curriculum"]["mastered_pairs"] = sorted(cur.mastered[cur.stage["id"]])

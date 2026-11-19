@@ -43,6 +43,11 @@ signal obstacle_destroyed(event: Dictionary)
 @export var features_enabled := true
 @export var ridge_count := 3
 @export var ridge_height := 7.0
+## 시나리오가 직접 지정하는 지형(최종 1대6 맵). 높이는 m 그대로(height_amplitude 배율 없음).
+## custom_ridges: [{c:[x,z], yaw, len, h, sigma, gaps:[[along_m, depth_0to1]]}]  mounds: [[x, z, h, r]]
+var custom_ridges: Array = []
+var mounds: Array = []
+var _custom_grid := false   # 지정 지형은 만든 뒤 격자 보간(충돌 지형과 같고 빠르다)
 @export var forest_patches := 8
 @export var tree_lines := 2
 @export var hedgerow_count := 9
@@ -132,8 +137,10 @@ func generate() -> void:
 	_rough.fractal_octaves = 2
 	var rng := RandomNumberGenerator.new()
 	rng.seed = map_seed * 7919 + 13
+	_custom_grid = false
 	_plan_ridges(rng)
 	_build_terrain()
+	_custom_grid = not custom_ridges.is_empty() or not mounds.is_empty()
 	if features_enabled:
 		_foliage_area = Area3D.new()
 		_foliage_area.name = "Foliage"
@@ -150,10 +157,45 @@ func generate() -> void:
 # ---------------------------------------------------------------- 지형
 
 func height_at(x: float, z: float) -> float:
-	if not _record.is_empty():
+	if not _record.is_empty() or _custom_grid:
 		return _grid_height(x, z)
+	if not custom_ridges.is_empty() or not mounds.is_empty():
+		return _custom_relief(x, z) + (0.0 if height_amplitude == 0.0 else _noise_relief(x, z))
 	if height_amplitude == 0.0:
 		return 0.0
+	return _noise_relief(x, z)
+
+
+func _custom_relief(x: float, z: float) -> float:
+	var h := 0.0
+	for m in mounds:
+		var dx: float = x - float(m[0])
+		var dz: float = z - float(m[1])
+		var r: float = float(m[3])
+		h += float(m[2]) * exp(-(dx * dx + dz * dz) / (2.0 * r * r))
+	for r in custom_ridges:
+		var c: Array = r.c
+		var yaw := float(r.get("yaw", 0.0))
+		var px := x - float(c[0])
+		var pz := z - float(c[1])
+		var along := px * cos(yaw) + pz * sin(yaw)
+		var across := -px * sin(yaw) + pz * cos(yaw)
+		var sigma := float(r.get("sigma", 25.0))
+		var bump := exp(-across * across / (2.0 * sigma * sigma))
+		var over := absf(along) - float(r.get("len", 1000.0))
+		if over > 0.0:
+			bump *= exp(-over * over / (2.0 * 40.0 * 40.0))
+		if bump < 0.005:
+			continue
+		var g := 1.0
+		for gap in r.get("gaps", []):
+			var d: float = along - float(gap[0])
+			g -= float(gap[1]) * exp(-d * d / (2.0 * 22.0 * 22.0))
+		h += float(r.get("h", 6.0)) * bump * maxf(g, 0.0)
+	return h
+
+
+func _noise_relief(x: float, z: float) -> float:
 	var h := noise.get_noise_2d(x, z) * height_amplitude * 0.6
 	var k := height_amplitude / 15.0
 	h += _rough.get_noise_2d(x, z) * micro_relief_m * k

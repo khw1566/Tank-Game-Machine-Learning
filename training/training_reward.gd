@@ -51,6 +51,9 @@ var _battle_milestones := {}
 var _near_best := {}
 var _near_paid := {}
 var _closing_paid := {}
+var _combat_progress: CombatProgress
+var _capture_shot_rewards := false
+var _shot_reward_events: Array = []
 # 커리큘럼 v4 전투 상황(config.scenario): 결과 보상 + 감쇠하는 목표 진행 보조 보상
 var _sc_best := INF
 var _sc_hold := 0.0
@@ -76,6 +79,14 @@ var _sc_longest_cover := 0.0
 var _sc_fire_cue := false
 var _sc_enemy_seen := false
 var _sc_enemy_shots := 0
+# 최종 1대6 엄폐 보상(config.reward.cover). 학습 전차(tanks[0])만 계산한다.
+var _cov_cost := 0.0          # 지금까지 낸 노출 감점(양수로 누적)
+var _cov_paid := 0.0          # 지금까지 받은 관측 우위 보상
+var _cov_seen_s := 0.0        # 차체가 적 1대 이상에게 보인 시간
+var _cov_multi_s := 0.0       # 차체가 적 2대 이상에게 동시에 보인 시간
+var _cov_overwatch_s := 0.0   # 적을 보면서 차체는 가린 시간(헐다운·수풀 은폐)
+var _cov_hidden_s := 0.0      # 어떤 적에게도 안 보인 시간
+var _cov_observers_sum := 0.0
 var _sc_spawn := Vector3.ZERO
 
 
@@ -85,6 +96,8 @@ func _init(p_env, overrides := {}) -> void:
 	if config_kind() == "drive" and not overrides.has("time_per_s"):
 		w.time_per_s = -0.01
 	model = RewardModel.new(w.combat)
+	if bool(w.get("progressive_combat_v2", false)):
+		_combat_progress = CombatProgress.new(w)
 
 
 func config_kind() -> String:
@@ -150,6 +163,12 @@ func start() -> void:
 func _add(name: String, v: float, reason := "other") -> void:
 	_pending[name] = _pending.get(name, 0.0) + v
 	_total[name] = _total.get(name, 0.0) + v
+	if _capture_shot_rewards and v != 0:
+		for tank in env.tanks:
+			if str(tank.name) == name:
+				_shot_reward_events.append({"tank": name, "team": tank.team, "value": v, "reason": reason,
+					"before": float(_total[name]) - v, "after": float(_total[name])})
+				break
 	if _parts_on() and v != 0.0:
 		var parts: Dictionary = _battle_parts.get(name, {})
 		parts[reason] = parts.get(reason, 0.0) + v
@@ -177,6 +196,12 @@ func total(name: String) -> float:
 
 
 func on_launch(shooter: Tank, result: Dictionary) -> void:
+	if _attack_on():
+		_capture_shot_rewards = true
+		_shot_reward_events.clear()
+		_attack_launch(shooter, result)
+		result["launch_reward_events"] = _shot_reward_events.duplicate(true)
+		_capture_shot_rewards = false
 	if not env.config.has("scenario") or not env.config.scenario.has("evade") or shooter.team == env.tanks[0].team:
 		return
 	_sc_enemy_shots += 1
@@ -186,12 +211,24 @@ func on_launch(shooter: Tank, result: Dictionary) -> void:
 
 
 func on_shot(shooter: Tank, r: Dictionary) -> void:
+	_capture_shot_rewards = true
+	_shot_reward_events.clear()
 	var target: String = r.get("target_name", "")
 	var tteam := int(r.get("target_team", -1))
+	if _combat_progress != null:
+		var live := bool(r.get("target_was_combat_effective", true))
+		if (_attack_on() and not r.get("hit", false)) or (r.get("hit", false) and tteam >= 0 and tteam != shooter.team and live):
+			for bonus in _combat_progress.shot(str(shooter.name), target, r, float(env.tick) / Engine.physics_ticks_per_second):
+				_add(str(shooter.name), float(bonus.value), str(bonus.reason))
 	for e in model.shot_rewards(shooter.name, shooter.team, target, tteam, r):
 		_add(e.tank, float(e.value) * float(w.event_scale), str(e.reason))
 	if bool(w.get("battle_shaping", false)) and not r.get("hit", false):
-		_near_miss(shooter, r.get("near_miss", {}))
+		var near: Dictionary = r.get("near_miss", {})
+		if _combat_progress != null:
+			if not near.is_empty() and int(near.get("target_team", shooter.team)) != shooter.team:
+				_add(str(shooter.name), _combat_progress.near_miss(str(shooter.name), near), "near_miss")
+		else:
+			_near_miss(shooter, near)
 	var live_hit := not bool(w.combat.get("live_target_only", false)) or bool(r.get("target_was_combat_effective", true))
 	if env.config.has("scenario") and r.get("hit", false) and target == str(env.tanks[0].name) and tteam != shooter.team:
 		_sc_taken.hits += 1
@@ -206,6 +243,8 @@ func on_shot(shooter: Tank, r: Dictionary) -> void:
 		for ev in r.get("events", []):
 			if str(ev).begins_with("knocked_out:"):
 				kills[shooter.name] = kills.get(shooter.name, 0) + 1
+	r["reward_events"] = r.get("launch_reward_events", []) + _shot_reward_events.duplicate(true)
+	_capture_shot_rewards = false
 
 
 ## 결정 시점마다 호출: 보조 보상을 더하고 종료 여부를 돌려준다
@@ -213,8 +252,19 @@ func decision() -> Dictionary:
 	var dt := float(TankAgent.PERCEIVE_EVERY) / Engine.physics_ticks_per_second
 	if env.config.has("terrain_course"):
 		return _course_decision(dt)
-	if env.config.has("scenario"):
+	if env.config.has("scenario") and env.config.scenario.get("goal", "") != "battle":
 		return _scenario_decision(dt)
+	if env.config.get("scenario", {}).get("goal", "") == "battle":
+		var me: Tank = env.tanks[0]
+		_sc_path += me.global_position.distance_to(_sc_last)
+		_sc_last = me.global_position
+		var cover: Dictionary = w.get("cover", {})
+		var every := int(cover.get("every", 5))
+		if env.decisions % every == 0:
+			if cover.is_empty():
+				_sc_exposure(me, dt * 5.0)
+			else:
+				_cover_step(me, dt * every, cover)
 	var kind := config_kind()
 	var out := {"done": false}
 	var arrived := false
@@ -226,6 +276,8 @@ func decision() -> Dictionary:
 		_add(t.name, float(w.time_per_s) * dt, "time")
 		if kind == "combat" and bool(w.get("battle_shaping", false)):
 			_battle_approach(t)
+			if _attack_on() and env.decisions % 5 == 0:
+				_attack_aim(t, dt * 5.0)
 		if kind == "drive":
 			var d := _wp_dist(t)
 			_add(t.name, (float(_prev_dist[t.name]) - d) * float(w.progress))
@@ -275,6 +327,9 @@ func decision() -> Dictionary:
 				for t in env.tanks:
 					if winner >= 0:
 						_add(t.name, float(w.win) if t.team == winner else float(w.loss), "win" if t.team == winner else "loss")
+						# 이긴 팀에서 끝까지 살아남은 전차: 팀 승리에 기여하면서 자기 전차도 지킨 것
+						if t.team == winner and t.damage.is_combat_effective() and float(w.get("survive_win", 0.0)) != 0.0:
+							_add(t.name, float(w.survive_win), "survive_win")
 				return _done("elimination", winner == lt, winner)
 	if timeout:
 		if kind == "combat" and bool(w.get("battle_shaping", false)):
@@ -325,6 +380,8 @@ func _battle_approach(t: Tank) -> void:
 	var improvement := maxf(0, maxf(previous, 25) - maxf(nearest, 25))
 	best[closest.name] = minf(previous, nearest)
 	var progress := minf(own_closing, improvement)
+	if _combat_progress != null and not _combat_progress.pressure_active(str(t.name), float(env.tick) / Engine.physics_ticks_per_second):
+		return  # Keep consuming new-best distances so circling cannot cash them in later.
 	var reward := minf(progress * float(w.get("closing_per_m", 0.03)), maxf(0, float(w.get("closing_budget", 4)) - float(_closing_paid[t.name])))
 	_closing_paid[t.name] += reward
 	_add(t.name, reward, "closing")
@@ -341,6 +398,71 @@ func _battle_approach(t: Tank) -> void:
 
 func battle_summary() -> Dictionary:
 	return _battle_parts.duplicate(true)
+
+
+func _attack_on() -> bool:
+	return _combat_progress != null and int(w.get("attack_shaping_version", 0)) > 0
+
+
+## Check visible hull/turret aim points, including drop and horizontal target lead.
+## These exact geometric values are used only for rewards, never as observations.
+func _attack_quality(t: Tank, target: Tank, origin: Vector3, direction: Vector3) -> Dictionary:
+	var best := {"alignment": 0.0, "overlap": 0.0, "range": INF}
+	var shell := t.current_shell()
+	var distance := Vector2(target.global_position.x - origin.x, target.global_position.z - origin.z).length()
+	if distance < 5 or distance > Tank.MAX_SHOT_RANGE:
+		return best
+	var flight := distance / maxf(1.0, shell.muzzle_velocity_ms * Vector2(direction.x, direction.z).length())
+	var lead := Vector3(target.velocity.x, 0, target.velocity.z) * flight
+	var radius := target.spec.hull_size.x * 0.5
+	for local in [Vector3(0, target.spec.hull_bottom_y + target.spec.hull_size.y * 0.55, 0),
+		Vector3(0, target.spec.hull_top_y() + target.spec.turret_size.y * 0.45, target.spec.turret_offset_z)]:
+		var point: Vector3 = target.global_transform * local
+		var aim_offset := point + lead + Vector3.UP * (0.5 * Tank.GRAVITY * flight * flight) - origin
+		var q := _combat_progress.aim_quality(direction, aim_offset, radius)
+		if float(q.alignment) <= float(best.alignment) and float(q.overlap) <= float(best.overlap):
+			continue
+		var sight := LineOfSight.ray(env.map, origin, point, [t.get_rid(), target.get_rid()])
+		if float(sight.transmittance) < LineOfSight.POINT_VISIBLE:
+			continue
+		best.alignment = maxf(float(best.alignment), float(q.alignment))
+		best.overlap = maxf(float(best.overlap), float(q.overlap))
+		best.range = distance
+	return best
+
+
+func _attack_aim(t: Tank, dt: float) -> void:
+	var chosen: Tank = null
+	var best := {"alignment": 0.0, "overlap": 0.0}
+	for enemy in env.tanks:
+		if enemy.team == t.team or not enemy.damage.is_combat_effective():
+			continue
+		var q := _attack_quality(t, enemy, t.muzzle_position(), t.gun_direction())
+		if float(q.overlap) + float(q.alignment) > float(best.overlap) + float(best.alignment):
+			chosen = enemy
+			best = q
+	if chosen != null:
+		for bonus in _combat_progress.aim(str(t.name), str(chosen.name), float(best.alignment), float(best.overlap), dt):
+			_add(str(t.name), float(bonus.value), str(bonus.reason))
+
+
+func _attack_launch(t: Tank, result: Dictionary) -> void:
+	var origin := SoundField._v(result.get("from", TankSpec._v(t.muzzle_position())))
+	var direction := SoundField._v(result.get("dir", TankSpec._v(t.gun_direction()))).normalized()
+	var overlap := 0.0
+	var friendly_overlap := 0.0
+	for target in env.tanks:
+		if target == t or not target.damage.is_combat_effective():
+			continue
+		var q := _attack_quality(t, target, origin, direction)
+		if target.team == t.team:
+			friendly_overlap = maxf(friendly_overlap, float(q.overlap))
+		else:
+			overlap = maxf(overlap, float(q.overlap))
+	if friendly_overlap > 0:
+		_add(str(t.name), -absf(float(w.get("friendly_aim_fire_penalty", 4.0))) * friendly_overlap, "friendly_aim_fire")
+	elif overlap > 0:
+		_add(str(t.name), _combat_progress.aimed_fire(str(t.name), overlap), "aimed_fire")
 
 
 func _course_add(t: Tank, component: String, value: float) -> void:
@@ -599,6 +721,67 @@ func _sc_exposure(me: Tank, span: float) -> void:
 		_sc_turret += span
 
 
+## 엄폐 보상: 살아 있는 적 각각의 눈 위치에서 학습 전차의 차체·포탑이 보이는지(실제 시선, 수풀 투과율 포함).
+## - 차체가 보이는 적 수(최대 max_observers)만큼 seen_hull_per_s 감점 → 여러 대에게 동시에 드러나는 위치를 피하게
+## - 학습 전차가 적을 보고 있는데(지각 기준) 차체는 어떤 적에게도 안 보이면 overwatch_per_s 보상 → 헐다운·은폐 사격
+## 둘 다 경기당 한도가 있고 승리(+200)·시간 초과(-35)보다 훨씬 작아 숨어만 있는 무승부는 손해다.
+func _cover_step(me: Tank, span: float, cv: Dictionary) -> void:
+	if not me.damage.is_combat_effective():
+		return
+	var observers := 0
+	var hull := false
+	var turret := false
+	for i in range(1, env.tanks.size()):
+		var e: Tank = env.tanks[i]
+		if e.team == me.team or not e.damage.is_combat_effective():
+			continue
+		var r := SituationObs.exposure_from(env.map, LineOfSight.eye_position(e), me, [me.get_rid(), e.get_rid()])
+		if r.hull:
+			observers += 1
+		hull = hull or r.hull
+		turret = turret or r.turret
+	_sc_checks += 1
+	if hull or turret:
+		_sc_exposed += span
+	if hull:
+		_sc_hull += span
+	elif turret:
+		_sc_turret += span
+	var sees := false
+	for c in env.agents[0].perception.contacts.values():
+		if c.enemy and c.visible_now and not c.get("knocked_out", false):
+			sees = true
+			break
+	_cov_observers_sum += observers * span
+	if observers > 0:
+		_cov_seen_s += span
+		if observers > 1:
+			_cov_multi_s += span
+		var n := mini(observers, int(cv.get("max_observers", 3)))
+		var cost := minf(absf(float(cv.get("seen_hull_per_s", -0.1))) * n * span,
+			maxf(0.0, absf(float(cv.get("exposure_budget", -20.0))) - _cov_cost))
+		if cost > 0.0:
+			_cov_cost += cost
+			_add(me.name, -cost, "cover_exposed")
+	else:
+		if not turret:
+			_cov_hidden_s += span
+		if sees:
+			_cov_overwatch_s += span
+			var bonus := minf(float(cv.get("overwatch_per_s", 0.05)) * span,
+				maxf(0.0, float(cv.get("overwatch_budget", 8.0)) - _cov_paid))
+			if bonus > 0.0:
+				_cov_paid += bonus
+				_add(me.name, bonus, "cover_overwatch")
+
+
+func cover_summary() -> Dictionary:
+	return {"version": 1, "seen_s": snappedf(_cov_seen_s, 0.01), "multi_seen_s": snappedf(_cov_multi_s, 0.01),
+		"overwatch_s": snappedf(_cov_overwatch_s, 0.01), "hidden_s": snappedf(_cov_hidden_s, 0.01),
+		"mean_observers": snappedf(_cov_observers_sum / maxf(0.001, _sc_checks * float(w.get("cover", {}).get("every", 5)) * float(TankAgent.PERCEIVE_EVERY) / Engine.physics_ticks_per_second), 0.001),
+		"exposure_cost": snappedf(_cov_cost, 0.001), "overwatch_paid": snappedf(_cov_paid, 0.001)}
+
+
 func scenario_summary() -> Dictionary:
 	var sc: Dictionary = env.config.scenario
 	var me: Tank = env.tanks[0]
@@ -618,7 +801,8 @@ func scenario_summary() -> Dictionary:
 		"longest_cover_s": snappedf(_sc_longest_cover, 0.01),
 		"projectiles": env.projectiles.summary() if env.projectiles != null else {},
 		"reward_components": _battle_parts.get(str(me.name), {}).duplicate(),
-		"relocated": env.config.get("scenario_relocated", [])}
+		"relocated": env.config.get("scenario_relocated", []),
+		"cover": cover_summary() if w.has("cover") else {}}
 
 
 func course_summary() -> Dictionary:

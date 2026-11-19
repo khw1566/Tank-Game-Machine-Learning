@@ -101,7 +101,7 @@ func start(p_map: HillMap, p_tanks: Array, p_meta := {}, p_rewards: RewardModel 
 		_ids[t.name] = i
 		tank_scores[t.name] = 0.0
 		paths[t.name] = PackedVector3Array([t.global_position])
-		_stats[t.name] = {"shots": 0, "hits": 0, "pens": 0, "kills": 0, "dist": 0.0}
+		_stats[t.name] = {"shots": 0, "hits": 0, "pens": 0, "kills": 0, "friendly_hits": 0, "friendly_kills": 0, "dist": 0.0}
 		_last_pos[t.name] = t.global_position
 		t.shot_fired.connect(_on_shot)
 		t.knocked_out.connect(_on_knocked_out)
@@ -187,6 +187,7 @@ func summary_dict() -> Dictionary:
 		per.append({"id": _ids[t.name], "name": t.name, "tank": t.spec.id, "team": t.team,
 			"status": t.damage.status_label(), "score": snappedf(tank_scores[t.name], 0.001),
 			"shots": s.shots, "hits": s.hits, "pens": s.pens, "kills": s.kills,
+			"friendly_hits": s.friendly_hits, "friendly_kills": s.friendly_kills,
 			"distance_m": snappedf(s.dist, 0.1)})
 	return {"episode": episode, "duration_s": snappedf(sim_time(), 0.01), "reason": end_reason,
 		"winner": winner, "team_scores": [snappedf(team_scores[0], 0.001), snappedf(team_scores[1], 0.001)],
@@ -272,14 +273,34 @@ func _on_shot(shooter: Tank, r: Dictionary) -> void:
 	var st: Dictionary = _stats[shooter.name]
 	st.shots += 1
 	if r.get("hit", false):
-		st.hits += 1
-		if r.get("penetrated", false):
+		var friendly := target_team == shooter.team
+		if friendly:
+			st.friendly_hits += 1
+		else:
+			st.hits += 1
+		if r.get("penetrated", false) and not friendly:
 			st.pens += 1
 		for ev in r.get("events", []):
-			if str(ev).begins_with("knocked_out:") and target_team != shooter.team:
-				st.kills += 1
+			if str(ev).begins_with("knocked_out:"):
+				if friendly:
+					st.friendly_kills += 1
+				else:
+					st.kills += 1
 	var e := {"type": "shot", "tick": tick, "t": snappedf(sim_time(), 0.001), "shooter": _ids[shooter.name],
 		"target": _ids.get(target_name, -1), "r": r}
+	var game_rewards := []
+	if not external_rewards:
+		game_rewards = rewards.shot_rewards(shooter.name, shooter.team, target_name, target_team, r)
+		var running := tank_scores.duplicate()
+		var details := []
+		for reward in game_rewards:
+			var before := float(running.get(reward.tank, 0))
+			running[reward.tank] = before + float(reward.value)
+			details.append(reward.merged({"before": before, "after": running[reward.tank]}))
+		r["reward_events"] = details
+	if write_files and ShotImpactReport.effective(r) and int(e.target) >= 0:
+		e.r = r.duplicate(true)
+		e.r["impact_snapshot"] = ShotImpactReport.capture(tanks[int(e.target)])
 	_write(e)
 	var from := _vec(r.get("from", []))
 	var to: Vector3 = _vec(r.hit_pos) if r.has("hit_pos") else from + _vec(r.get("dir", [0, 0, -1])) * 600.0
@@ -288,7 +309,7 @@ func _on_shot(shooter: Tank, r: Dictionary) -> void:
 		shots.pop_front()
 	shot_recorded.emit(e)
 	if not external_rewards:
-		for re in rewards.shot_rewards(shooter.name, shooter.team, target_name, target_team, r):
+		for re in game_rewards:
 			_add_reward(re, true)
 
 

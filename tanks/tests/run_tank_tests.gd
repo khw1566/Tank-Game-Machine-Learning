@@ -169,20 +169,20 @@ func _unit_tests() -> void:
 	check(ric_t34_75.ricochet > 0.2, "75mm 로 T-34 전면을 30° 에서 쏘면 도탄 20%% 이상 (%.0f%%)" % [ric_t34_75.ricochet * 100])
 	check(pen_prob(tiger, sherman.gun, 500, 0, "hull_high").ricochet == 0.0, "티거 수직 전면판은 정면에서 도탄 없음(두께로 막음)")
 
-	# 역사적 기대치
-	check(pen_prob(tiger, sherman.gun, 500, 0, "hull_high").p < 0.01, "셔먼 75mm는 500m에서 티거 정면 관통 불가")
-	check(pen_prob(tiger, t34.gun, 100, 0, "hull_high").p < 0.01, "T-34 76mm는 100m에서도 티거 정면 관통 불가")
+	# 학습용 balance v2: 신형 포의 정면 관통과 티타임 방어.
+	check(pen_prob(tiger, sherman.gun, 500, 0, "hull_high").p > 0.95, "셔먼 76mm: 500m 티거 정면 관통")
+	check(pen_prob(tiger, t34.gun, 100, 0, "hull_high").p > 0.95, "T-34-85: 100m 티거 정면 관통")
 	var p_sh: float = pen_prob(sherman, tiger.gun, 2000, 0, "hull_high").p
 	var p_t34: float = pen_prob(t34, tiger.gun, 2000, 0, "hull_high").p
 	check(p_sh > 0.9, "88mm는 2000m에서 셔먼 정면 관통 (%.0f%%, 나머지는 도탄)" % [p_sh * 100])
 	check(p_t34 > 0.75 and p_t34 < p_sh, "88mm는 2000m에서 T-34 정면도 대부분 관통하지만 경사 때문에 셔먼보다 도탄이 잦음 (%.0f%%)" % [p_t34 * 100])
 	check(pen_prob(tiger, sherman.gun, 300, 90, "hull_low").p > 0.7, "셔먼은 300m에서 궤도 너머 티거 하부측면(60mm) 관통 (%.0f%%)" % [pen_prob(tiger, sherman.gun, 300, 90, "hull_low").p * 100])
-	check(pen_prob(tiger, t34.gun, 100, 90, "hull_low").p > pen_prob(tiger, t34.gun, 500, 90, "hull_low").p, "T-34 는 가까울수록 티거 하부측면 관통이 쉬움")
-	check(pen_prob(tiger, sherman.gun, 500, 90, "hull_high").p < pen_prob(tiger, sherman.gun, 500, 90, "hull_low").p, "티거 측면은 상부(80mm)보다 궤도 너머 하부(60mm)가 약점")
+	check(t34.gun.penetration_mm(100) > t34.gun.penetration_mm(500), "T-34-85는 가까울수록 평균 관통력 증가")
+	check(tiger.plate("hull_side_lower").t + tiger.track_armor_mm < tiger.plate("hull_side_upper").t, "티거 하부측면은 궤도를 포함해도 상부측면보다 얇음")
 	check(pen_prob(tiger, sherman.gun, 100, 180, "hull_high").p > 0.1, "셔먼은 100m에서 티거 후면(80mm) 관통 가능 (%.0f%%)" % [pen_prob(tiger, sherman.gun, 100, 180, "hull_high").p * 100])
-	# 티타임(비스듬히 대면) 효과: 정면 각 30~45°에서 측면 상부도 버팀
-	var side_at_45 := pen_prob(tiger, sherman.gun, 300, 45, "hull_high")
-	check(side_at_45.p < 0.05, "티거가 45° 비틀면 300m 셔먼탄은 상부측면/전면 모두 거의 불관통 (%s, %.0f%%)" % [side_at_45.zone, side_at_45.p * 100])
+	# 지정한 최적 자세는 35°다. 45°에서는 측면 장갑의 입사각이 작아져 다시 취약해진다.
+	var side_at_35 := pen_prob(tiger, sherman.gun, 300, 35, "hull_high")
+	check(side_at_35.p < 0.01, "티거 35°: 300m 셔먼탄을 차체에서 방어 (%s, %.0f%%)" % [side_at_35.zone, side_at_35.p * 100])
 
 	# 탄종
 	var pzgr40: GunSpec = tiger.ammo_types[1]
@@ -192,7 +192,7 @@ func _unit_tests() -> void:
 	check(pen_prob(sherman, he88, 500, 0, "hull_high").p < 0.01, "88mm 고폭탄은 셔먼 정면 장갑 관통 불가")
 	check(pen_prob(tiger, he88, 500, 0, "turret").p < 0.01, "고폭탄은 티거 포탑도 관통 불가")
 	var gp: GunSpec = t34.ammo_types[1]
-	check(pen_prob(tiger, gp, 100, 90, "hull_high").p > pen_prob(tiger, t34.gun, 100, 90, "hull_high").p, "T-34 BR-350P는 근거리 티거 상부측면 관통확률이 BR-350A보다 높음")
+	check(gp.penetration_mm(100) > t34.gun.penetration_mm(100), "T-34-85 APCR은 주력탄보다 평균 관통력이 높음")
 
 	# 승무원 역할 재배정
 	var st := TankDamageState.new(sherman)
@@ -219,7 +219,7 @@ func _unit_tests() -> void:
 	check(st.is_knocked_out() and st.knockout_cause == "crew_casualties", "생존 1명 → 전투불능")
 
 	var tst := TankDamageState.new(t34)
-	check(absf(tst.spotting_multiplier() - 0.75) < 0.001, "T-34 전차장 겸 포수 → 탐지 0.75")
+	check(absf(tst.spotting_multiplier() - 1.0) < 0.001, "T-34-85 전차장과 포수 분리 → 탐지 배율 1.0")
 
 	var mst := TankDamageState.new(tiger)
 	mst.modules.track_left = TankDamageState.MOD_DESTROYED

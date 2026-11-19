@@ -7,7 +7,9 @@ extends RefCounted
 ##   version, id, variant, goal("reach"|"survive"|"destroy"|"zone"), survive_s, zone_s
 ##   obstacles: [{type: "stone", p:[x,z], size:[w,h,d], yaw}
 ##               {type: "berm",  p, w, d, yaw, hull_frac}   높이 = 학습 전차 차체 지붕 × hull_frac (헐다운 둔덕)
-##               {type: "tree",  p, seed} | {type: "woods", p, r, seed}]
+##               {type: "tree",  p, seed} | {type: "woods", p, r, seed}
+##               {type: "house", p, size, yaw}  (돌 상자, 집 색)
+##               {type: "hedge"|"wall", p:[x,z] = 시작, b:[x,z] = 끝}]   (최종 1대6 맵, FINAL_BATTLE_VERSION 1)
 ##   learner: {p, yaw}, enemies: [{p, yaw, ai:{...ScriptedAI 매개변수}}]   (config.tanks 순서: 학습 전차, 적들)
 ##   objective: {p, radius, hold_s}   (선택)
 
@@ -34,6 +36,16 @@ static func populate(map: HillMap, sc: Dictionary) -> void:
 				map.add_practice_tree(p, int(o.get("seed", 1)))
 			"woods":
 				map.add_woods(p, float(o.get("r", 25.0)), int(o.get("seed", 1)))
+			"house":
+				var hs: Array = o.get("size", [10, 6, 12])
+				map.add_stone(p, Vector3(hs[0], hs[1], hs[2]), float(o.get("yaw", 0.0)), Color(0.62, 0.55, 0.45))
+			"hedge", "wall":
+				var b: Array = o.get("b", [p.x + 20.0, p.y])
+				var q := Vector2(float(b[0]), float(b[1]))
+				if str(o.type) == "hedge":
+					map.add_hedge(p, q)
+				else:
+					map.add_wall(p, q)
 	map.finish_layout()
 
 

@@ -16,7 +16,7 @@ from tankrl.curriculum import STAGE_IDS
 from tankrl.objectives import ObjectiveIndex, objective_color
 
 COLORS = ["#2a6fdb", "#d9534f", "#3c9d4e", "#e08a1e", "#8e5bd0", "#1aa3a3", "#b5487a", "#6b7b2a", "#555"]
-TANK_LABEL = {"tiger1": "티거 I", "sherman75": "셔먼 75mm", "t34_76": "T-34/76"}
+TANK_LABEL = {"tiger1": "티거 I", "sherman75": "셔먼 76mm", "t34_76": "T-34-85"}
 STAGE_LABEL = {"drive": "주행", "drive_terrain": "지형 주행", "gunnery_static": "정지 표적 사격",
                "gunnery_moving": "이동 표적 사격", "gunnery_search": "수색·사격", "duel_scripted": "1대1 vs 규칙 AI",
                "duel_selfplay": "1대1 자기대전", "team_scripted": "팀전 vs 규칙 AI", "team_selfplay": "팀 자기대전", "final_battle": "최종전 1 대 6"}
@@ -45,7 +45,7 @@ def svg_chart(series, title, ylabel, width=900, height=260, ymin=None, ymax=None
         x1 = x0 + 1
     if y1 == y0:
         y1 = y0 + 1
-    L, R, T, B = 60, 10, 28, 30
+    L, R, T, B = 76, 36, 28, 30
     W, H = width - L - R, height - T - B
     sx = lambda x: L + (x - x0) / (x1 - x0) * W
     sy = lambda y: T + H - (y - y0) / (y1 - y0) * H
@@ -57,10 +57,16 @@ def svg_chart(series, title, ylabel, width=900, height=260, ymin=None, ymax=None
                    f'<text x="{L - 6}" y="{sy(yv) + 4:.1f}" class=ax text-anchor=end>{yv:.3g}</text>')
     for k in range(6):
         xv = x0 + (x1 - x0) * k / 5
-        out.append(f'<text x="{sx(xv):.1f}" y="{T + H + 18}" class=ax text-anchor=middle>{xv:,.0f}</text>')
+        anchor = 'start' if k == 0 else 'end' if k == 5 else 'middle'
+        out.append(f'<text x="{sx(xv):.1f}" y="{T + H + 18}" class=ax text-anchor={anchor}>{xv:,.0f}</text>')
     for xv, lab in vlines:
+        if not x0 <= xv <= x1:
+            continue
+        right_edge = sx(xv) > width * .6
+        label_x = sx(xv) - 4 if right_edge else sx(xv) + 4
+        anchor = 'end' if right_edge else 'start'
         out.append(f'<line x1="{sx(xv):.1f}" x2="{sx(xv):.1f}" y1="{T}" y2="{T + H}" class=vl />'
-                   f'<text x="{sx(xv) + 3:.1f}" y="{T + 10}" class=vt>{html.escape(lab)}</text>')
+                   f'<text x="{label_x:.1f}" y="{T + 10}" class=vt text-anchor={anchor}>{html.escape(lab)}</text>')
     for lab, col, s in series:
         if not s:
             continue
