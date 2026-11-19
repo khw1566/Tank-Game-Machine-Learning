@@ -279,8 +279,15 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
       <div class="ctl wide"><label>학습용 Python (비우면 training\python\.venv 가 있으면 그것, 없으면 대시보드를 실행한 Python)</label><input type="text" name="python" placeholder="(자동)"></div>
       <div class="ctl wide"><label>프로젝트 폴더 (Godot 편집기 실행 파일을 쓸 때만, exe 면 비움)</label><input type="text" name="project" placeholder="..\.."></div>
       <div class="ctl"><label>실행 이름 (같은 이름 + 이어서 = 계속 학습)</label><input type="text" name="run" list="runList"><datalist id="runList"></datalist></div>
-      <div class="ctl"><label>학습 방식</label><select name="mode"><option value="v6">V6 · 적 수 사다리 1→2→3→6 · 비례 보상 · 전차별 모델 (V5 공통 모델에서 시작)</option><option value="final">최종 1대6 · 맵 5종 · 전차별 모델 (V5 공통 모델에서 시작)</option><option value="battle">전투 자기 대전 · 평지 → 지형 → 전차별 분화</option><option value="shared">커리큘럼 v4 · 세 전차 공통 → 전차별 자동 분기</option><option value="single">전차 하나</option><option value="rotate">여러 전차 교대(자기대전)</option></select></div>
-      <div class="ctl" data-m="single"><label>커리큘럼</label><select name="curriculum"><option value="battle">전투 자기 대전</option><option value="v4">v4 (현재)</option><option value="v1">v1 (이전 버전)</option></select></div>
+      <div class="ctl"><label>학습 방식</label><select name="mode">
+        <option value="v6">V6 (적 수 사다리 1→2→3→6 · 비례 보상 · 관통 v3 · 전차별 모델, V5 공통 모델에서 시작)</option>
+        <option value="final">V5-최종 (1대6 · 엄폐 맵 5종 · 전차별 모델, V5 공통 모델에서 시작)</option>
+        <option value="battle">V5 (전투 자기 대전 · 평지 → 지형 → 전차별 분화)</option>
+        <option value="shared">V4 (기동·사격·전술 커리큘럼 · 세 전차 공통 → 전차별 자동 분기)</option>
+        <option value="rotate">V1 (여러 전차 교대 자기대전)</option>
+        <option value="single">단일 전차 (커리큘럼 V1 / V4 / V5 직접 선택)</option>
+      </select></div>
+      <div class="ctl" data-m="single"><label>커리큘럼</label><select name="curriculum"><option value="battle">V5 (전투 자기 대전)</option><option value="v4">V4 (기동·사격·전술)</option><option value="v1">V1 (이전 버전)</option></select></div>
       <div class="ctl" data-m="single"><label>전차</label><select name="tank"></select></div>
       <div class="ctl" data-m="single shared battle"><label>총 결정 수(스텝)</label><input type="number" name="timesteps" value="3000000" step="100000"></div>
       <div class="ctl wide" data-m="final v6"><label>시작 모델 실행 (V5 전투 공통 모델, 첫 실행에만 사용) <span class="sub">예: V5run 1</span></label><input type="text" name="branch_from" placeholder="V5run 1"></div>
@@ -717,8 +724,18 @@ function hookRichTips() {
   });
 }
 function showV1() { return $("showV1").checked; }
+// 커리큘럼별 단계 묶음(시작 단계 목록·단계 지도 공통)
+function stageGroup(curriculum) {
+  return (INFO.stages || []).filter(s => curriculum === "v6" ? s.v6 : curriculum === "final" ? s.final
+    : curriculum === "battle" ? s.battle && !s.final && !s.v6 : curriculum === "v4" ? s.v4 && !s.battle : !s.v4);
+}
 function V1_COUNT() { return (INFO.stages || []).filter(s => !s.v4).length; }
-function visibleStages() { return (INFO.stages || []).map((s, i) => ({s, i})).filter(({s}) => S?.status?.curriculum?.battle ? s.battle || showV1() && !s.v4 : s.v4 || showV1()); }
+function visibleStages() {
+  const cur = String(S?.status?.curriculum?.stage || "");
+  const only = cur.startsWith("v6_") ? (s => s.v6) : cur.startsWith("final_") ? (s => s.final) : null;
+  return (INFO.stages || []).map((s, i) => ({s, i})).filter(({s}) => only ? only(s)
+    : S?.status?.curriculum?.battle ? s.battle && !s.v6 && !s.final || showV1() && !s.v4 : s.v4 || showV1());
+}
 function fillStageSelects() {
   const opts = visibleStages().map(({s, i}) => `<option value="${s.id}" title="${esc((s.learn || V1_TIP[s.id] || "") + (s.goal ? " / 목표: " + s.goal : ""))}">${i + 1}. ${STAGE_LABEL[s.id]}</option>`).join("");
   const cur = $("stageSel").value;
@@ -981,25 +998,30 @@ function wire() {
   $("btnNew").onclick = openStart;
   const f = $("startForm");
   f.mode.onchange = () => {
-    if (f.mode.value === "battle" && /TankGame(?:_battle)?\.exe$/i.test(f.godot.value)) f.godot.value = INFO.battle_godot;
+    // 학습 방식마다 맞는 게임 실행 파일: 직접 고친 경로가 아니면(기본값 중 하나면) 방식에 맞게 바꾼다
+    const exeFor = {v6: INFO.v6_godot, final: INFO.final_godot, battle: INFO.battle_godot};
+    const defaults = [INFO.v6_godot, INFO.final_godot, INFO.battle_godot, INFO.settings?.godot].filter(Boolean);
+    if (!f.godot.value || defaults.includes(f.godot.value)) f.godot.value = exeFor[f.mode.value] || INFO.settings?.godot || f.godot.value;
     if (f.mode.value === "final" && S?.run_json?.args?.curriculum !== "final" && f.run.value === RUN && RUN) {
       // 보고 있던 V5 실행을 시작 모델로 쓰고, 최종 학습은 새 실행 폴더에 만든다(원본 보존)
       f.branch_from.value = f.branch_from.value || RUN; f.run.value = "FINAL-1"; f.resume.checked = false;
     }
-    if (f.mode.value === "final" && (!f.godot.value || /TankGame(?:_battle)?\.exe$/i.test(f.godot.value))) f.godot.value = INFO.final_godot;
-    if (f.mode.value === "v6" && (!f.godot.value || !/TankGame_v6\.exe$/i.test(f.godot.value))) f.godot.value = INFO.v6_godot;
     if (f.mode.value === "v6" && S?.run_json?.args?.curriculum !== "v6" && f.run.value === RUN && RUN) {
       f.branch_from.value = f.branch_from.value || "V5run 1"; f.run.value = "V6-1"; f.resume.checked = false;
+      // 보고 있던 다른 실행의 설정(예: 환경 120개)을 물려받지 않고 V6 권장값으로
+      f.rotate_steps.value = 2000000; f.cycles.value = 10; f.n_envs.value = Math.max(1, Math.min(10, (INFO.cpu_count || 4) - 2));
     }
     document.querySelectorAll("[data-m]").forEach(el => el.style.display = el.dataset.m.split(" ").includes(f.mode.value) ? "" : "none");
     document.querySelectorAll("[data-m-label]").forEach(el => el.style.display = el.dataset.mLabel.split(" ").includes(f.mode.value) ? "" : "none");
     const v4 = ["shared", "battle"].includes(f.mode.value) || (f.mode.value === "single" && f.curriculum.value !== "v1");
     f.terrain_course.closest(".ctl").style.display = v4 ? "none" : "";
-    const curriculum = f.mode.value === "v6" ? "v6" : f.mode.value === "final" ? "final" : f.mode.value === "battle" ? "battle" : f.mode.value === "shared" ? "v4" : f.curriculum.value;
+    const curriculum = {v6: "v6", final: "final", battle: "battle", shared: "v4", rotate: "v1"}[f.mode.value] || f.curriculum.value;
     const selected = f.start_stage.value;
-    f.start_stage.innerHTML = '<option value="">처음 / 저장된 단계</option>' + (INFO.stages || []).filter(s =>
-      curriculum === "v6" ? s.v6 : curriculum === "final" ? s.final : curriculum === "battle" ? s.battle && !s.final && !s.v6 : curriculum === "v4" ? s.v4 && !s.battle : !s.v4)
-      .map(s => `<option value="${s.id}">${esc(STAGE_LABEL[s.id] || s.label || s.id)}</option>`).join("");
+    const group = stageGroup(curriculum);
+    const tag = {v6: "V6", final: "V5-최종", battle: "V5", v4: "V4", v1: "V1"}[curriculum];
+    f.start_stage.innerHTML = `<option value="">${tag} 처음부터 (이어서 학습이면 저장된 단계)</option>` + group
+      .map((s, k) => `<option value="${s.id}">${tag}-${k + 1} (${esc((STAGE_LABEL[s.id] || s.label || s.id).replace(/^V6-\d+ · /, "").replace("v4 ", ""))})</option>`).join("");
+    f.start_stage.disabled = group.length <= 1;
     if ([...f.start_stage.options].some(o => o.value === selected)) f.start_stage.value = selected;
   };
   f.curriculum.onchange = f.mode.onchange;
