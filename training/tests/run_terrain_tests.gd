@@ -60,7 +60,7 @@ func run() -> void:
 		check(env.map.is_spawn_safe(Vector2(layout.spawn[0], layout.spawn[1])), id + ": clear spawn and exit")
 		if id == "slope" or id == "rough":
 			check(absf(env.map.height_at(layout.spawn[0], layout.spawn[1]) - env.map.height_at(layout.route[-1][0], layout.route[-1][1])) > 0.01, id + ": practice terrain is not flat")
-		check(env._observation(0).size() == 389, id + ": checkpoint input size retained")
+		check(env._observation(0).size() == 444, id + ": observation width (V6: 389 + 46 + 9)")
 		# A tank-sized centre path must exist between all task waypoints.
 		var from := Vector2(layout.spawn[0], layout.spawn[1])
 		for point in layout.route:

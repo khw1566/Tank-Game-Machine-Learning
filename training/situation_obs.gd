@@ -20,7 +20,7 @@ const VERSION := 2
 const COVER_RANGE := 60.0
 const NAV_RANGE := 120.0
 const SECTORS := 8
-const MAX_ENEMIES := 4.0
+const MAX_ENEMIES := 6.0   # V6: 적 6대까지 구분(이전 4, V5 가중치는 training/python/tankrl/input_migration.py 가 보정)
 const BASE_LABELS := ["sit.known_enemies", "sit.exposed_hull", "sit.exposed_turret_only", "sit.exposed_any",
 	"sit.threat_present", "sit.threat_sin", "sit.threat_cos", "sit.hit_recent", "sit.incoming_recent",
 	"sit.obj_present", "sit.obj_dist", "sit.obj_sin", "sit.obj_cos", "sit.obj_inside"]

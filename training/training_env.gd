@@ -16,6 +16,7 @@ const PROTOCOL := "tankgame-train"
 const PROTOCOL_VERSION := 1
 const FINAL_BATTLE_VERSION := 1   # 최종 1대6: 지정 지형(custom_ridges·mounds), 생울타리·돌담·건물 배치, 엄폐 보상
 const ATTACK_SHAPING_VERSION := 1
+const V6_VERSION := 1   # V6: 비례 보상(exchange), 규칙 AI 연합군(ctrl "rule"), 적 슬롯 6
 const EPISODE_FORMAT := "tankgame-train-episode"
 ## 결정(행동 선택) 간격 = 관측 갱신 간격(3틱 = 0.1초, 10Hz)
 const REPEAT := TankAgent.PERCEIVE_EVERY
@@ -33,11 +34,11 @@ static var targeting_inputs := false
 
 
 static func obs_size() -> int:
-	return TankPerception.size() + TASK_SIZE + (SituationObs.size() if situation else 0) + (ThreatObs.LABELS.size() if threat_inputs else 0) + (TargetingObs.size() if targeting_inputs else 0)
+	return TankPerception.size() + TASK_SIZE + (SituationObs.size() if situation else 0) + (ThreatObs.LABELS.size() if threat_inputs else 0) + (TargetingObs.size() if targeting_inputs else 0) + (FireLineObs.LABELS.size() if targeting_inputs else 0)
 
 
 static func obs_labels() -> Array:
-	return TankPerception.labels() + TASK_LABELS + (SituationObs.labels() if situation else []) + (ThreatObs.LABELS if threat_inputs else []) + (TargetingObs.labels() if targeting_inputs else [])
+	return TankPerception.labels() + TASK_LABELS + (SituationObs.labels() if situation else []) + (ThreatObs.LABELS if threat_inputs else []) + (TargetingObs.labels() if targeting_inputs else []) + (FireLineObs.LABELS if targeting_inputs else [])
 
 
 var port := 11008
@@ -148,7 +149,8 @@ func _ready() -> void:
 		"driving_reward_version": 2,
 		"threat_obs_version": ThreatObs.VERSION if threat_inputs else 0, "projectile_version": TrainingProjectileField.VERSION,
 		"pace_version": 1, "perf_version": 1, "final_battle_version": FINAL_BATTLE_VERSION,
-		"attack_shaping_version": ATTACK_SHAPING_VERSION})
+		"attack_shaping_version": ATTACK_SHAPING_VERSION, "exchange_reward_version": 1, "v6_version": V6_VERSION,
+		"fire_line_obs_version": FireLineObs.VERSION if targeting_inputs else 0, "contact_team_flag_version": 1})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 
 
@@ -631,6 +633,8 @@ func _evaluate() -> void:
 		_end["destroyed_obstacles"] = map.destruction.destroyed_ids()
 		if bool(config.get("reward", {}).get("battle_shaping", false)):
 			_end["combat_rewards"] = rewarder.battle_summary()
+		if not config.get("reward", {}).get("exchange", {}).is_empty():
+			_end["exchange"] = rewarder.exchange_summary()
 		if config.has("terrain_course"):
 			_end["terrain"] = rewarder.course_summary()
 		if config.has("scenario"):
@@ -745,6 +749,7 @@ func _observation(i: int) -> PackedFloat32Array:
 		o.append_array(ThreatObs.compute(agents[i].perception, projectiles))
 	if targeting_inputs:
 		o.append_array(TargetingObs.compute(map, t, agents[i].perception, tanks))
+		o.append_array(FireLineObs.compute(t, agents[i].perception, tanks))
 	return o
 
 

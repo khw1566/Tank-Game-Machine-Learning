@@ -161,7 +161,7 @@ func run() -> void:
 	var env := fixture()
 	await physics_frame
 	await physics_frame
-	check(env._observation(0).size() == 437, "18 appended fire cues; old 419-column prefix retained")
+	check(env._observation(0).size() == 492, "18 appended fire cues (V6 width: 437 + enemy slots 4→6 × 23 + team flag × 9)")
 	check(env.waypoint == Vector3.INF, "the policy is not told the safe cover location")
 	check(env._task_waypoint(env.tanks[0]) == Vector3.INF, "no hidden target or enemy-base waypoint bypasses threat recognition")
 	shoot(env)

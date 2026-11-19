@@ -22,7 +22,7 @@ extends RefCounted
 ##   scan     화면 격자 SCAN_ROWS × SCAN_COLS 시선마다 [거리(로그, 양자화), 장애물, 수풀 밀도] (지형 윤곽·엄폐물)
 ##   sound    최근 소리 SOUND_SLOTS 개 × SOUND_LABELS + 엔진 소리 8방위
 
-const ENEMY_SLOTS := 4
+const ENEMY_SLOTS := 6   # V6: 1대6 에서 적 6대 모두를 관측(이전 4)
 const ALLY_SLOTS := 3
 const MEMORY_S := 12.0
 ## 화면 높이(px) 기준. 보이는 크기를 픽셀로 바꿔 반올림한다(1080p 화면에서 사람이 보는 크기)
@@ -46,6 +46,7 @@ const CONTACT_LABELS := [
 	"type_tiger1", "type_sherman75", "type_t34_76",
 	"hull_aspect_sin", "hull_aspect_cos", "turret_aspect_sin", "turret_aspect_cos",
 	"in_gunsight", "gun_err_x", "gun_err_y",
+	"team",   # V6: 적 +1, 아군 -1 (슬롯 위치와 별개로 명시. 자기 대전에서 같은 차종이 적이었던 V5 의 팀킬 대책)
 ]
 const SOUND_LABELS := ["present", "gunfire", "impact", "hit_me", "bearing_sin", "bearing_cos", "loudness", "age"]
 
@@ -291,6 +292,7 @@ func _contact_features(out: PackedFloat32Array) -> void:
 				1.0 if ge != null else 0.0,
 				clampf(ge.x * 1000.0 / GUN_ERR_SCALE, -1.0, 1.0) if ge != null else 0.0,
 				clampf(ge.y * 1000.0 / GUN_ERR_SCALE, -1.0, 1.0) if ge != null else 0.0,
+				1.0 if c.enemy else -1.0,
 			]))
 
 

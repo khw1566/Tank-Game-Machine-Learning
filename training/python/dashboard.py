@@ -37,11 +37,12 @@ from tankrl.curriculum import STAGE_IDS as V1_STAGE_IDS, STAGES as V1_STAGES  # 
 from tankrl import curriculum_v4  # noqa: E402
 from tankrl import battle_curriculum  # noqa: E402
 from tankrl import final_curriculum  # noqa: E402
+from tankrl import v6_curriculum  # noqa: E402
 from tankrl.objectives import v4_color  # noqa: E402
 
 # 기존 10단계 뒤에 커리큘럼 v4 단계를 이어 붙인다(번호가 겹치지 않게).
-STAGES = V1_STAGES + curriculum_v4.STAGES + battle_curriculum.STAGES + final_curriculum.STAGES
-STAGE_IDS = V1_STAGE_IDS + curriculum_v4.STAGE_IDS + battle_curriculum.STAGE_IDS + final_curriculum.STAGE_IDS
+STAGES = V1_STAGES + curriculum_v4.STAGES + battle_curriculum.STAGES + final_curriculum.STAGES + v6_curriculum.STAGES
+STAGE_IDS = V1_STAGE_IDS + curriculum_v4.STAGE_IDS + battle_curriculum.STAGE_IDS + final_curriculum.STAGE_IDS + v6_curriculum.STAGE_IDS
 from tankrl.runtime import select_device  # noqa: E402
 from tankrl.terrain import COURSES
 from tankrl.storage import default_runs_dir
@@ -236,7 +237,8 @@ class RunWatch:
         version = read_json(self.run_dir / "run.json").get("curriculum_version", 1)
         out["stage_ids"] = {1: V1_STAGE_IDS, curriculum_v4.VERSION: curriculum_v4.STAGE_IDS,
                             battle_curriculum.VERSION: battle_curriculum.STAGE_IDS,
-                            final_curriculum.VERSION: final_curriculum.STAGE_IDS}.get(version, V1_STAGE_IDS)
+                            final_curriculum.VERSION: final_curriculum.STAGE_IDS,
+                            v6_curriculum.VERSION: v6_curriculum.STAGE_IDS}.get(version, V1_STAGE_IDS)
         log = self.run_dir / "train_log.txt"
         out["log_tail"] = tail_text(log, 6000) if log.exists() else ""
         return out
@@ -443,7 +445,7 @@ class Dashboard:
                 continue
             progress = d / "progress.csv"
             v4 = read_json(d / "run.json").get("curriculum_version") in (curriculum_v4.VERSION, battle_curriculum.VERSION,
-                                                                         final_curriculum.VERSION)
+                                                                         final_curriculum.VERSION, v6_curriculum.VERSION)
             files = [f for f in ("training_report.html", "evaluation_report.html", "analysis/shot_distribution/report.html") if (d / f).exists()]
             if not progress.exists() and not files:
                 continue
@@ -732,7 +734,8 @@ class Dashboard:
         version = read_json(self.run_dir(run) / "run.json").get("curriculum_version", 1)
         return {1: V1_STAGE_IDS, curriculum_v4.VERSION: curriculum_v4.STAGE_IDS,
                 battle_curriculum.VERSION: battle_curriculum.STAGE_IDS,
-                final_curriculum.VERSION: final_curriculum.STAGE_IDS}.get(version, V1_STAGE_IDS)
+                final_curriculum.VERSION: final_curriculum.STAGE_IDS,
+                v6_curriculum.VERSION: v6_curriculum.STAGE_IDS}.get(version, V1_STAGE_IDS)
 
     def restart_args(self, run: str, overrides: dict) -> dict:
         """Preserve device and PPO settings across environment-count changes."""
@@ -754,7 +757,7 @@ class Dashboard:
              "device": args.get("device", "auto")}
         version = rj.get("curriculum_version", 1)
         a["curriculum"] = {1: "v1", curriculum_v4.VERSION: "v4", battle_curriculum.VERSION: "battle",
-                           final_curriculum.VERSION: "final"}.get(version, args.get("curriculum", "v1"))
+                           final_curriculum.VERSION: "final", v6_curriculum.VERSION: "v6"}.get(version, args.get("curriculum", "v1"))
         a["branch_from"] = args.get("branch_from", "")
         for key in ("n_steps", "batch_size", "n_epochs", "lr", "ent_coef", "sde_freq", "pool_dir", "terrain_course"):
             if args.get(key) is not None:

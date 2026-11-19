@@ -38,6 +38,8 @@ from tankrl import battle_curriculum
 from tankrl.battle_curriculum import BattleCurriculum
 from tankrl import final_curriculum
 from tankrl.final_curriculum import FinalCurriculum
+from tankrl import v6_curriculum
+from tankrl.v6_curriculum import V6Curriculum
 from tankrl.control import write_json_atomic
 from tankrl.godot_env import GodotVecEnv
 from tankrl.health import HealthConfig, HealthMonitor
@@ -76,11 +78,11 @@ def parse():
     ap.add_argument("--run", default="", help="실행 이름(runs/<run>). 비우면 날짜시각")
     ap.add_argument("--runs-dir", default=str(default_runs_dir()))
     ap.add_argument("--pool-dir", default="", help="자기대전 상대 정책 풀(기본 runs/pool)")
-    ap.add_argument("--curriculum", default="v1", choices=["v1", "v4", "battle", "final"],
+    ap.add_argument("--curriculum", default="v1", choices=["v1", "v4", "battle", "final", "v6"],
                     help="v1 = 기존 10단계, v4 = 결과 기반 보상·변형 혼합(기동·사격·전술·최종), 상황 관측 사용")
     ap.add_argument("--entropy-boost", type=float, default=0.003, help="v4: 단계 진입 직후 탐색 계수")
     ap.add_argument("--entropy-steps", type=int, default=300_000, help="v4: 탐색 계수를 기본값으로 줄이는 스텝 수")
-    ap.add_argument("--start-stage", default="", choices=[""] + STAGE_IDS + curriculum_v4.STAGE_IDS + battle_curriculum.STAGE_IDS + final_curriculum.STAGE_IDS,
+    ap.add_argument("--start-stage", default="", choices=[""] + STAGE_IDS + curriculum_v4.STAGE_IDS + battle_curriculum.STAGE_IDS + final_curriculum.STAGE_IDS + v6_curriculum.STAGE_IDS,
                     help="이 단계부터 시작")
     ap.add_argument("--resume", action="store_true", help="runs/<run>/<tank>/latest.zip 과 커리큘럼 상태에서 이어서")
     ap.add_argument("--terrain-course", default="", choices=[""] + COURSE_IDS,
@@ -166,7 +168,13 @@ def build_model(args, env, checkpoint: Path | None = None):
                  if getattr(args, k) is not None}
     overrides.update(gamma=args.gamma, gae_lambda=args.gae_lambda, ent_coef=args.ent_coef)
     if checkpoint is not None:
-        if getattr(getattr(env, "curriculum", None), "obs", "") in ("situation_v3", "battle"):
+        if getattr(getattr(env, "curriculum", None), "version", 0) == v6_curriculum.VERSION:
+            from tankrl.input_migration import migrate_for_env
+            migrated = migrate_for_env(checkpoint, env, env.run_dir / "input_migrations")
+            if migrated != Path(checkpoint).resolve():
+                print(f"[model] 관측 입력 확장(적 슬롯 6): 기존 가중치·optimizer·누적 스텝 보존 → {migrated}", flush=True)
+            checkpoint = migrated
+        elif getattr(getattr(env, "curriculum", None), "obs", "") in ("situation_v3", "battle"):
             from tankrl.input_migration import expand_fire_inputs
             migrated = expand_fire_inputs(checkpoint, env.observation_space, env.run_dir / "input_migrations",
                                            allow_battle=env.curriculum.obs == "battle")
@@ -264,7 +272,9 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     cpath = tdir / "curriculum.json"
     checkpoint, cpath = checkpoint_paths(tdir)
     resume = checkpoint is not None
-    final = args.curriculum == "final"
+    v6 = args.curriculum == "v6"
+    final = args.curriculum in ("final", "v6")
+    fmod, fcls = (v6_curriculum, V6Curriculum) if v6 else (final_curriculum, FinalCurriculum)
     if final and tank not in final_curriculum.TANKS:
         raise ValueError("최종 학습은 전차별 모델입니다: --rotate tiger1,sherman75,t34_76 로 실행하세요")
     final_src = final_source(args) if final and not resume else None
@@ -272,7 +282,7 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     battle = final or args.curriculum == "battle" or (branched is not None and isinstance(branched[1], BattleCurriculum))
     v4 = args.curriculum == "v4" or tank == curriculum_v4.SHARED or branched is not None
     if final and cpath.exists() and resume:
-        if json.loads(cpath.read_text(encoding="utf-8")).get("curriculum_version") != final_curriculum.VERSION:
+        if json.loads(cpath.read_text(encoding="utf-8")).get("curriculum_version") != fmod.VERSION:
             raise ValueError("이 실행의 기존 모델은 최종 학습이 아닙니다. 새 --run 이름을 사용하세요")
     elif cpath.exists() and (resume or args.resume or args.rotate):
         # 저장된 진행 상태가 v4 면 대시보드의 "이어서"도 v4 로 이어 간다
@@ -281,14 +291,19 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             raise ValueError("기존 실행은 다른 커리큘럼입니다. 전투 자기 대전에는 새 --run 이름을 사용하세요")
         battle = saved_version == battle_curriculum.VERSION
         v4 = v4 or saved_version == curriculum_v4.VERSION
-    cls, ids = ((FinalCurriculum, final_curriculum.STAGE_IDS) if final else
+    cls, ids = ((fcls, fmod.STAGE_IDS) if final else
                 (BattleCurriculum, battle_curriculum.STAGE_IDS) if battle else
                 (CurriculumV4, curriculum_v4.STAGE_IDS) if v4 else (Curriculum, STAGE_IDS))
     kw = dict(entropy_boost=args.entropy_boost, entropy_steps=args.entropy_steps) if v4 or battle else {}
     start = ids.index(args.start_stage) if args.start_stage else 0
     if final:
-        cur = (FinalCurriculum.load(cpath, tank, review_prob=0.0, seed=args.seed, **kw) if resume
-               else FinalCurriculum(tank, review_prob=0.0, seed=args.seed, **kw))
+        review = args.review_prob if v6 else 0.0
+        if resume:
+            cur = fcls.load(cpath, tank, review_prob=review, seed=args.seed, **kw)
+        elif v6:
+            cur = fcls(tank, start_stage=start, review_prob=review, seed=args.seed, **kw)
+        else:
+            cur = fcls(tank, review_prob=0.0, seed=args.seed, **kw)
     elif branched is not None:
         cur = branched[1].branch(tank, 0, branched[2])
         print(f"[train] {tank}: 공통 모델 {branched[2]} 에서 분기, 단계 {cur.stage['id']}", flush=True)
@@ -330,6 +345,11 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
                       seed=env_seed, record_every=ctl.record_every,
                       quiet=not args.verbose_godot, run_name=run_dir.name)
     ctl.env = env
+    if v6:
+        from tankrl.input_migration import migrate_pool
+        moved = migrate_pool(pool_dir, env, run_dir / "input_migrations")
+        if moved:
+            print(f"[pool] 상대 스냅숏 관측 입력 확장: {', '.join(moved)}", flush=True)
     latest = tdir / "latest.zip"
     if resume and not (args.resume or args.rotate):
         print(f"[train] 기존 {tank} 체크포인트 보호: 자동으로 이어서 학습합니다", flush=True)
@@ -341,7 +361,7 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             ev = cur.initialize_from(final_src[1], model.num_timesteps)
             write_json_atomic(tdir / "branch.json", {"source": final_src[1], "source_checkpoint": final_src[2],
                                                      "source_model": str(final_src[0]), "tank": tank,
-                                                     "start_stage": cur.stage["id"], "curriculum": "final"})
+                                                     "start_stage": cur.stage["id"], "curriculum": args.curriculum})
             env.log_stage_change(ev)
         if battle and not resume:
             cur.stage_start_step = model.num_timesteps
@@ -540,8 +560,10 @@ def main():
         args.curriculum = "battle"
     elif manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("curriculum_version") == final_curriculum.VERSION:
         args.curriculum = "final"
+    elif manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("curriculum_version") == v6_curriculum.VERSION:
+        args.curriculum = "v6"
     pool_dir = Path(args.pool_dir).resolve() if args.pool_dir else (
-        run_dir / "opponents" if args.curriculum in ("battle", "final") else (Path(args.runs_dir) / "pool").resolve())
+        run_dir / "opponents" if args.curriculum in ("battle", "final", "v6") else (Path(args.runs_dir) / "pool").resolve())
     with RunLock(run_dir):
         run_training(args, run_dir, pool_dir)
 

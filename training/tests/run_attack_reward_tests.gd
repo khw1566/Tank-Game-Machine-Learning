@@ -77,6 +77,8 @@ func run() -> void:
 	aim_at(t, enemy)
 	await physics_frame
 	await physics_frame
+	var clear := FireLineObs.compute(t, env.agents[1].perception, env.tanks)
+	check(clear[0] == 0.0 and clear[5] == 0.0, "fire line: ally off to the side is not in the line of fire")
 	env.rewarder = TrainingReward.new(env, cfg)
 	env.rewarder.start()
 	env.rewarder._attack_aim(t, 0.5)
@@ -97,6 +99,8 @@ func run() -> void:
 	aim_at(t, ally)
 	await physics_frame
 	await physics_frame
+	var blocked := FireLineObs.compute(t, env.agents[1].perception, env.tanks)
+	check(blocked[0] == 1.0 and blocked[5] == 1.0 and blocked[1] > 0.15 and blocked[1] < 0.25, "fire line: ally between shooter and enemy is flagged (%s)" % [blocked])
 	env.rewarder = TrainingReward.new(env, cfg)
 	env.rewarder.start()
 	env.rewarder.on_launch(t, {"from": TankSpec._v(t.muzzle_position()), "dir": TankSpec._v(t.gun_direction())})
@@ -112,6 +116,20 @@ func run() -> void:
 	env.rewarder._attack_aim(t, 0.5)
 	env.rewarder.on_launch(t, {"from": TankSpec._v(t.muzzle_position()), "dir": TankSpec._v(t.gun_direction())})
 	check(is_zero_approx(env.rewarder.total(t.name)), "occluded enemies give no aim or firing rewards")
+	# V6 비례 보상(전력 교환): 2대 팀(연합군) vs 1대(티거)
+	var ex_cfg := cfg.duplicate(true)
+	ex_cfg["exchange"] = {"version": 1, "enemy": 200.0, "own": 120.0, "win": 100.0, "loss": -60.0, "contrib": 0.0}
+	env.rewarder = TrainingReward.new(env, ex_cfg)
+	env.rewarder.start()
+	ally.damage.knockout_cause = "test"          # 연합군 1대 격파 → 연합군 전력 1/2 손실
+	env.rewarder._exchange_settle()
+	check(is_equal_approx(env.rewarder.total(enemy.name), 100.0), "exchange: Tiger gains 200 x 1/2 for one of two enemies (%s)" % env.rewarder.total(enemy.name))
+	check(is_equal_approx(env.rewarder.total(t.name), -60.0), "exchange: allied teammate loses 120 x 1/2 (%s)" % env.rewarder.total(t.name))
+	env.rewarder._exchange_settle()
+	check(is_equal_approx(env.rewarder.total(enemy.name), 100.0), "exchange: the same loss is paid only once")
+	env.rewarder._exchange_outcome(-1)
+	check(is_equal_approx(env.rewarder.total(enemy.name), 40.0) and is_equal_approx(env.rewarder.total(t.name), -120.0), "exchange: timeout counts as a loss for both teams")
+	ally.damage.knockout_cause = ""
 	env.free()
 	print("Attack rewards: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

@@ -150,7 +150,7 @@ func run() -> void:
 	check(old[14] == 0 and old[15] == 0, "fixture reproduces the original blind spot")
 	check(improved[14] > 0.5 and improved[15] > 0.5, "fan rays detect obstacles between old rays")
 	check(old.size() == improved.size() and improved.size() == 30, "existing model input width retained")
-	check(env._observation(0).size() == 389, "base observation width unchanged")
+	check(env._observation(0).size() == 444, "base observation width (V6: 389 + enemy slots 4→6 × 23 + team flag × 9 slots)")
 	env.free()
 	# A wall beyond the old 60m range must be visible early enough to plan a detour.
 	env = fixture("tiger1", true, [{"type": "stone", "p": [0, -68], "size": [60, 3.5, 3], "yaw": 0}])

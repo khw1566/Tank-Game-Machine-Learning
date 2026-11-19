@@ -88,6 +88,11 @@ var _cov_overwatch_s := 0.0   # 적을 보면서 차체는 가린 시간(헐다�
 var _cov_hidden_s := 0.0      # 어떤 적에게도 안 보인 시간
 var _cov_observers_sum := 0.0
 var _sc_spawn := Vector3.ZERO
+# V6 비례 보상(config.reward.exchange): 전력 교환. 팀 전력 = 팀 전차들의 전투력(0~1) 평균.
+var _ex_value := {}           # 전차별 마지막으로 정산한 전투력
+var _ex_attr := {}            # 전차별 마지막으로 사수 기여를 나눠 준 전투력
+var _ex_size := [0, 0]        # 경기 시작 때 팀별 전차 수
+var _ex_lost := [0.0, 0.0]    # 팀별 누적 전력 손실(0~1)
 
 
 func _init(p_env, overrides := {}) -> void:
@@ -113,6 +118,11 @@ func learner_team() -> int:
 
 
 func start() -> void:
+	_ex_size = [0, 0]
+	for t in env.tanks:
+		_ex_value[t.name] = combat_value(t)
+		_ex_attr[t.name] = _ex_value[t.name]
+		_ex_size[t.team] += 1
 	for t in env.tanks:
 		_pending[t.name] = 0.0
 		_total[t.name] = 0.0
@@ -243,6 +253,8 @@ func on_shot(shooter: Tank, r: Dictionary) -> void:
 		for ev in r.get("events", []):
 			if str(ev).begins_with("knocked_out:"):
 				kills[shooter.name] = kills.get(shooter.name, 0) + 1
+	if _exchange_on() and tteam >= 0 and tteam != shooter.team:
+		_exchange_credit(shooter, target)
 	r["reward_events"] = r.get("launch_reward_events", []) + _shot_reward_events.duplicate(true)
 	_capture_shot_rewards = false
 
@@ -295,6 +307,8 @@ func decision() -> Dictionary:
 				if c.enemy and c.visible_now and not _spotted[t.name].has(n):
 					_spotted[t.name][n] = true
 					_add(t.name, float(w.spot), "spot")
+	if _exchange_on():
+		_exchange_settle()
 	var alive := [0, 0]
 	for t in env.tanks:
 		if t.damage.is_combat_effective():
@@ -324,6 +338,9 @@ func decision() -> Dictionary:
 		_:
 			if alive[0] == 0 or alive[1] == 0:
 				var winner := -1 if alive[0] == alive[1] else (0 if alive[0] > 0 else 1)
+				if _exchange_on():
+					_exchange_outcome(winner)
+					return _done("elimination", winner == lt, winner)
 				for t in env.tanks:
 					if winner >= 0:
 						_add(t.name, float(w.win) if t.team == winner else float(w.loss), "win" if t.team == winner else "loss")
@@ -332,6 +349,9 @@ func decision() -> Dictionary:
 							_add(t.name, float(w.survive_win), "survive_win")
 				return _done("elimination", winner == lt, winner)
 	if timeout:
+		if _exchange_on():
+			_exchange_outcome(-1)      # 시간 초과 = 두 팀 모두 패배(교환 점수는 이미 받았다)
+			return _done("time_limit", false, -1)
 		if kind == "combat" and bool(w.get("battle_shaping", false)):
 			for tank in env.tanks:
 				if tank.damage.is_combat_effective():
@@ -835,3 +855,83 @@ func _aim_potential(t: Tank) -> float:
 	var to: Vector3 = (best.global_position + Vector3.UP * best.spec.hull_top_y() * 0.7) - t.muzzle_position()
 	var ang := t.gun_direction().angle_to(to.normalized())
 	return 1.0 - ang / PI
+
+
+# ---------------------------------------------------------------- V6 비례 보상(전력 교환)
+## config.reward.exchange = {enemy, own, win, loss, contrib, weights{gun, mobility, crew_kia, crew_wounded}}
+##   보상 = enemy × Δ적 팀 전력손실 − own × Δ내 팀 전력손실 (+ 결말 win / loss, 시간 초과 = loss)
+##   팀 전력손실 = 팀 전차들의 전투력 손실 합 ÷ 시작 전차 수 → 적이 1대든 6대든 같은 척도.
+##   contrib: 사수가 직접 줄인 적 전력 × enemy × contrib 를 추가로 받는다(무임승차 방지).
+
+func _exchange_on() -> bool:
+	return not w.get("exchange", {}).is_empty()
+
+
+## 전차 전투력 0~1: 격파 0, 주포 계통 상실·기동 불능·승무원 피해만큼 감소
+func combat_value(t: Tank) -> float:
+	if not t.damage.is_combat_effective():
+		return 0.0
+	var wt: Dictionary = w.get("exchange", {}).get("weights", {})
+	var lost := 0.0
+	if not t.damage.gun_system_ok():
+		lost += float(wt.get("gun", 0.5))
+	if not t.damage.can_move():
+		lost += float(wt.get("mobility", 0.3))
+	for c in t.damage.crew:
+		if c.status == TankDamageState.CREW_KIA:
+			lost += float(wt.get("crew_kia", 0.15))
+		elif c.status == TankDamageState.CREW_WOUNDED:
+			lost += float(wt.get("crew_wounded", 0.05))
+	return clampf(1.0 - lost, 0.05, 1.0)
+
+
+func _exchange_settle() -> void:
+	var ex: Dictionary = w.exchange
+	var delta := [0.0, 0.0]
+	for t in env.tanks:
+		var v := combat_value(t)
+		var d: float = maxf(0.0, float(_ex_value.get(t.name, 1.0)) - v)
+		_ex_value[t.name] = minf(float(_ex_value.get(t.name, 1.0)), v)
+		if d > 0.0 and _ex_size[t.team] > 0:
+			delta[t.team] += d / float(_ex_size[t.team])
+	if delta[0] == 0.0 and delta[1] == 0.0:
+		return
+	_ex_lost[0] += delta[0]
+	_ex_lost[1] += delta[1]
+	for t in env.tanks:
+		var mine: float = delta[t.team]
+		var theirs: float = delta[1 - t.team]
+		if theirs > 0.0:
+			_add(t.name, float(ex.get("enemy", 200.0)) * theirs, "exchange_enemy")
+		if mine > 0.0:
+			_add(t.name, -float(ex.get("own", 120.0)) * mine, "exchange_own")
+
+
+func _exchange_credit(shooter: Tank, target_name: String) -> void:
+	var contrib := float(w.exchange.get("contrib", 0.0))
+	if contrib == 0.0:
+		return
+	for t in env.tanks:
+		if str(t.name) != target_name:
+			continue
+		var v := combat_value(t)
+		var d: float = maxf(0.0, float(_ex_attr.get(t.name, 1.0)) - v)
+		if d > 0.0 and _ex_size[t.team] > 0:
+			_ex_attr[t.name] = v
+			_add(str(shooter.name), float(w.exchange.get("enemy", 200.0)) * contrib * d / float(_ex_size[t.team]), "exchange_contrib")
+		return
+
+
+func _exchange_outcome(winner: int) -> void:
+	var ex: Dictionary = w.exchange
+	for t in env.tanks:
+		if winner >= 0 and t.team == winner:
+			_add(t.name, float(ex.get("win", 100.0)), "win")
+		else:
+			_add(t.name, float(ex.get("loss", -60.0)), "loss" if winner >= 0 else "timeout")
+
+
+func exchange_summary() -> Dictionary:
+	if not _exchange_on():
+		return {}
+	return {"version": int(w.exchange.get("version", 1)), "team_size": _ex_size.duplicate(), "team_lost": [snappedf(_ex_lost[0], 0.001), snappedf(_ex_lost[1], 0.001)]}
