@@ -29,16 +29,16 @@ ALLIED = ["sherman75", "t34_76"]
 # 단계별 보조 보상 배율(사다리를 오를수록 결과 보상만 남긴다)
 STAGES = [
     {"id": "v6_1v1", "label": "V6-1 · 1대1 엄폐 맵", "allies": 1, "rule": [0, 1], "distance": (120, 250),
-     "time_limit_s": 150, "shaping": 1.0,
+     "time_limit_s": 150, "shaping": 1.0, "envs_per_core": 2.5,
      "promote": {"window": 60, "resolved": 0.6, "win": 0.4, "path_m": 30.0, "min_episodes": 60}},
     {"id": "v6_1v2", "label": "V6-2 · 1대2", "allies": 2, "rule": [1, 1], "distance": (180, 300),
-     "time_limit_s": 180, "shaping": 0.6,
+     "time_limit_s": 180, "shaping": 0.6, "envs_per_core": 1.6,
      "promote": {"window": 60, "resolved": 0.6, "win": 0.35, "path_m": 0.0, "min_episodes": 60}},
     {"id": "v6_1v3", "label": "V6-3 · 1대3", "allies": 3, "rule": [1, 1], "distance": (220, 360),
-     "time_limit_s": 210, "shaping": 0.3,
+     "time_limit_s": 210, "shaping": 0.3, "envs_per_core": 1.2,
      "promote": {"window": 60, "resolved": 0.55, "win": 0.35, "path_m": 0.0, "min_episodes": 60}},
     {"id": "v6_1v6", "label": "V6-4 · 1대6", "allies": 6, "rule": [2, 2], "distance": (260, 420),
-     "time_limit_s": 240, "shaping": 0.0, "promote": None},
+     "time_limit_s": 240, "shaping": 0.0, "envs_per_core": 0.85, "promote": None},
 ]
 for _s in STAGES:
     _s.update({"part": "V6", "scope": "tank", "variants": MAP_IDS, "variants_desc": MAPS, "min_steps": 0,
@@ -47,6 +47,14 @@ for _s in STAGES:
                "learn": "엄폐 맵에서 움직여 사선을 잡고, 전력을 덜 잃으며 더 많이 줄이기",
                "goal": "적 팀 전멸. 시간 초과는 패배와 같다."})
 STAGE_IDS = [s["id"] for s in STAGES]
+
+
+def auto_envs(stage: dict, cores: int | None = None) -> int:
+    """단계별 동시 환경 수. 전차가 많을수록 한 판이 무거워 환경을 줄인다(12코어 측정: 1대1 30, 1대6 10).
+    전차 수 × 환경 수가 비슷하게 유지되도록 코어 수에 비례해 정한다."""
+    import os
+    cores = cores or os.cpu_count() or 4
+    return max(2, min(64, round(cores * float(stage.get("envs_per_core", 1.0)))))
 
 # 규칙 AI 성향(ScriptedAI 파라미터, training_env.gd SCENARIO_AI_KEYS)
 RULE_FLANK = {"advance": True, "engage_range": 200.0, "max_fire_range": 350.0, "fire_delay_s": 0.6, "aim_noise_mrad": 1.0}

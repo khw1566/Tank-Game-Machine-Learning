@@ -528,6 +528,7 @@ class Dashboard:
                             "time_limit_s": s["time_limit_s"], "v4": s["id"] not in V1_STAGE_IDS,
                             "battle": s["id"] in battle_curriculum.STAGE_IDS + final_curriculum.STAGE_IDS + v6_curriculum.STAGE_IDS,
                             "final": s["id"] in final_curriculum.STAGE_IDS, "v6": s["id"] in v6_curriculum.STAGE_IDS,
+                            "auto_envs": v6_curriculum.auto_envs(s) if "envs_per_core" in s else None,
                             "min_steps": s.get("min_steps", 0),
                             "label": s.get("label", ""), "learn": s.get("learn", ""), "goal": s.get("goal", ""),
                             "lesson": s.get("lesson", ""),
@@ -658,6 +659,8 @@ class Dashboard:
             cmd += ["--start-stage", a["start_stage"]]
         if a.get("resume"):
             cmd += ["--resume"]
+        if a.get("auto_envs") and a.get("curriculum") == "v6":
+            cmd += ["--auto-envs"]
         if a.get("terrain_course"):
             cmd += ["--terrain-course", a["terrain_course"]]
         for key, flag in [("record_every", "--record-every"), ("save_every", "--save-every"),
@@ -761,7 +764,7 @@ class Dashboard:
              "save_every": args.get("save_every"), "review_prob": args.get("review_prob"),
              "speed_cap": args.get("speed_cap", 0), "seed": args.get("seed"),
              "torch_threads": args.get("torch_threads", 0), "resume": True,
-             "device": args.get("device", "auto")}
+             "device": args.get("device", "auto"), "auto_envs": bool(args.get("auto_envs", False))}
         version = rj.get("curriculum_version", 1)
         a["curriculum"] = {1: "v1", curriculum_v4.VERSION: "v4", battle_curriculum.VERSION: "battle",
                            final_curriculum.VERSION: "final", v6_curriculum.VERSION: "v6"}.get(version, args.get("curriculum", "v1"))

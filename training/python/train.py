@@ -75,6 +75,8 @@ def parse():
     ap.add_argument("--cycles", type=int, default=1, help="--rotate 반복 횟수")
     ap.add_argument("--timesteps", type=int, default=1_000_000, help="--rotate 가 없을 때 총 스텝(결정 수)")
     ap.add_argument("--n-envs", type=int, default=4, help="동시에 띄울 Godot 수(CPU 코어 수 정도)")
+    ap.add_argument("--auto-envs", action="store_true",
+                    help="V6: 동시 환경 수를 단계(적 수)에 맞게 자동으로 정하고, 승급하면 그 자리에서 다시 띄운다(--n-envs 무시)")
     ap.add_argument("--run", default="", help="실행 이름(runs/<run>). 비우면 날짜시각")
     ap.add_argument("--runs-dir", default=str(default_runs_dir()))
     ap.add_argument("--pool-dir", default="", help="자기대전 상대 정책 풀(기본 runs/pool)")
@@ -345,7 +347,11 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     env_seed = args.seed * 1000 + sum(map(ord, tank)) + resume_steps
     cur.rng.seed(args.seed + resume_steps)
     ctl.info["env_seed"] = env_seed
-    env = GodotVecEnv(args.n_envs, args.godot, args.project, run_dir, tank, cur, opponents=pool,
+    n_envs = env_count(args, cur)
+    if n_envs != args.n_envs:
+        print(f"[train] {tank}: 단계 {cur.stage['id']} → 동시 환경 {n_envs}개 (자동)", flush=True)
+    ctl.env_restart = None
+    env = GodotVecEnv(n_envs, args.godot, args.project, run_dir, tank, cur, opponents=pool,
                       seed=env_seed, record_every=ctl.record_every,
                       quiet=not args.verbose_godot, run_name=run_dir.name)
     ctl.env = env
@@ -476,6 +482,12 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             if getattr(cur, "training_complete", False):
                 print("[train] 모든 세부 항목 통과: 현재 커리큘럼 학습을 마칩니다", flush=True)
                 return False
+            if args.auto_envs and env_count(args, cur) != env.num_envs:
+                # 승급으로 적 수가 바뀌었다: 저장하고 이 전차의 남은 스텝을 새 환경 수로 이어서 한다
+                ctl.env_restart = {"tank": tank, "remaining": max(0, target - self.num_timesteps),
+                                   "from": env.num_envs, "to": env_count(args, cur), "stage": cur.stage["id"]}
+                print(f"[train] {tank}: 단계 {cur.stage['id']} → 동시 환경 {env.num_envs} → {ctl.env_restart['to']}개로 다시 띄웁니다", flush=True)
+                return False
             return ctl.tick(self.num_timesteps)
 
         def _on_rollout_end(self) -> None:
@@ -572,6 +584,24 @@ def main():
         run_training(args, run_dir, pool_dir)
 
 
+def env_count(args, cur) -> int:
+    """--auto-envs 이고 단계가 환경 비율을 갖고 있으면 단계별 자동 값, 아니면 --n-envs."""
+    if getattr(args, "auto_envs", False) and "envs_per_core" in cur.stage:
+        return v6_curriculum.auto_envs(cur.stage)
+    return args.n_envs
+
+
+def train_turn(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl) -> bool:
+    """train_one + 자동 환경 수: 학습 중 승급해 환경 수가 바뀌면 남은 스텝을 새 환경 수로 이어서 학습한다."""
+    result = train_one(args, run_dir, pool_dir, tank, steps, ctl)
+    while getattr(ctl, "env_restart", None) and not ctl.stop_requested:
+        info, ctl.env_restart = ctl.env_restart, None
+        if info["remaining"] <= 0:
+            break
+        result = train_one(args, run_dir, pool_dir, tank, info["remaining"], ctl)
+    return result
+
+
 def run_training(args, run_dir: Path, pool_dir: Path) -> None:
     ctl = TrainController(run_dir, record_every=args.record_every, review_prob=args.review_prob,
                           speed_cap=args.speed_cap)
@@ -584,9 +614,9 @@ def run_training(args, run_dir: Path, pool_dir: Path) -> None:
                         break
                     print(f"[train] 교대 {c + 1}/{args.cycles}: {t} {args.rotate_steps} 스텝")
                     ctl.info["rotate"] = {"tanks": tanks, "cycle": c + 1, "cycles": args.cycles}
-                    train_one(args, run_dir, pool_dir, t, args.rotate_steps, ctl)
+                    train_turn(args, run_dir, pool_dir, t, args.rotate_steps, ctl)
         else:
-            done_common = train_one(args, run_dir, pool_dir, args.tank, args.timesteps, ctl)
+            done_common = train_turn(args, run_dir, pool_dir, args.tank, args.timesteps, ctl)
             if done_common and args.auto_branch and not ctl.stop_requested:
                 tanks = [t.strip() for t in args.branch_tanks.split(",") if t.strip()]
                 for c in range(args.cycles):
@@ -595,7 +625,7 @@ def run_training(args, run_dir: Path, pool_dir: Path) -> None:
                             break
                         print(f"[train] 전차별 분기 {c + 1}/{args.cycles}: {t} {args.rotate_steps} 스텝", flush=True)
                         ctl.info["rotate"] = {"tanks": tanks, "cycle": c + 1, "cycles": args.cycles, "branch": True}
-                        train_one(args, run_dir, pool_dir, t, args.rotate_steps, ctl)
+                        train_turn(args, run_dir, pool_dir, t, args.rotate_steps, ctl)
     finally:
         ctl.write_status(None, force=True, phase="stopped")
     print(f"[train] 끝. 보고서: python report.py {run_dir}")

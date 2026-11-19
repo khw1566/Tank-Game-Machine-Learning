@@ -295,7 +295,7 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
       <div class="ctl" data-m="rotate shared battle final v6"><label><span data-m-label="rotate">교대마다 스텝</span><span data-m-label="shared battle">분기 후 전차별 스텝(번갈아)</span><span data-m-label="final v6">전차별 교대 스텝(티거→셔먼→T-34)</span></label><input type="number" name="rotate_steps" value="500000" step="50000"></div>
       <div class="ctl" data-m="rotate shared battle final v6"><label><span data-m-label="rotate">반복 횟수</span><span data-m-label="shared battle">분기 후 반복 횟수</span><span data-m-label="final v6">교대 반복 횟수</span></label><input type="number" name="cycles" value="10"></div>
       <div class="ctl wide" data-m="shared single battle"><label>시작 가중치 (새 실행일 때만, 비우면 새 정책) <span class="sub" id="initHint"></span></label><input type="text" name="init_model" placeholder="(새 정책)"></div>
-      <div class="ctl"><label>동시 환경 수</label><input type="number" name="n_envs" min="1" max="64"></div>
+      <div class="ctl"><label>동시 환경 수 <span data-m="v6"><input type="checkbox" name="auto_envs" checked> 단계별 자동 <span class="sub" id="autoEnvHint"></span></span></label><input type="number" name="n_envs" min="1" max="64"></div>
       <div class="ctl"><label>학습 장치</label><select name="device"><option value="auto">자동 (혼합 CUDA 우선)</option><option value="hybrid">혼합 (CPU 추론 + GPU 갱신)</option><option value="cuda">GPU (추론·갱신 모두 CUDA)</option><option value="cpu">CPU</option></select></div>
       <div class="ctl"><label>PPO 환경당 수집 수 (빈칸 = 기본 / 저장된 값)</label><input type="number" name="n_steps" min="1" placeholder="1024"></div>
       <div class="ctl"><label>PPO 갱신 배치 (빈칸 = 기본 / 저장된 값)</label><input type="number" name="batch_size" min="2" placeholder="2048"></div>
@@ -1014,6 +1014,9 @@ function wire() {
       // 보고 있던 다른 실행의 설정(예: 환경 120개)을 물려받지 않고 V6 권장값으로
       f.rotate_steps.value = 2000000; f.cycles.value = 10; f.n_envs.value = Math.max(1, Math.min(10, (INFO.cpu_count || 4) - 2));
     }
+    const autoEnv = f.mode.value === "v6" && f.auto_envs.checked;
+    f.n_envs.disabled = autoEnv;
+    $("autoEnvHint").textContent = autoEnv ? `(${(INFO.stages || []).filter(s => s.v6).map(s => (STAGE_LABEL[s.id] || s.id).split(" · ")[0] + " " + s.auto_envs + "개").join(", ")})` : "";
     if (["v6", "final"].includes(f.mode.value) && !f.resume.checked && !f.branch_from.value.trim()) f.branch_from.value = INFO.recommended?.final_source || "V5run 1";
     document.querySelectorAll("[data-m]").forEach(el => el.style.display = el.dataset.m.split(" ").includes(f.mode.value) ? "" : "none");
     document.querySelectorAll("[data-m-label]").forEach(el => el.style.display = el.dataset.mLabel.split(" ").includes(f.mode.value) ? "" : "none");
@@ -1029,6 +1032,7 @@ function wire() {
     if ([...f.start_stage.options].some(o => o.value === selected)) f.start_stage.value = selected;
   };
   f.curriculum.onchange = f.mode.onchange;
+  f.auto_envs.onchange = f.mode.onchange;
   f.run.oninput = () => { f.resume.checked = [...$("runList").options].some(o => o.value === f.run.value); f.init_model.disabled = f.resume.checked; };
   f.resume.onchange = () => { f.init_model.disabled = f.resume.checked; };
   $("btnGo").onclick = async (e) => {
@@ -1038,7 +1042,7 @@ function wire() {
       device: f.device.value, terrain_course: f.terrain_course.value, n_steps: f.n_steps.value ? +f.n_steps.value : null,
       batch_size: f.batch_size.value ? +f.batch_size.value : null, n_epochs: f.n_epochs.value ? +f.n_epochs.value : null};
     if (f.mode.value === "rotate") Object.assign(a, {rotate: f.rotate.value, rotate_steps: +f.rotate_steps.value, cycles: +f.cycles.value});
-    else if (["final", "v6"].includes(f.mode.value)) Object.assign(a, {rotate: "tiger1,sherman75,t34_76", curriculum: f.mode.value, rotate_steps: +f.rotate_steps.value,
+    else if (["final", "v6"].includes(f.mode.value)) Object.assign(a, {rotate: "tiger1,sherman75,t34_76", curriculum: f.mode.value, rotate_steps: +f.rotate_steps.value, auto_envs: f.mode.value === "v6" && f.auto_envs.checked,
       cycles: +f.cycles.value, branch_from: f.branch_from.value.trim()});
     else if (["shared", "battle"].includes(f.mode.value)) Object.assign(a, {tank: "shared", curriculum: f.mode.value === "battle" ? "battle" : "v4", auto_branch: true, timesteps: +f.timesteps.value,
       rotate_steps: +f.rotate_steps.value, cycles: +f.cycles.value, init_model: f.resume.checked ? "" : f.init_model.value.trim()});
@@ -1061,6 +1065,7 @@ function openStart() {
     f.run.value = RUN; f.resume.checked = true; f.n_envs.value = a.n_envs;
     f.mode.value = a.curriculum === "v6" ? "v6" : a.curriculum === "final" ? "final" : a.tank === "shared" ? (a.curriculum === "battle" ? "battle" : "shared") : a.rotate ? "rotate" : "single";
     f.branch_from.value = a.branch_from || "";
+    f.auto_envs.checked = a.curriculum !== "v6" || !!a.auto_envs;
     f.curriculum.value = a.curriculum || "v1";
     if (a.rotate || a.tank === "shared") { f.rotate.value = a.rotate || f.rotate.value; f.rotate_steps.value = a.rotate_steps; f.cycles.value = a.cycles; }
     if (a.tank !== "shared") f.tank.value = a.tank;
