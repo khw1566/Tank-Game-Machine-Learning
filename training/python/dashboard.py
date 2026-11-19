@@ -9,6 +9,7 @@
   - 커리큘럼 단계 수동 변경(승급 기록에 manual 로 남음)
   - 실시간: 단계·성공률(승급 기준 대비), 초당 결정·에피소드, 실시간 대비 배속, 학습 곡선(성공률·보상·명중·속도·PPO 통계)
   - 전차별 정책(단계, 체크포인트, 상대 풀), 최근 에피소드 → 리플레이 보기(게임 리플레이 뷰어)·재현 후 보기·경기 보고서
+  - 학습 곡선을 단계·세부 변형별로 걸러 보기, 지금 보이는 그래프 PDF, 학습·평가·경기 보고서 PDF(Edge/Chrome headless 인쇄)
 
 대시보드를 닫아도 학습은 계속된다(상태는 runs/<run>/status.json, 명령은 runs/<run>/control.jsonl). 다시 열면 이어서 보인다.
 """
@@ -51,7 +52,7 @@ TANKS = ["tiger1", "sherman75", "t34_76"]
 MODELS = TANKS + [curriculum_v4.SHARED]   # 저장 모델 폴더: 전차별 + v4 공통 모델
 # 브라우저로 보내는 에피소드 열(짧게): progress.csv 의 열 이름
 EP_COLS = ["wall_time", "global_step", "env", "tank", "stage_idx", "current_stage", "success", "return",
-           "decisions", "hits", "pens", "kills", "shots", "spawn_distance_m", "rec", "objective", "model"]
+           "decisions", "hits", "pens", "kills", "shots", "spawn_distance_m", "rec", "objective", "model", "variant"]
 RECENT_COLS = ["wall_time", "global_step", "env", "uid", "tank", "stage", "success", "reason", "winner", "return",
                "decisions", "duration_s", "spawn_distance_m", "hits", "pens", "kills", "shots", "learner_policy",
                "opponents", "episode_file", "replay_dir"]
@@ -174,7 +175,7 @@ class RunWatch:
                 out.append(STAGE_IDS.index(r[c]) if r.get(c) in STAGE_IDS else -1)
             elif c == "rec":
                 out.append(1 if r.get("replay_dir") else 0)
-            elif c == 'objective':
+            elif c in ('objective', 'variant'):
                 out.append(r.get(c, ''))
             elif c == 'model':
                 policy = r.get('learner_policy', '').rsplit('/step_', 1)[0]
@@ -325,6 +326,12 @@ class RunWatch:
                 "runtime": s.get("runtime", {}),
                 "started": s.get("started"), "obs_size": len(rj.get("obs_labels", [])),
                 "act_size": len(rj.get("action_labels", []))}
+
+
+def safe_name(s: str) -> str:
+    """파일 이름에 쓸 수 있게(한글 유지, 경로 문자 제거)."""
+    out = "".join(c if c.isalnum() or c in "-_." else "_" for c in str(s).replace("stage=", "").replace("variant=", "").replace("tank=", ""))
+    return out.strip("._")[:80]
 
 
 def abs_path(p: str) -> Path:
@@ -516,7 +523,7 @@ class Dashboard:
                             "final": s["id"] in final_curriculum.STAGE_IDS, "min_steps": s.get("min_steps", 0),
                             "label": s.get("label", ""), "learn": s.get("learn", ""), "goal": s.get("goal", ""),
                             "lesson": s.get("lesson", ""),
-                            "variant_notes": s.get("variants_desc", {})} for s in STAGES],
+                            "variant_notes": s.get("variants_desc", {}), "variants": s.get("variants", [])} for s in STAGES],
                 "tanks": TANKS, "cpu_count": os.cpu_count() or 1, "settings": self.settings,
                 "runs_dir": str(self.runs_dir), "platform": sys.platform, "deps": self.deps_info(),
                 "recommended": self.recommended(),
@@ -911,6 +918,26 @@ class Dashboard:
 
         return self.background(f"{run}: 학습 보고서", job)
 
+    def pdf(self, rel: str, fragment: str = "", name: str = "") -> dict:
+        """runs 안의 HTML 보고서(학습·평가·경기 보고서) → 같은 폴더의 PDF. fragment = 보고서 필터(#stage=…&variant=…)."""
+        from tankrl.pdf_export import file_to_pdf
+        src = self.safe_path(str(self.runs_dir / rel))
+        if src.suffix.lower() != ".html" or not src.is_file():
+            raise ValueError("HTML 보고서가 아닙니다: " + rel)
+        stem = src.stem + (("__" + safe_name(name or fragment)) if (name or fragment) else "")
+        out = file_to_pdf(src, src.with_name(stem + ".pdf"), fragment=fragment)
+        return {"url": "/files/" + urllib.parse.quote(out.relative_to(self.runs_dir).as_posix()), "file": out.name}
+
+    def pdf_html(self, run: str, name: str, page: str, landscape: bool = False) -> dict:
+        """대시보드가 만든 HTML(현재 그래프 묶음) → runs/<run>/exports/<name>.html + .pdf"""
+        from tankrl.pdf_export import file_to_pdf
+        d = self.run_dir(run) / "exports"
+        d.mkdir(parents=True, exist_ok=True)
+        src = d / ((safe_name(name) or "charts") + ".html")
+        src.write_text(page, encoding="utf-8")
+        out = file_to_pdf(src, landscape=landscape)
+        return {"url": "/files/" + urllib.parse.quote(out.relative_to(self.runs_dir).as_posix()), "file": out.name}
+
     def background(self, title: str, fn) -> dict:
         job = {"id": len(self.jobs) + 1, "title": title, "state": "running", "t": time.time(), "result": ""}
         self.jobs.append(job)
@@ -976,7 +1003,7 @@ def make_handler(dash: Dashboard):
                         return self.send_json({"error": "없는 파일"}, 404)
                     ctype = {".html": "text/html; charset=utf-8", ".json": "application/json",
                              ".csv": "text/csv; charset=utf-8", ".jsonl": "text/plain; charset=utf-8",
-                             ".txt": "text/plain; charset=utf-8", ".png": "image/png",
+                             ".txt": "text/plain; charset=utf-8", ".png": "image/png", ".pdf": "application/pdf",
                              ".svg": "image/svg+xml; charset=utf-8"}.get(p.suffix, "application/octet-stream")
                     return self.send_body(200, p.read_bytes(), ctype)
                 self.send_json({"error": "not found"}, 404)
@@ -1000,6 +1027,10 @@ def make_handler(dash: Dashboard):
                     return self.send_json(dash.reproduce(a["run"], a["episode_file"], bool(a.get("view", True))))
                 if u.path == "/api/report":
                     return self.send_json(dash.report(a["run"]))
+                if u.path == "/api/pdf":
+                    return self.send_json(dash.pdf(a["path"], a.get("fragment", ""), a.get("name", "")))
+                if u.path == "/api/pdf_html":
+                    return self.send_json(dash.pdf_html(a["run"], a.get("name", "charts"), a["html"], bool(a.get("landscape"))))
                 if u.path == '/api/evaluate':
                     return self.send_json(dash.evaluate(a['run'], int(a.get('episodes', 1)), a.get('modes', 'mixed')))
                 if u.path == '/api/train_individuals':

@@ -29,3 +29,18 @@ assert.equal(tanks.length, 2);
 assert.match(tanks[0].name, /Tiger/);
 assert.match(tanks[1].name, /Sherman/);
 console.log('PASS: rollback boundaries, independent moving averages, shared and per-tank model curves');
+
+const filterFuncs = ['objParts', 'filterPred'].map(name => {
+  const start = html.indexOf(`function ${name}(`);
+  const end = html.indexOf('\nfunction ', start + 1);
+  return html.slice(start, end).replace(/let FILTER_SIG[\s\S]*$/, '');
+}).join('\n');
+const filterContext = vm.createContext({
+  S: {objectives: {'final/objective:v1/battle': {stage:'final'}}},
+  col: key => ['objective', 'variant'].indexOf(key),
+  $: id => ({value:id === 'stgFilter' ? 'final' : 'urban'}),
+});
+vm.runInContext(filterFuncs, filterContext);
+assert.equal(filterContext.filterPred()(['final/objective:v1/battle', 'urban']), true);
+assert.equal(filterContext.filterPred()(['final/objective:v1/battle', 'open']), false);
+console.log('PASS: final curriculum map variant filtering');

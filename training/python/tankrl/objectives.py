@@ -112,4 +112,4 @@ class ObjectiveIndex:
             key, label = f'{stage}/unspecified', '세부 목표 미기록'
         info = dict(id=key, stage=stage, label=label, color=objective_color(key))
         self.catalog[key] = info
-        return row | {'objective': key}
+        return row | {'objective': key, 'variant': cfg.get('scenario', {}).get('variant') or row.get('variant') or course_id or ''}
