@@ -11,6 +11,10 @@
   - 전차별 정책(단계, 체크포인트, 상대 풀), 최근 에피소드 → 리플레이 보기(게임 리플레이 뷰어)·재현 후 보기·경기 보고서
   - 학습 곡선을 단계·세부 변형별로 걸러 보기, 지금 보이는 그래프 PDF, 학습·평가·경기 보고서 PDF(Edge/Chrome headless 인쇄)
 
+  - 커리큘럼 버전 이력(v1 정석 → v4 회피·엄폐 → v5 전투 → v6 최종 1대6): 버전별 단계·바뀐 점·바꾼 이유·실행 목록
+  - 누른 즉시 피드백: 학습 시작은 단계별 진행(패키지 확인 → 프로세스 → 게임 연결 → 첫 수집)·실패 시 로그 끝,
+    제어 명령은 보냄 → 받음 → 적용됨 확인 응답(PPO 갱신 중에도 감시 스레드가 받음)
+
 대시보드를 닫아도 학습은 계속된다(상태는 runs/<run>/status.json, 명령은 runs/<run>/control.jsonl). 다시 열면 이어서 보인다.
 """
 from __future__ import annotations
@@ -19,6 +23,7 @@ import argparse
 import csv
 import datetime as dt
 import io
+import itertools
 import json
 import os
 import shlex
@@ -37,6 +42,7 @@ from tankrl.curriculum import STAGE_IDS as V1_STAGE_IDS, STAGES as V1_STAGES  # 
 from tankrl import curriculum_v4  # noqa: E402
 from tankrl import battle_curriculum  # noqa: E402
 from tankrl import final_curriculum  # noqa: E402
+from tankrl import curriculum_history  # noqa: E402
 from tankrl.objectives import v4_color  # noqa: E402
 
 # 기존 10단계 뒤에 커리큘럼 v4 단계를 이어 붙인다(번호가 겹치지 않게).
@@ -46,7 +52,7 @@ from tankrl.runtime import select_device  # noqa: E402
 from tankrl.terrain import COURSES
 from tankrl.storage import default_runs_dir
 from tankrl.objectives import ObjectiveIndex, objective_color
-from tankrl.control import write_json_atomic
+from tankrl.control import LAUNCH_ENV, write_json_atomic
 
 TANKS = ["tiger1", "sherman75", "t34_76"]
 MODELS = TANKS + [curriculum_v4.SHARED]   # 저장 모델 폴더: 전차별 + v4 공통 모델
@@ -88,6 +94,11 @@ def default_combat_godot(final: bool = False) -> str:
     names += ["TankGame_final_scores.exe", "TankGame_final.exe"] if final else ["TankGame_battle.exe"]
     build = HERE.parents[1] / "build"
     return str(next((build / name for name in names if (build / name).exists()), build / names[-1]))
+
+
+CMD_SEQ = itertools.count(1)   # 명령 id(대시보드 → train.py 확인 응답 짝 맞추기)
+PHASE_LABEL = {"launching": "시작 중", "starting": "준비 중", "collecting": "학습 중(수집)", "updating": "학습 중(PPO 갱신)",
+               "paused": "일시정지", "saving": "저장 중", "stopped": "중지됨"}
 
 
 def num(v: str):
@@ -233,7 +244,8 @@ class RunWatch:
         out["v4"] = self.v4_summary(rows)
         out["tanks"] = self.tank_info()
         out["run_json"] = self.run_summary()
-        version = read_json(self.run_dir / "run.json").get("curriculum_version", 1)
+        version = read_json(self.run_dir / "run.json").get("curriculum_version") or \
+            curriculum_history.VERSION_NUMBER.get(curriculum_history.classify_run(self.run_dir), 1)
         out["stage_ids"] = {1: V1_STAGE_IDS, curriculum_v4.VERSION: curriculum_v4.STAGE_IDS,
                             battle_curriculum.VERSION: battle_curriculum.STAGE_IDS,
                             final_curriculum.VERSION: final_curriculum.STAGE_IDS}.get(version, V1_STAGE_IDS)
@@ -391,7 +403,10 @@ class Dashboard:
         self._gpu_next_check = 0.0
         self._gpu_lock = threading.Lock()
         self.deps: dict = {"state": "unknown"}
+        self._deps_lock = threading.Lock()
         self.install_job: dict | None = None
+        self.launching: set[str] = set()                   # 시작 작업이 진행 중인 실행(중복 시작 방지)
+        self._cv_cache: dict[str, tuple] = {}              # 실행 → (run.json 수정 시각, 커리큘럼 버전 key)
         threading.Thread(target=self.check_deps, daemon=True).start()
 
     # ------------------------------------------------------------ 공통
@@ -413,14 +428,29 @@ class Dashboard:
         self.settings_path.write_text(json.dumps(self.settings, ensure_ascii=False, indent=1), encoding="utf-8")
 
     def alive(self, run: str, status: dict) -> bool:
+        if run in self.launching:
+            return True
         p = self.procs.get(run)
         if p is not None:
             return p.poll() is None
         if not status or status.get("phase") == "stopped":
             return False
         age = time.time() - float(status.get("updated", 0))
-        # PPO 갱신·저장 중에는 상태가 잠시 안 바뀐다
-        return age < (180 if status.get("phase") in ("updating", "saving", "starting") else 20)
+        # 감시 스레드가 있는 학습은 1초마다 갱신한다. 예전 학습은 PPO 갱신·저장 중 상태가 잠시 안 바뀐다
+        return age < (180 if status.get("phase") in ("updating", "saving", "starting", "launching") else 20)
+
+    def curriculum_key(self, run: str) -> str:
+        d = self.runs_dir / run
+        try:
+            mt = max((d / f).stat().st_mtime for f in ("run.json", "status.json") if (d / f).exists())
+        except ValueError:
+            mt = 0
+        hit = self._cv_cache.get(run)
+        if hit and hit[0] == mt:
+            return hit[1]
+        key = curriculum_history.classify_run(d)
+        self._cv_cache[run] = (mt, key)
+        return key
 
     def runs(self) -> list[dict]:
         out = []
@@ -432,7 +462,7 @@ class Dashboard:
             out.append({"run": d.name, "alive": self.alive(d.name, st), "phase": st.get("phase", ""),
                         "tank": st.get("tank", ""), "steps": st.get("num_timesteps", 0),
                         "stage": (st.get("curriculum") or {}).get("stage", ""),
-                        "mtime": d.stat().st_mtime})
+                        "cv": self.curriculum_key(d.name), "mtime": d.stat().st_mtime})
         return out
 
     def records(self) -> dict:
@@ -529,7 +559,7 @@ class Dashboard:
                 "recommended": self.recommended(),
                 "battle_godot": default_combat_godot(),
                 "final_godot": default_combat_godot(final=True),
-                "terrain_courses": COURSES}
+                "terrain_courses": COURSES, "history": curriculum_history.versions()}
 
     # ------------------------------------------------------------ 학습용 Python·패키지
 
@@ -542,6 +572,19 @@ class Dashboard:
         return str(v) if v else sys.executable
 
     def check_deps(self) -> dict:
+        """이미 확인 중이면 새로 띄우지 않고 그 결과를 기다린다(torch 를 불러오느라 수십 초 걸릴 수 있다)."""
+        if not self._deps_lock.acquire(blocking=False):
+            with self._deps_lock:
+                pass
+            if self.deps.get("python") == self.train_python() and self.deps.get("state") not in ("checking", "unknown"):
+                return self.deps
+            self._deps_lock.acquire()
+        try:
+            return self._check_deps()
+        finally:
+            self._deps_lock.release()
+
+    def _check_deps(self) -> dict:
         py = self.train_python()
         self.deps = {"state": "checking", "python": py}
         try:
@@ -664,7 +707,9 @@ class Dashboard:
             cmd += shlex.split(a["extra"], posix=sys.platform != "win32")
         return cmd
 
-    def start(self, a: dict) -> dict:
+    def start(self, a: dict, job: dict | None = None) -> dict:
+        """빠른 검사만 하고 바로 돌려준다. 패키지 확인·프로세스 실행·첫 응답 기다리기는 작업(job)으로 진행하며
+        status.json 에 "launching" 을 먼저 써서 대시보드가 즉시 '시작 중'을 보이게 한다."""
         run = a.get("run") or time.strftime("%Y%m%d_%H%M%S")
         a["run"] = run
         d = self.run_dir(run)
@@ -672,8 +717,10 @@ class Dashboard:
             raise ValueError('평가 결과 폴더에서는 학습을 시작할 수 없습니다. 원래 학습 실행을 선택하세요.')
         if a.get('start_stage') == 'final_battle' or read_json(d / 'status.json').get('mode') == 'independent':
             return self.train_individuals(run, int(a.get('timesteps', 10000)))
+        if run in self.launching and job is None:
+            raise ValueError(f"{run} 은 지금 시작하는 중입니다")
         st = read_json(d / "status.json")
-        if self.alive(run, st):
+        if job is None and self.alive(run, st):
             raise ValueError(f"{run} 은 이미 학습 중")
         if not a.get("godot"):
             raise ValueError("게임 실행 파일(--godot) 경로를 넣어 주세요")
@@ -687,35 +734,94 @@ class Dashboard:
             if py and not abs_path(py).exists():
                 raise ValueError(f"Python 실행 파일이 없습니다: {py}")
             self.save_settings(python=str(abs_path(py)) if py else "")
-            self.check_deps()
-        if self.deps.get("state") in ("unknown", "checking") or self.deps.get("python") != self.train_python():
-            self.check_deps()
-        if self.deps.get("state") != "ok":
-            miss = ", ".join(self.deps.get("missing", [])) or self.deps.get("detail", "")[-200:]
-            raise ValueError(f"학습용 Python 에 필요한 패키지가 없습니다({miss}). 화면 위의 '필수 패키지 설치'를 먼저 눌러 주세요")
-        cmd = self.build_cmd(a)
-        # Respect --device passed via legacy extra arguments too (argparse uses the last value).
-        requested = "auto"
-        for i, value in enumerate(cmd):
-            if value == "--device" and i + 1 < len(cmd):
-                requested = cmd[i + 1]
-            elif value.startswith("--device="):
-                requested = value.split("=", 1)[1]
-        select_device(requested, self.deps.get("runtime", {"cuda_available": False}))
-        self.save_settings(godot=a["godot"], project=a.get("project", ""), device=requested)
+            self.deps = {"state": "unknown", "python": self.train_python()}
         d.mkdir(parents=True, exist_ok=True)
-        log = open(d / "train_log.txt", "a", encoding="utf-8")
-        log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} 시작: {subprocess.list2cmdline(cmd)}\n")
-        log.flush()
-        kw = {}
-        if sys.platform == "win32":
-            # 대시보드를 닫아도(콘솔 Ctrl+C) 학습은 계속되게 별도 프로세스 그룹으로
-            kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1", PYTHONUTF8="1")
-        self.procs[run] = subprocess.Popen(cmd, cwd=str(HERE), stdout=log, stderr=subprocess.STDOUT,
-                                           stdin=subprocess.DEVNULL, env=env, **kw)
-        log.close()
-        return {"run": run, "cmd": cmd}
+        self.launching.add(run)
+        a["_cv"] = curriculum_history.ARG_KEY.get(a.get("curriculum") or "v1", "")
+        self.write_launch_status(d, "학습 시작 준비", job_id=job["id"] if job else None, cv=a["_cv"])
+        if job is not None:            # 다시 시작 작업 안에서: 같은 작업으로 이어서 진행
+            return self._launch(a, job)
+        res = self.background(f"{run}: 학습 시작", lambda j: self._launch(a, j), run=run)
+        return {"run": run, **res}
+
+    def write_launch_status(self, d: Path, step: str, error: str = "", job_id=None, cv: str = "") -> None:
+        """train.py 가 첫 상태를 쓰기 전까지(파이썬·torch 로드, 수십 초) 대시보드가 쓰는 임시 상태."""
+        old = read_json(d / "status.json")
+        st = {k: old[k] for k in ("cv", "tank", "curriculum", "n_envs", "num_timesteps", "target_timesteps", "rotate",
+                                  "record_every", "review_prob", "speed_cap", "last_save") if k in old}
+        st |= {"phase": "stopped" if error else "launching", "step": step, "updated": round(time.time(), 2),
+               "phase_since": round(time.time(), 1), "paused": False, "stop_requested": False, "acks": []}
+        if error:
+            st["error"] = error
+        if job_id:
+            st["launch_job"] = job_id
+        if cv:
+            st["cv"] = cv
+        write_json_atomic(d / "status.json", st)
+
+    def _launch(self, a: dict, job: dict) -> str:
+        run, d = a["run"], self.run_dir(a["run"])
+        try:
+            if self.deps.get("state") != "ok" or self.deps.get("python") != self.train_python():
+                self.job_step(job, "학습용 Python 패키지 확인 중(torch 로드, 처음엔 수십 초)", d)
+                self.check_deps()
+            if self.deps.get("state") != "ok":
+                miss = ", ".join(self.deps.get("missing", [])) or self.deps.get("detail", "")[-200:]
+                raise ValueError(f"학습용 Python 에 필요한 패키지가 없습니다({miss}). 화면 위의 '필수 패키지 설치'를 먼저 눌러 주세요")
+            cmd = self.build_cmd(a)
+            # Respect --device passed via legacy extra arguments too (argparse uses the last value).
+            requested = "auto"
+            for i, value in enumerate(cmd):
+                if value == "--device" and i + 1 < len(cmd):
+                    requested = cmd[i + 1]
+                elif value.startswith("--device="):
+                    requested = value.split("=", 1)[1]
+            select_device(requested, self.deps.get("runtime", {"cuda_available": False}))
+            self.save_settings(godot=a["godot"], project=a.get("project", ""), device=requested)
+            self.job_step(job, "학습 프로세스 실행", d)
+            log = open(d / "train_log.txt", "a", encoding="utf-8")
+            log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} 시작: {subprocess.list2cmdline(cmd)}\n")
+            log.flush()
+            kw = {}
+            if sys.platform == "win32":
+                # 대시보드를 닫아도(콘솔 Ctrl+C) 학습은 계속되게 별도 프로세스 그룹으로
+                kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            launch_t = time.time()
+            env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1", PYTHONUTF8="1",
+                       **{LAUNCH_ENV: f"{launch_t:.3f}"})
+            proc = subprocess.Popen(cmd, cwd=str(HERE), stdout=log, stderr=subprocess.STDOUT,
+                                    stdin=subprocess.DEVNULL, env=env, **kw)
+            log.close()
+            self.procs[run] = proc
+            job["cmd"] = cmd
+        except Exception as e:
+            self.launching.discard(run)
+            self.write_launch_status(d, "시작 실패", error=str(e))
+            raise
+        self.launching.discard(run)    # 이제부터는 프로세스로 살아 있음을 판단
+        # 첫 상태(train.py 의 TrainController)가 올 때까지 기다리며 진행을 보인다. 일찍 죽으면 로그 끝을 보여 준다.
+        self.job_step(job, "학습 프로그램 불러오는 중(Python·torch)", d, write=True)
+        t0 = time.time()
+        while time.time() - t0 < 600:
+            if proc.poll() is not None:
+                tail = tail_text(d / "train_log.txt", 1200)
+                err = f"학습 프로세스가 바로 끝났습니다(종료 코드 {proc.returncode}). 로그 끝:\n{tail}"
+                if read_json(d / "status.json").get("phase") in ("launching", None):
+                    self.write_launch_status(d, "시작 실패", error=err)
+                raise RuntimeError(err)
+            st = read_json(d / "status.json")
+            if st.get("phase") not in ("launching", None) and float(st.get("started") or 0) >= launch_t - 1:
+                job["step"] = st.get("step") or PHASE_LABEL.get(st.get("phase"), st.get("phase", ""))
+                if st.get("phase") in ("collecting", "updating", "paused", "stopped"):
+                    return f"학습 시작됨 · {PHASE_LABEL.get(st.get('phase'), st.get('phase'))}"
+            time.sleep(0.5)
+        return "시작함 (첫 수집까지 오래 걸리고 있습니다 — 로그를 확인하세요)"
+
+    def job_step(self, job: dict, text: str, d: Path | None = None, write: bool = False) -> None:
+        job["step"] = text
+        job.setdefault("steps", []).append({"t": round(time.time(), 1), "text": text})
+        if d is not None and (write or read_json(d / "status.json").get("phase") == "launching"):
+            self.write_launch_status(d, text, job_id=job["id"])
 
     def control(self, run: str, msg: dict) -> dict:
         d = self.run_dir(run)
@@ -724,9 +830,11 @@ class Dashboard:
             if msg.get("stage") not in allowed:
                 raise ValueError("현재 커리큘럼에 없는 단계입니다. 최종 1대6은 '새 학습 / 이어서'에서 "
                                  "최종 학습을 선택하고 V5 실행을 시작 모델로 지정하세요.")
+        cid = f"{int(time.time() * 1000):x}-{next(CMD_SEQ)}"
+        t = round(time.time(), 2)
         with open(d / "control.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps(msg | {"t": round(time.time(), 2)}, ensure_ascii=False) + "\n")
-        return {"ok": True}
+            f.write(json.dumps(msg | {"id": cid, "t": t}, ensure_ascii=False) + "\n")
+        return {"ok": True, "id": cid, "t": t}
 
     def stage_ids(self, run: str) -> list[str]:
         version = read_json(self.run_dir(run) / "run.json").get("curriculum_version", 1)
@@ -779,8 +887,12 @@ class Dashboard:
         d = self.run_dir(run)
         a = self.restart_args(run, overrides)
 
-        def job():
+        if run in self.launching or any(j.get("run") == run and j["state"] == "running" for j in self.jobs):
+            raise ValueError(f"{run} 은 이미 시작·다시 시작 작업이 진행 중입니다")
+
+        def job(j):
             if self.alive(run, read_json(d / "status.json")):
+                self.job_step(j, "저장 후 중지 요청")
                 self.control(run, {"cmd": "stop"})
                 t0 = time.time()
                 while time.time() - t0 < 600:
@@ -791,11 +903,12 @@ class Dashboard:
                     elif read_json(d / "status.json").get("phase") == "stopped":
                         time.sleep(2)   # 프로세스 정리 시간
                         break
+                    j["step"] = f"정책 저장·중지 기다리는 중 ({int(time.time() - t0)}초)"
                     time.sleep(0.5)
             self.procs.pop(run, None)
-            self.start(a)
+            return self.start(a, job=j)
 
-        return self.background(f"{run}: 다시 시작({', '.join(f'{k}={v}' for k, v in overrides.items())})", job)
+        return self.background(f"{run}: 다시 시작({', '.join(f'{k}={v}' for k, v in overrides.items())})", job, run=run)
 
     # ------------------------------------------------------------ 리플레이·보고서
 
@@ -938,20 +1051,24 @@ class Dashboard:
         out = file_to_pdf(src, landscape=landscape)
         return {"url": "/files/" + urllib.parse.quote(out.relative_to(self.runs_dir).as_posix()), "file": out.name}
 
-    def background(self, title: str, fn) -> dict:
-        job = {"id": len(self.jobs) + 1, "title": title, "state": "running", "t": time.time(), "result": ""}
+    def background(self, title: str, fn, run: str = "") -> dict:
+        """fn() 또는 fn(job). job["step"] 에 지금 하는 일을 적으면 대시보드에 바로 보인다."""
+        job = {"id": len(self.jobs) + 1, "title": title, "state": "running", "t": time.time(), "result": "",
+               "run": run, "step": ""}
         self.jobs.append(job)
+        import inspect
+        takes_job = len(inspect.signature(fn).parameters) >= 1
 
-        def run():
+        def run_job():
             try:
-                job["result"] = fn() or ""
+                job["result"] = (fn(job) if takes_job else fn()) or ""
                 job["state"] = "done"
             except Exception as e:
                 job["state"] = "error"
                 job["result"] = str(e)
             job["t_end"] = time.time()
 
-        threading.Thread(target=run, daemon=True).start()
+        threading.Thread(target=run_job, daemon=True).start()
         return {"job": job["id"]}
 
 
@@ -994,6 +1111,7 @@ def make_handler(dash: Dashboard):
                     st = w.state(int(q.get("ep_since", 0)), json.loads(q.get("sb3_since", "{}")))
                     st["alive"] = dash.alive(q["run"], st["status"])
                     st["owned"] = q["run"] in dash.procs
+                    st["cv"] = dash.curriculum_key(q["run"])
                     st["jobs"] = dash.jobs[-10:]
                     st["gpu_status"] = dash.gpu_status()
                     return self.send_json(st)

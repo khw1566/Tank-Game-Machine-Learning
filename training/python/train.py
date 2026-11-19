@@ -326,6 +326,7 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     env_seed = args.seed * 1000 + sum(map(ord, tank)) + resume_steps
     cur.rng.seed(args.seed + resume_steps)
     ctl.info["env_seed"] = env_seed
+    ctl.step(f"{tank}: 게임 {args.n_envs}개 실행·연결 중")
     env = GodotVecEnv(args.n_envs, args.godot, args.project, run_dir, tank, cur, opponents=pool,
                       seed=env_seed, record_every=ctl.record_every,
                       quiet=not args.verbose_godot, run_name=run_dir.name)
@@ -333,6 +334,7 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     latest = tdir / "latest.zip"
     if resume and not (args.resume or args.rotate):
         print(f"[train] 기존 {tank} 체크포인트 보호: 자동으로 이어서 학습합니다", flush=True)
+    ctl.step(f"{tank}: 모델 불러오는 중")
     try:
         init = Path(args.init_model).resolve() if args.init_model and not resume and not branched and not final else None
         model = build_model(args, env, checkpoint if resume else (final_src[0] if final_src else
@@ -498,6 +500,7 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             ctl.note(f"단계 변경 {ev['from']} → {ev['to']}")
 
     ctl.handlers.update({"checkpoint": on_checkpoint, "set_stage": on_set_stage})
+    ctl.step(f"{tank}: 첫 수집 시작")
     try:
         if battle:
             # reset()에서 상대를 고르기 전에 초기/재개 정책의 고정 복사본이 반드시 있어야 한다.
@@ -571,7 +574,9 @@ def run_training(args, run_dir: Path, pool_dir: Path) -> None:
                         ctl.info["rotate"] = {"tanks": tanks, "cycle": c + 1, "cycles": args.cycles, "branch": True}
                         train_one(args, run_dir, pool_dir, t, args.rotate_steps, ctl)
     finally:
+        ctl.step_text = ""
         ctl.write_status(None, force=True, phase="stopped")
+        ctl.close()
     print(f"[train] 끝. 보고서: python report.py {run_dir}")
 
 
