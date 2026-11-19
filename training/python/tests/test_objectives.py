@@ -60,6 +60,16 @@ class ObjectiveTests(unittest.TestCase):
                 self.assertIn(info['color'], page)
             self.assertIn('</svg><div class=objective-legend>', page)
 
+    def test_final_map_variant_reaches_dashboard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            p = root / 'episodes/env0/final.json'
+            p.parent.mkdir(parents=True)
+            p.write_text(json.dumps({'config': {'scenario': {'variant': 'urban'}}}))
+            row = ObjectiveIndex().annotate(dict(uid='final', stage='final_selfplay', env=0), root)
+            self.assertEqual(row['variant'], 'urban')
+            self.assertEqual(RunWatch(root).ep_compact(row)[EP_COLS.index('variant')], 'urban')
+
     def test_single_episode_is_visible(self):
         page = svg_chart([('One', '#2563eb', [(10, 1)])], 'Title', 'Value')
         self.assertIn('<circle', page)

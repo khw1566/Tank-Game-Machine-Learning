@@ -37,7 +37,7 @@ class VectorEnv(gym.Env):
 
 def args(device):
     return Namespace(device=device, resolved_device=device, n_steps=8, batch_size=8,
-                     n_epochs=2, lr=3e-4, ent_coef=0.005, sde_freq=4, seed=0)
+                     n_epochs=2, lr=3e-4, gamma=0.99, gae_lambda=0.95, ent_coef=0.005, sde_freq=4, seed=0, log_std_init=-0.5, use_sde=True)
 
 
 class DeviceTests(unittest.TestCase):
