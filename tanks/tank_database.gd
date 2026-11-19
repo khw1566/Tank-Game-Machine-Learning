@@ -10,7 +10,9 @@ extends RefCounted
 ## 자세한 근거와 가정은 tanks/README.md 참고.
 
 const IDS := ["tiger1", "sherman75", "t34_76"]
-const BALANCE_VERSION := 2
+const BALANCE_VERSION := 3
+## balance v3 (V6): 연합군 주포 관통력이 거리에 따라 뚜렷하게 줄어든다. 티거 정면 차체는 100m 약 90%·250m 약 40%·400m 이상 거의 0%,
+## 측면(방위 60~90°)은 400m까지 95% 이상. 연합군은 접근하거나 측면으로 돌아야 이긴다. 검증: training/tools/penetration_calibration.gd
 
 
 static func get_spec(id: String) -> TankSpec:
@@ -495,7 +497,7 @@ static func _battle_profile(s: TankSpec) -> TankSpec:
 	s.balance_version = BALANCE_VERSION
 	if s.id == "tiger1":
 		s.armor.mantlet.t = 200.0
-		s.notes = "Balance v2: 포방패 200mm. 연합군 훈련 철갑탄은 100~500m 정면 차체 관통, 차체 35°에서는 방어하도록 조정."
+		s.notes = "Balance v3: 포방패 200mm. 연합군 훈련 철갑탄은 정면 차체를 근거리(100m 약 90%, 250m 약 40%)에서만 관통, 측면은 400m까지 관통."
 		s.traits.append("학습 조정: 35° 티타임으로 차체를 방어하고, 포방패 200mm로 포탑 중심 피격을 견딤")
 		return s
 	var sherman := s.id == "sherman75"
@@ -510,17 +512,17 @@ static func _battle_profile(s: TankSpec) -> TankSpec:
 	g.shell_mass_kg = 7.0 if sherman else 9.2
 	g.filler_g = 65.0 if sherman else 120.0
 	g.normalization_deg = 0.0
-	g.penetration_sigma = 0.008
+	g.penetration_sigma = 0.025
 	g.reload_s = 5.0 if sherman else 6.0
-	g.penetration_table_30deg = _training_pen_table([[0, 115], [100, 114.5], [500, 113], [1000, 110], [1500, 104], [2000, 96]])
-	g.sources = ["Intentional gameplay balance v2; Tiger frontal hull vs 35-degree angling calibration, not historical data"]
+	g.penetration_table_30deg = _training_pen_table([[0, 104.6], [100, 104.2], [250, 100.4], [400, 96.3], [600, 93.0], [1000, 88.0], [1500, 84.0], [2000, 80.0]])
+	g.sources = ["Intentional gameplay balance v3; Tiger frontal hull penetrable only at close range, flanks at combat range, not historical data"]
 	var apcr := g.variant(g.id + "_apcr", "76mm HVAP · 훈련 조정" if sherman else "85mm APCR · 훈련 조정", "APCR")
 	apcr.muzzle_velocity_ms = 1030.0
 	apcr.shell_mass_kg = 4.0 if sherman else 5.0
 	apcr.normalization_deg = 0.0
-	apcr.penetration_sigma = 0.008
+	apcr.penetration_sigma = 0.025
 	apcr.ricochet_angle_deg = 65.0
-	apcr.penetration_table_30deg = _training_pen_table([[0, 117.5], [100, 117], [500, 115], [1000, 112], [1500, 108], [2000, 102]])
+	apcr.penetration_table_30deg = _training_pen_table([[0, 106.0], [100, 105.6], [250, 101.8], [400, 97.6], [600, 94.2], [1000, 89.0], [1500, 85.0], [2000, 81.0]])
 	apcr.sources = g.sources
 	var he := g.variant(g.id + "_he", "76mm HE" if sherman else "85mm HE", "HE")
 	he.shell_mass_kg = 6.8 if sherman else 9.2
@@ -556,7 +558,7 @@ static func _battle_profile(s: TankSpec) -> TankSpec:
 	s.traits = s.traits.filter(func(t): return "전차장 겸 포수" not in t)
 	s.traits = s.traits.map(func(t): return str(t).replace("전고 2.37m", "전고 2.59m"))
 	s.traits.append("76mm/85mm 신형 포탑·주포. 차체 경사와 측후면 우회를 활용. 관통력은 학습용 조정값")
-	s.notes = "Balance v2: 주력 철갑탄은 티거 정면 차체를 관통하지만 차체 35°에서는 막힘(100~500m 검증). 기존 내부 ID는 모델 호환용."
+	s.notes = "Balance v3: 주력 철갑탄은 티거 정면 차체를 근거리에서만 관통하고 측면(60~90°)은 400m까지 관통. 기존 내부 ID는 모델 호환용."
 	return s
 
 

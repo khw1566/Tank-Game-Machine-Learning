@@ -61,6 +61,10 @@ class OpponentPool:
 
     def _load(self, version: str):
         from stable_baselines3 import PPO
+        if version in self._models and not version.endswith("latest.zip"):
+            # step_*.zip 스냅숏은 저장 후 바뀌지 않는다: 매 결정마다 파일 시각을 확인하지 않는다
+            self._models.move_to_end(version)
+            return self._models[version]
         path = self.dir / version
         mt = path.stat().st_mtime
         if version not in self._models or self._mtime.get(version) != mt:
@@ -75,3 +79,8 @@ class OpponentPool:
     def act(self, version: str, obs: np.ndarray) -> np.ndarray:
         a, _ = self._load(version).predict(obs, deterministic=False)
         return a
+
+    def act_batch(self, version: str, obs: np.ndarray) -> np.ndarray:
+        """같은 버전 정책을 쓰는 여러 전차(여러 환경)의 관측 [n, D] → 행동 [n, A], forward 1회."""
+        a, _ = self._load(version).predict(obs, deterministic=False)
+        return np.asarray(a, dtype=np.float32).reshape(len(obs), -1)

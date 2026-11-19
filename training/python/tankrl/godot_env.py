@@ -294,10 +294,38 @@ class GodotVecEnv(VecEnv):
                 acts[k] = self.opponents.act(ctx["opp_versions"][k], o[k])
         return np.clip(acts, -1.0, 1.0)
 
+    def _batched_actions(self) -> list[np.ndarray]:
+        """모든 환경의 행동을 한 번에 만든다. 같은 상대 정책(버전)을 쓰는 전차들은 환경을 가로질러
+        한 번의 forward 로 묶는다(1대6 × 환경 N개에서 개체별 predict 호출이 수집 시간의 절반 이상을 차지했다)."""
+        dim = self.action_space.shape[0]
+        out = []
+        groups: dict[str, list[tuple[int, int]]] = {}
+        copies: list[tuple[int, int]] = []
+        for i in range(self.num_envs):
+            ctx = self._ctx[i]
+            acts = np.zeros((len(ctx["roles"]), dim), dtype=np.float32)
+            for k, r in enumerate(ctx["roles"]):
+                if r == "learner":
+                    acts[k] = self._actions[i]
+                elif r == "opponent":
+                    groups.setdefault(ctx["opp_versions"][k], []).append((i, k))
+                elif r == "copy":
+                    copies.append((i, k))
+            out.append(acts)
+        if copies and self.policy_fn is not None:
+            res = self.policy_fn(np.stack([self._last[i][k] for i, k in copies]))
+            for (i, k), a in zip(copies, res):
+                out[i][k] = a
+        for version, members in groups.items():
+            res = self.opponents.act_batch(version, np.stack([self._last[i][k] for i, k in members]))
+            for (i, k), a in zip(members, res):
+                out[i][k] = a
+        return [np.clip(a, -1.0, 1.0) for a in out]
+
     def step_wait(self):
         n = self.num_envs
-        for i, p in enumerate(self.procs):
-            p.send({"type": "step"}, self._all_actions(i, self._actions[i]).astype("<f4").tobytes())
+        for p, acts in zip(self.procs, self._batched_actions()):
+            p.send({"type": "step"}, acts.astype("<f4").tobytes())
         obs = np.zeros((n, self.observation_space.shape[0]), dtype=np.float32)
         rews = np.zeros(n, dtype=np.float32)
         dones = np.zeros(n, dtype=bool)

@@ -12,31 +12,39 @@
         "id": "m1_76_training",
         "muzzle_velocity_ms": 790,
         "normalization_deg": 0,
-        "penetration_sigma": 0.008,
+        "penetration_sigma": 0.025,
         "penetration_table_30deg": [
           [
             0,
-            99.5929214352105
+            90.5862572358523
           ],
           [
             100,
-            99.1599087333182
+            90.2398470743385
           ],
           [
-            500,
-            97.8608706276416
+            250,
+            86.9489505399577
+          ],
+          [
+            400,
+            83.3982463844415
+          ],
+          [
+            600,
+            80.5403625519528
           ],
           [
             1000,
-            95.2627944162883
+            76.2102355330306
           ],
           [
             1500,
-            90.0666419935816
+            72.7461339178928
           ],
           [
             2000,
-            83.1384387633061
+            69.2820323027551
           ]
         ],
         "reload_s": 5,
@@ -45,7 +53,7 @@
         "shell_name": "76mm APCBC · 훈련 조정",
         "shell_type": "APCBC",
         "sources": [
-          "Intentional gameplay balance v2; Tiger frontal hull vs 35-degree angling calibration, not historical data"
+          "Intentional gameplay balance v3; Tiger frontal hull penetrable only at close range, flanks at combat range, not historical data"
         ]
       },
       {
@@ -57,31 +65,39 @@
         "id": "m1_76_training_apcr",
         "muzzle_velocity_ms": 1030,
         "normalization_deg": 0,
-        "penetration_sigma": 0.008,
+        "penetration_sigma": 0.025,
         "penetration_table_30deg": [
           [
             0,
-            101.757984944672
+            91.7986928011505
           ],
           [
             100,
-            101.324972242779
+            91.4522826396367
           ],
           [
-            500,
-            99.5929214352105
+            250,
+            88.1613861052559
+          ],
+          [
+            400,
+            84.5240794093612
+          ],
+          [
+            600,
+            81.5795930364941
           ],
           [
             1000,
-            96.9948452238571
+            77.076260936815
           ],
           [
             1500,
-            93.5307436087194
+            73.6121593216773
           ],
           [
             2000,
-            88.3345911860127
+            70.1480577065395
           ]
         ],
         "reload_s": 5,
@@ -90,7 +106,7 @@
         "shell_name": "76mm HVAP · 훈련 조정",
         "shell_type": "APCR",
         "sources": [
-          "Intentional gameplay balance v2; Tiger frontal hull vs 35-degree angling calibration, not historical data"
+          "Intentional gameplay balance v3; Tiger frontal hull penetrable only at close range, flanks at combat range, not historical data"
         ]
       },
       {
@@ -165,7 +181,7 @@
         "t": 25
       }
     },
-    "balance_version": 2,
+    "balance_version": 3,
     "commander_is_gunner": false,
     "crew": [
       {
@@ -237,31 +253,39 @@
       "id": "m1_76_training",
       "muzzle_velocity_ms": 790,
       "normalization_deg": 0,
-      "penetration_sigma": 0.008,
+      "penetration_sigma": 0.025,
       "penetration_table_30deg": [
         [
           0,
-          99.5929214352105
+          90.5862572358523
         ],
         [
           100,
-          99.1599087333182
+          90.2398470743385
         ],
         [
-          500,
-          97.8608706276416
+          250,
+          86.9489505399577
+        ],
+        [
+          400,
+          83.3982463844415
+        ],
+        [
+          600,
+          80.5403625519528
         ],
         [
           1000,
-          95.2627944162883
+          76.2102355330306
         ],
         [
           1500,
-          90.0666419935816
+          72.7461339178928
         ],
         [
           2000,
-          83.1384387633061
+          69.2820323027551
         ]
       ],
       "reload_s": 5,
@@ -270,7 +294,7 @@
       "shell_name": "76mm APCBC · 훈련 조정",
       "shell_type": "APCBC",
       "sources": [
-        "Intentional gameplay balance v2; Tiger frontal hull vs 35-degree angling calibration, not historical data"
+        "Intentional gameplay balance v3; Tiger frontal hull penetrable only at close range, flanks at combat range, not historical data"
       ]
     },
     "gunnery": {
@@ -456,7 +480,7 @@
       }
     ],
     "nation": "USA",
-    "notes": "Balance v2: 주력 철갑탄은 티거 정면 차체를 관통하지만 차체 35°에서는 막힘(100~500m 검증). 기존 내부 ID는 모델 호환용.",
+    "notes": "Balance v3: 주력 철갑탄은 티거 정면 차체를 근거리에서만 관통하고 측면(60~90°)은 400m까지 관통. 기존 내부 ID는 모델 호환용.",
     "pace": {
 
     },
@@ -525,31 +549,39 @@
         "id": "t34_85_training",
         "muzzle_velocity_ms": 800,
         "normalization_deg": 0,
-        "penetration_sigma": 0.008,
+        "penetration_sigma": 0.025,
         "penetration_table_30deg": [
           [
             0,
-            99.5929214352105
+            90.5862572358523
           ],
           [
             100,
-            99.1599087333182
+            90.2398470743385
           ],
           [
-            500,
-            97.8608706276416
+            250,
+            86.9489505399577
+          ],
+          [
+            400,
+            83.3982463844415
+          ],
+          [
+            600,
+            80.5403625519528
           ],
           [
             1000,
-            95.2627944162883
+            76.2102355330306
           ],
           [
             1500,
-            90.0666419935816
+            72.7461339178928
           ],
           [
             2000,
-            83.1384387633061
+            69.2820323027551
           ]
         ],
         "reload_s": 6,
@@ -558,7 +590,7 @@
         "shell_name": "85mm APHE · 훈련 조정",
         "shell_type": "APHE",
         "sources": [
-          "Intentional gameplay balance v2; Tiger frontal hull vs 35-degree angling calibration, not historical data"
+          "Intentional gameplay balance v3; Tiger frontal hull penetrable only at close range, flanks at combat range, not historical data"
         ]
       },
       {
@@ -570,31 +602,39 @@
         "id": "t34_85_training_apcr",
         "muzzle_velocity_ms": 1030,
         "normalization_deg": 0,
-        "penetration_sigma": 0.008,
+        "penetration_sigma": 0.025,
         "penetration_table_30deg": [
           [
             0,
-            101.757984944672
+            91.7986928011505
           ],
           [
             100,
-            101.324972242779
+            91.4522826396367
           ],
           [
-            500,
-            99.5929214352105
+            250,
+            88.1613861052559
+          ],
+          [
+            400,
+            84.5240794093612
+          ],
+          [
+            600,
+            81.5795930364941
           ],
           [
             1000,
-            96.9948452238571
+            77.076260936815
           ],
           [
             1500,
-            93.5307436087194
+            73.6121593216773
           ],
           [
             2000,
-            88.3345911860127
+            70.1480577065395
           ]
         ],
         "reload_s": 6,
@@ -603,7 +643,7 @@
         "shell_name": "85mm APCR · 훈련 조정",
         "shell_type": "APCR",
         "sources": [
-          "Intentional gameplay balance v2; Tiger frontal hull vs 35-degree angling calibration, not historical data"
+          "Intentional gameplay balance v3; Tiger frontal hull penetrable only at close range, flanks at combat range, not historical data"
         ]
       },
       {
@@ -678,7 +718,7 @@
         "t": 20
       }
     },
-    "balance_version": 2,
+    "balance_version": 3,
     "commander_is_gunner": false,
     "crew": [
       {
@@ -750,31 +790,39 @@
       "id": "t34_85_training",
       "muzzle_velocity_ms": 800,
       "normalization_deg": 0,
-      "penetration_sigma": 0.008,
+      "penetration_sigma": 0.025,
       "penetration_table_30deg": [
         [
           0,
-          99.5929214352105
+          90.5862572358523
         ],
         [
           100,
-          99.1599087333182
+          90.2398470743385
         ],
         [
-          500,
-          97.8608706276416
+          250,
+          86.9489505399577
+        ],
+        [
+          400,
+          83.3982463844415
+        ],
+        [
+          600,
+          80.5403625519528
         ],
         [
           1000,
-          95.2627944162883
+          76.2102355330306
         ],
         [
           1500,
-          90.0666419935816
+          72.7461339178928
         ],
         [
           2000,
-          83.1384387633061
+          69.2820323027551
         ]
       ],
       "reload_s": 6,
@@ -783,7 +831,7 @@
       "shell_name": "85mm APHE · 훈련 조정",
       "shell_type": "APHE",
       "sources": [
-        "Intentional gameplay balance v2; Tiger frontal hull vs 35-degree angling calibration, not historical data"
+        "Intentional gameplay balance v3; Tiger frontal hull penetrable only at close range, flanks at combat range, not historical data"
       ]
     },
     "gunnery": {
@@ -958,7 +1006,7 @@
       }
     ],
     "nation": "USSR",
-    "notes": "Balance v2: 주력 철갑탄은 티거 정면 차체를 관통하지만 차체 35°에서는 막힘(100~500m 검증). 기존 내부 ID는 모델 호환용.",
+    "notes": "Balance v3: 주력 철갑탄은 티거 정면 차체를 근거리에서만 관통하고 측면(60~90°)은 400m까지 관통. 기존 내부 ID는 모델 호환용.",
     "pace": {
 
     },
@@ -1175,7 +1223,7 @@
         "t": 25
       }
     },
-    "balance_version": 2,
+    "balance_version": 3,
     "commander_is_gunner": false,
     "crew": [
       {
@@ -1469,7 +1517,7 @@
       }
     ],
     "nation": "Germany",
-    "notes": "Balance v2: 포방패 200mm. 연합군 훈련 철갑탄은 100~500m 정면 차체 관통, 차체 35°에서는 방어하도록 조정.",
+    "notes": "Balance v3: 포방패 200mm. 연합군 훈련 철갑탄은 정면 차체를 근거리(100m 약 90%, 250m 약 40%)에서만 관통, 측면은 400m까지 관통.",
     "pace": {
 
     },

@@ -31,13 +31,21 @@ func _init() -> void:
 				for low in [false, true]:
 					var front := shot(tiger, gun, distance, 0, low)
 					var angled := shot(tiger, gun, distance, 35, low)
-					check(front.hit and float(front.pen_probability) >= 0.95,
+					# balance v3: 정면 상부는 가까울수록만 관통(50~100m 80% 이상, 250m 20~65%, 500m 5% 이하), 정면 하부(경사 25°)는 막힘
+					var fp := float(front.pen_probability)
+					var front_ok := fp <= 0.1
+					if not low:
+						front_ok = fp >= 0.8 if distance <= 100.0 else (fp >= 0.2 and fp <= 0.65 if distance <= 250.0 else fp <= 0.05)
+					check(front.hit and front_ok,
 						"%s %s %.0fm front %s p=%.3f" % [attacker.id, gun.shell_type, distance, "lower" if low else "upper", front.pen_probability])
 					check(angled.hit and float(angled.pen_probability) <= 0.01,
 						"%s %s %.0fm 35deg %s p=%.3f" % [attacker.id, gun.shell_type, distance, "lower" if low else "upper", angled.pen_probability])
 					summary.append({"attacker": attacker.display_name, "shell": gun.shell_type, "distance_m": distance,
 						"low": low, "front_p": front.pen_probability, "angled_p": angled.pen_probability,
 						"front_zone": front.zone, "angled_zone": angled.zone})
+			for side_bearing in [60.0, 90.0]:
+				var side := shot(tiger, gun, 400, side_bearing)
+				check(side.hit and float(side.pen_probability) >= 0.9, "%s %s 400m side %.0fdeg p=%.3f" % [attacker.id, gun.shell_type, side_bearing, side.pen_probability])
 			var mask := shot(tiger, gun, 100, 0, false, true)
 			check(mask.zone == "mantlet" and mask.pen_probability < 0.01, "Tiger mantlet blocks allied shell: " + gun.id)
 		var self_hit := shot(attacker, attacker.gun, 200, 0)

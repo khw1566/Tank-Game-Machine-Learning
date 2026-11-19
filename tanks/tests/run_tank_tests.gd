@@ -169,9 +169,10 @@ func _unit_tests() -> void:
 	check(ric_t34_75.ricochet > 0.2, "75mm 로 T-34 전면을 30° 에서 쏘면 도탄 20%% 이상 (%.0f%%)" % [ric_t34_75.ricochet * 100])
 	check(pen_prob(tiger, sherman.gun, 500, 0, "hull_high").ricochet == 0.0, "티거 수직 전면판은 정면에서 도탄 없음(두께로 막음)")
 
-	# 학습용 balance v2: 신형 포의 정면 관통과 티타임 방어.
-	check(pen_prob(tiger, sherman.gun, 500, 0, "hull_high").p > 0.95, "셔먼 76mm: 500m 티거 정면 관통")
-	check(pen_prob(tiger, t34.gun, 100, 0, "hull_high").p > 0.95, "T-34-85: 100m 티거 정면 관통")
+	# 학습용 balance v3: 연합군 포는 티거 정면을 근거리에서만, 측면은 교전 거리에서 관통.
+	check(pen_prob(tiger, sherman.gun, 500, 0, "hull_high").p < 0.05, "셔먼 76mm: 500m 티거 정면은 거의 못 뚫음")
+	check(pen_prob(tiger, t34.gun, 100, 0, "hull_high").p > 0.8, "T-34-85: 100m 티거 정면 관통")
+	check(pen_prob(tiger, sherman.gun, 400, 90, "hull_high").p > 0.95, "셔먼 76mm: 400m 티거 측면 관통")
 	var p_sh: float = pen_prob(sherman, tiger.gun, 2000, 0, "hull_high").p
 	var p_t34: float = pen_prob(t34, tiger.gun, 2000, 0, "hull_high").p
 	check(p_sh > 0.9, "88mm는 2000m에서 셔먼 정면 관통 (%.0f%%, 나머지는 도탄)" % [p_sh * 100])
