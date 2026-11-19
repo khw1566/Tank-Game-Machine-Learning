@@ -23,6 +23,7 @@ const ZONES := [
 ]
 
 var id: String = ""
+var balance_version := 1
 var display_name: String = ""
 var nation: String = ""
 var mass_t: float = 0.0
@@ -307,7 +308,7 @@ func to_dict() -> Dictionary:
 		mod_out.append({"id": m.id, "kind": m.kind, "pos": _v(m.pos),
 			"radius": m.radius, "in_turret": m.in_turret})
 	return {
-		"id": id, "display_name": display_name, "nation": nation, "pace": pace,
+		"id": id, "balance_version": balance_version, "display_name": display_name, "nation": nation, "pace": pace,
 		"mass_t": mass_t, "engine_hp": engine_hp, "power_to_weight": snappedf(power_to_weight(), 0.1),
 		"shape": {
 			"hull_length": hull_length, "hull_width": hull_width, "hull_bottom_y": hull_bottom_y,

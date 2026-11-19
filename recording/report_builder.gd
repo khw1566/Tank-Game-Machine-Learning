@@ -32,6 +32,7 @@ static func build_files(events_path: String, episodes_csv := "") -> String:
 	_write_text(out_dir + "/shots.csv", shots_csv(d))
 	_write_text(out_dir + "/paths.csv", paths_csv(d))
 	_write_text(out_dir + "/score.csv", score_csv(d))
+	ShotImpactReport.write_assets(out_dir, d.shots)
 	var html := build_html(d, _read_episodes(episodes_csv))
 	var rp := out_dir + "/report.html"
 	_write_text(rp, html)
@@ -82,6 +83,7 @@ static func build_html(d: ReplayData, episodes: Array) -> String:
 
 	s.append("<h2>7. 타격 기록</h2>")
 	s.append(_shot_table(d))
+	s.append(ShotImpactReport.gallery(d.shots))
 
 	s.append("<h2>부록. 보상 가중치</h2><table class='small'><tr><th>항목</th><th>값</th></tr>")
 	var w: Dictionary = h.get("reward_weights", {}).duplicate(true)
@@ -149,7 +151,7 @@ static func _path_length(d: ReplayData, id: int) -> float:
 static func _shot_table(d: ReplayData) -> String:
 	if d.shots.is_empty():
 		return "<p class='note'>사격 없음</p>"
-	var s := PackedStringArray(["<div class='scroll'><table class='small'><tr><th>#</th><th>시각</th><th>사격</th><th>표적</th><th>거리(m)</th><th>탄종</th><th>구역</th><th>입사각°</th><th>유효장갑mm</th><th>관통력mm</th><th>관통확률</th><th>결과</th><th>피해</th><th>점수</th></tr>"])
+	var s := PackedStringArray(["<div class='scroll'><table class='small'><tr><th>타격 상세</th><th>시각</th><th>사격</th><th>표적</th><th>거리(m)</th><th>탄종</th><th>구역</th><th>입사각°</th><th>유효장갑mm</th><th>관통력mm</th><th>관통확률</th><th>결과</th><th>피해</th><th>점수</th></tr>"])
 	var rew_by_tick := {}
 	for rw in d.rewards:
 		var k := "%d_%d" % [int(rw.tick), int(rw.tank)]
@@ -168,8 +170,9 @@ static func _shot_table(d: ReplayData) -> String:
 				dmg.append("<b>%s</b>" % ev)
 		var rk := "%d_%d" % [int(e.tick), int(e.shooter)]
 		var hit: bool = r.get("hit", false)
-		s.append("<tr class='%s'><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % [
-			kind, i, _mmss(e.t), d.tank_name(int(e.shooter)), d.tank_name(int(e.target)) if hit else r.get("blocked_by", "-"),
+		var detail := "<a href='impacts/shot_%04d.html' target='_blank'>#%d · 타격 시뮬레이션</a>" % [i, i] if ShotImpactReport.effective(r) else str(i)
+		s.append("<tr class='%s'><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % [
+			kind, detail, _mmss(e.t), d.tank_name(int(e.shooter)), d.tank_name(int(e.target)) if hit else r.get("blocked_by", "-"),
 			("%.0f" % r.distance_m) if hit else "-", r.get("shell", ""), r.get("zone", "-") if hit else "-",
 			("%.0f" % r.impact_angle_deg) if hit else "-", ("%.0f" % r.effective_mm) if hit else "-",
 			("%.0f" % r.pen_roll_mm) if hit else "-", ("%.0f%%" % (float(r.pen_probability) * 100.0)) if hit else "-",

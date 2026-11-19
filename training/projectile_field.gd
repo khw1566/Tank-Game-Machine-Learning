@@ -81,7 +81,9 @@ func step(dt: float) -> void:
 			if not space.intersect_ray(q).is_empty():
 				continue
 			projectile.near = {"target_name": str(target.name), "target_team": target.team,
-				"miss_distance_m": miss, "point": TankSpec._v(closest)}
+				"miss_distance_m": miss, "point": TankSpec._v(closest),
+				"range_m": float(projectile.distance) + p.distance_to(closest),
+				"penetration_ratio": _near_penetration_ratio(target, p, center, projectile)}
 			near_passes[str(target.name)] = {"time": time, "position": closest}
 		projectile.previous = p
 		projectile.pos = end
@@ -93,6 +95,22 @@ func step(dt: float) -> void:
 		else:
 			survivors.append(projectile)
 	active = survivors
+
+
+func _near_penetration_ratio(target: Tank, origin: Vector3, center: Vector3, projectile: Dictionary) -> float:
+	var inverse := target.global_transform.affine_inverse()
+	var direction := (center - origin).normalized()
+	var hit := HitGeometry.trace(target.spec, target.turret_yaw, inverse * origin,
+		(inverse.basis * direction).normalized(), target.gun_pitch)
+	if not hit.hit:
+		return 0.0
+	var shell: GunSpec = projectile.shell
+	var plate := float(target.spec.plate(str(hit.zone)).t)
+	if plate <= 0:
+		return 1.0
+	var effective := Ballistics.effective_thickness_mm(shell, plate, float(hit.impact_angle_deg))
+	var range_m := float(projectile.distance) + origin.distance_to(center)
+	return shell.penetration_mm(range_m) / maxf(effective, 1.0)
 
 
 func _resolve(shooter: Tank, projectile: Dictionary, collision: Dictionary) -> void:
@@ -111,6 +129,11 @@ func _resolve(shooter: Tank, projectile: Dictionary, collision: Dictionary) -> v
 				collision.local_dir, projectile.distance, shell, projectile.rng, target.gun_pitch)
 		hit.merge(result, false)
 		hit["target_name"] = str(target.name)
+		if not hit.has("entry_local"):
+			hit["entry_local"] = TankSpec._v(target.global_transform.affine_inverse() * collision.position)
+		hit["ray_origin_local"] = TankSpec._v(collision.local_origin)
+		hit["ray_dir_local"] = TankSpec._v(collision.local_dir)
+		hit["distance_m"] = snappedf(float(projectile.distance), 0.1)
 		hit["target_team"] = target.team
 		hit["target_was_combat_effective"] = was_alive
 		result = hit

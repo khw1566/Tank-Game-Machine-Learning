@@ -27,14 +27,15 @@ const TEAM_BASE_SIGN := [1.0, -1.0]   # 팀0(독일) = +축 쪽, 팀1(연합군)
 ## --obs=situation: 커리큘럼 v4 목적 관측(SituationObs)을 뒤에 붙인다. 기존 실행·체크포인트는 그대로 쓴다
 static var situation := false
 static var threat_inputs := false
+static var targeting_inputs := false
 
 
 static func obs_size() -> int:
-	return TankPerception.size() + TASK_SIZE + (SituationObs.size() if situation else 0) + (ThreatObs.LABELS.size() if threat_inputs else 0)
+	return TankPerception.size() + TASK_SIZE + (SituationObs.size() if situation else 0) + (ThreatObs.LABELS.size() if threat_inputs else 0) + (TargetingObs.size() if targeting_inputs else 0)
 
 
 static func obs_labels() -> Array:
-	return TankPerception.labels() + TASK_LABELS + (SituationObs.labels() if situation else []) + (ThreatObs.LABELS if threat_inputs else [])
+	return TankPerception.labels() + TASK_LABELS + (SituationObs.labels() if situation else []) + (ThreatObs.LABELS if threat_inputs else []) + (TargetingObs.labels() if targeting_inputs else [])
 
 
 var port := 11008
@@ -111,6 +112,10 @@ func _ready() -> void:
 		elif a == "--obs=situation_v3":
 			situation = true
 			threat_inputs = true
+		elif a == "--obs=battle":
+			situation = true
+			threat_inputs = true
+			targeting_inputs = true
 	if repro_path != "":
 		_start_reproduce(repro_path)
 		return
@@ -134,7 +139,9 @@ func _ready() -> void:
 		"action_labels": TankAgent.action_labels(), "physics_hz": Engine.physics_ticks_per_second,
 		"repeat": REPEAT, "engine": Engine.get_version_info().string,
 		"terrain_course_version": TerrainCourse.VERSION, "spawn_safety_version": 1, "destruction_version": 1,
-		"compact_battle_version": 1, "fast_combat_reward_version": 1,
+		"compact_battle_version": 1, "fast_combat_reward_version": 1, "battle_selfplay_version": 1,
+		"targeting_obs_version": TargetingObs.VERSION if targeting_inputs else 0,
+		"battle_balance_version": TankDatabase.BALANCE_VERSION,
 		"scenario_version": ScenarioLayout.VERSION, "situation_obs_version": SituationObs.VERSION if situation else 0,
 		"driving_reward_version": 2,
 		"threat_obs_version": ThreatObs.VERSION if threat_inputs else 0, "projectile_version": TrainingProjectileField.VERSION,
@@ -730,6 +737,8 @@ func _observation(i: int) -> PackedFloat32Array:
 			int(sc.get("observation_version", 1))))
 	if threat_inputs:
 		o.append_array(ThreatObs.compute(agents[i].perception, projectiles))
+	if targeting_inputs:
+		o.append_array(TargetingObs.compute(map, t, agents[i].perception, tanks))
 	return o
 
 
@@ -779,8 +788,9 @@ func _on_shot(shooter: Tank, r: Dictionary) -> void:
 		"target": r.get("target_name", ""), "hit": r.get("hit", false), "shell": r.get("shell", "")}
 	if r.get("hit", false):
 		e.merge({"zone": r.get("zone", ""), "penetrated": r.get("penetrated", false), "ricochet": r.get("ricochet", false),
-			"effective_mm": r.get("effective_mm", 0), "distance_m": snappedf(float(r.get("distance", 0.0)), 0.1),
-			"events": r.get("events", [])})
+			"effective_mm": r.get("effective_mm", 0), "distance_m": snappedf(float(r.get("distance_m", r.get("distance", 0.0))), 0.1),
+			"pen_mean_mm": r.get("pen_mean_mm", 0), "entry_local": r.get("entry_local", []),
+			"damage": r.get("damage", []), "events": r.get("events", [])})
 	else:
 		e["blocked_by"] = r.get("blocked_by", "")
 		if r.has("near_miss"):
@@ -911,6 +921,8 @@ func _start_reproduce(path: String) -> void:
 	if int(c.get("scenario", {}).get("observation_version", 0)) >= 3:
 		situation = true
 		threat_inputs = true
+	if int(c.get("curriculum_version", 0)) == 5:
+		targeting_inputs = true
 	c["record"] = true
 	c["save_episode"] = false
 	reset_episode(c)

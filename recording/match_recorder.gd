@@ -280,6 +280,9 @@ func _on_shot(shooter: Tank, r: Dictionary) -> void:
 				st.kills += 1
 	var e := {"type": "shot", "tick": tick, "t": snappedf(sim_time(), 0.001), "shooter": _ids[shooter.name],
 		"target": _ids.get(target_name, -1), "r": r}
+	if write_files and ShotImpactReport.effective(r) and int(e.target) >= 0:
+		e.r = r.duplicate(true)
+		e.r["impact_snapshot"] = ShotImpactReport.capture(tanks[int(e.target)])
 	_write(e)
 	var from := _vec(r.get("from", []))
 	var to: Vector3 = _vec(r.hit_pos) if r.has("hit_pos") else from + _vec(r.get("dir", [0, 0, -1])) * 600.0

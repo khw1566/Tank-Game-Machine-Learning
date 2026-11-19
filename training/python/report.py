@@ -16,7 +16,7 @@ from tankrl.curriculum import STAGE_IDS
 from tankrl.objectives import ObjectiveIndex, objective_color
 
 COLORS = ["#2a6fdb", "#d9534f", "#3c9d4e", "#e08a1e", "#8e5bd0", "#1aa3a3", "#b5487a", "#6b7b2a", "#555"]
-TANK_LABEL = {"tiger1": "티거 I", "sherman75": "셔먼 75mm", "t34_76": "T-34/76"}
+TANK_LABEL = {"tiger1": "티거 I", "sherman75": "셔먼 76mm", "t34_76": "T-34-85"}
 STAGE_LABEL = {"drive": "주행", "drive_terrain": "지형 주행", "gunnery_static": "정지 표적 사격",
                "gunnery_moving": "이동 표적 사격", "gunnery_search": "수색·사격", "duel_scripted": "1대1 vs 규칙 AI",
                "duel_selfplay": "1대1 자기대전", "team_scripted": "팀전 vs 규칙 AI", "team_selfplay": "팀 자기대전", "final_battle": "최종전 1 대 6"}

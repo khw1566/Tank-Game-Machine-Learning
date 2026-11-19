@@ -34,11 +34,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from tankrl.curriculum import STAGE_IDS as V1_STAGE_IDS, STAGES as V1_STAGES  # noqa: E402
 from tankrl import curriculum_v4  # noqa: E402
+from tankrl import battle_curriculum  # noqa: E402
 from tankrl.objectives import v4_color  # noqa: E402
 
 # 기존 10단계 뒤에 커리큘럼 v4 단계를 이어 붙인다(번호가 겹치지 않게).
-STAGES = V1_STAGES + curriculum_v4.STAGES
-STAGE_IDS = V1_STAGE_IDS + curriculum_v4.STAGE_IDS
+STAGES = V1_STAGES + curriculum_v4.STAGES + battle_curriculum.STAGES
+STAGE_IDS = V1_STAGE_IDS + curriculum_v4.STAGE_IDS + battle_curriculum.STAGE_IDS
 from tankrl.runtime import select_device  # noqa: E402
 from tankrl.terrain import COURSES
 from tankrl.storage import default_runs_dir
@@ -419,7 +420,7 @@ class Dashboard:
             if not d.is_dir() or d.name == "pool":
                 continue
             progress = d / "progress.csv"
-            v4 = read_json(d / "run.json").get("curriculum_version") == curriculum_v4.VERSION
+            v4 = read_json(d / "run.json").get("curriculum_version") in (curriculum_v4.VERSION, battle_curriculum.VERSION)
             files = [f for f in ("training_report.html", "evaluation_report.html") if (d / f).exists()]
             if not progress.exists() and not files:
                 continue
@@ -473,19 +474,21 @@ class Dashboard:
                 info = read_json(d / curriculum_v4.SHARED / "checkpoint.json")
                 best = (key, {"path": str(model), "run": d.name, "stage": c.get("stage", ""),
                               "version": f"{d.name}/step_{int(info.get('num_timesteps', 0)):09d}"})
-        return {"mode": "shared", "run_prefix": "cv" + curriculum_v4.STAGESET.replace(".", ""), "timesteps": 80_000_000,
+        return {"mode": "battle", "run_prefix": "battle", "timesteps": 80_000_000,
                 "rotate_steps": 3_000_000, "cycles": 3, "n_envs": max(1, min(8, (os.cpu_count() or 4) - 2)),
-                "record_every": 100, "save_every": 100_000, "init_model": best[1] if best else None}
+                "record_every": 100, "save_every": 100_000, "init_model": None}
 
     def info(self) -> dict:
         return {"stages": [{"id": s["id"], "kind": s["kind"], "promote": s.get("promote"),
-                            "time_limit_s": s["time_limit_s"], "v4": s["id"] in curriculum_v4.STAGE_IDS,
+                            "time_limit_s": s["time_limit_s"], "v4": s["id"] not in V1_STAGE_IDS,
+                            "battle": s["id"] in battle_curriculum.STAGE_IDS, "min_steps": s.get("min_steps", 0),
                             "label": s.get("label", ""), "learn": s.get("learn", ""), "goal": s.get("goal", ""),
                             "lesson": s.get("lesson", ""),
                             "variant_notes": s.get("variants_desc", {})} for s in STAGES],
                 "tanks": TANKS, "cpu_count": os.cpu_count() or 1, "settings": self.settings,
                 "runs_dir": str(self.runs_dir), "platform": sys.platform, "deps": self.deps_info(),
                 "recommended": self.recommended(),
+                "battle_godot": str(HERE.parents[1] / "build" / "TankGame_battle.exe"),
                 "terrain_courses": COURSES}
 
     # ------------------------------------------------------------ 학습용 Python·패키지
@@ -591,7 +594,7 @@ class Dashboard:
                     "--cycles", str(int(a.get("cycles", 1)))]
         elif a.get("tank") == curriculum_v4.SHARED:
             # v4 공통 모델: 세 전차를 한 모델로 학습하고, 공통 단계를 마치면 전차별 모델로 자동 분기
-            cmd += ["--tank", curriculum_v4.SHARED, "--curriculum", "v4", "--timesteps", str(int(a.get("timesteps", 80_000_000))),
+            cmd += ["--tank", curriculum_v4.SHARED, "--curriculum", a.get("curriculum", "v4"), "--timesteps", str(int(a.get("timesteps", 80_000_000))),
                     "--auto-branch", "--rotate-steps", str(int(a.get("rotate_steps", 3_000_000))),
                     "--cycles", str(int(a.get("cycles", 3)))]
         else:
@@ -918,7 +921,8 @@ def make_handler(dash: Dashboard):
                         return self.send_json({"error": "없는 파일"}, 404)
                     ctype = {".html": "text/html; charset=utf-8", ".json": "application/json",
                              ".csv": "text/csv; charset=utf-8", ".jsonl": "text/plain; charset=utf-8",
-                             ".txt": "text/plain; charset=utf-8", ".png": "image/png"}.get(p.suffix, "application/octet-stream")
+                             ".txt": "text/plain; charset=utf-8", ".png": "image/png",
+                             ".svg": "image/svg+xml; charset=utf-8"}.get(p.suffix, "application/octet-stream")
                     return self.send_body(200, p.read_bytes(), ctype)
                 self.send_json({"error": "not found"}, 404)
             except Exception as e:

@@ -139,7 +139,7 @@ class GodotVecEnv(VecEnv):
         self.episode_count = episode_counter(self.run_dir, self.run_name, learner)
         self.stage_ids = getattr(curriculum, "stage_ids", STAGE_IDS)
         obs_mode = getattr(curriculum, "obs", "")
-        extra = [f"--obs={obs_mode}"] if obs_mode in ("situation", "situation_v3") else []
+        extra = [f"--obs={obs_mode}"] if obs_mode in ("situation", "situation_v3", "battle") else []
         self.procs = [GodotProcess(godot, project, i, str(self.run_dir), quiet=quiet, extra=extra) for i in range(n_envs)]
         p0 = self.procs[0]
         if extra and int(p0.hello.get("situation_obs_version", 0)) < 1:
@@ -186,9 +186,26 @@ class GodotVecEnv(VecEnv):
         meta = {"run": self.run_name, "learner_tank": actual, "model": self.learner, "policies": {names[0]: self.learner_version},
                 "roles": {n: d["role"] for d, n in zip(lu, names)}, "global_step": self.global_step,
                 "stage_idx": self.stage_ids.index(stage["id"]), "current_stage": self.curriculum.stage["id"],
-                "curriculum_version": curriculum_v4.VERSION, "variant": variant,
+                "curriculum_version": self.curriculum.version, "variant": variant,
                 "shaping_scale": extra["reward"]["shaping_scale"]}
         cfg = curriculum_v4.make_config(stage, extra, actual, lu, seed, uid, record, meta, self.reward_overrides)
+        cfg["curriculum_version"] = self.curriculum.version
+        cfg["learner_team"] = lu[0]["team"]
+        if extra.get("balance_version"):
+            cfg["balance_version"] = extra["balance_version"]
+        ext = [k for k, item in enumerate(lu) if item["ctrl"] == "external"]
+        opp = {}
+        if extra.get("selfplay"):
+            if int(self.procs[i].hello.get("battle_balance_version", 0)) < int(extra.get("balance_version", 1)):
+                raise RuntimeError("새 포·장갑과 점진 보상을 지원하는 balance v2 게임 실행 파일이 필요합니다")
+            if (int(self.procs[i].hello.get("battle_selfplay_version", 0)) < 1
+                    or int(self.procs[i].hello.get("targeting_obs_version", 0)) < 1):
+                raise RuntimeError("전투 자기 대전을 지원하는 최신 게임 소스로 실행하거나 다시 빌드하세요")
+            for k in ext:
+                if lu[k]["role"] == "opponent":
+                    key = self.learner if self.learner == "shared" else lu[k]["type"]
+                    opp[k] = self.opponents.pick_frozen(key, self.rng)
+                    meta["policies"][names[k]] = opp[k]
         require_pace_support(self.procs[i].hello, cfg)
         if int(self.procs[i].hello.get("scenario_version", 0)) < 1:
             raise RuntimeError("커리큘럼 v4 상황 배치를 지원하지 않는 게임입니다. 게임을 다시 빌드하세요.")
@@ -198,8 +215,9 @@ class GodotVecEnv(VecEnv):
         if (int(self.procs[i].hello.get("threat_obs_version", 0)) < 1
                 or int(self.procs[i].hello.get("projectile_version", 0)) < 1):
             raise RuntimeError("사격 감지·비행 포탄 관측이 필요합니다. 최신 게임 실행 파일로 다시 빌드하세요.")
-        self._ctx[i] = {"cfg": cfg, "stage": stage, "roles": ["learner"], "ext_names": [names[0]],
-                        "opp_versions": [""], "learner_k": 0, "variant": variant, "tank": actual}
+        self._ctx[i] = {"cfg": cfg, "stage": stage, "roles": [lu[k]["role"] for k in ext],
+                        "ext_names": [names[k] for k in ext], "opp_versions": [opp.get(k, "") for k in ext],
+                        "learner_k": 0, "variant": variant, "tank": actual}
         return cfg
 
     def _new_config(self, i: int) -> dict:
@@ -364,8 +382,12 @@ class GodotVecEnv(VecEnv):
                             relocated=json.dumps(scenario.get("relocated", [])))
                 data["return"] = round(float(self._ret[i]), 4)
                 writer.writerow(data)
-            promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step,
-                                           variant=scenario.get("variant", ""), learner=ctx.get("tank", ""))
+            if hasattr(self.curriculum, "report_battle"):
+                promo = self.curriculum.report_battle(stage_id, bool(ep.get("success")), self.global_step,
+                                                      ctx["variant"], ctx["tank"], tinfo, ep)
+            else:
+                promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step,
+                                               variant=scenario.get("variant", ""), learner=ctx.get("tank", ""))
         else:
             promo = self.curriculum.report(stage_id, bool(ep.get("success")), self.global_step,
                                            terrain.get("course", ""))

@@ -51,6 +51,7 @@ var _battle_milestones := {}
 var _near_best := {}
 var _near_paid := {}
 var _closing_paid := {}
+var _combat_progress: CombatProgress
 # 커리큘럼 v4 전투 상황(config.scenario): 결과 보상 + 감쇠하는 목표 진행 보조 보상
 var _sc_best := INF
 var _sc_hold := 0.0
@@ -85,6 +86,8 @@ func _init(p_env, overrides := {}) -> void:
 	if config_kind() == "drive" and not overrides.has("time_per_s"):
 		w.time_per_s = -0.01
 	model = RewardModel.new(w.combat)
+	if bool(w.get("progressive_combat_v2", false)):
+		_combat_progress = CombatProgress.new(w)
 
 
 func config_kind() -> String:
@@ -188,10 +191,20 @@ func on_launch(shooter: Tank, result: Dictionary) -> void:
 func on_shot(shooter: Tank, r: Dictionary) -> void:
 	var target: String = r.get("target_name", "")
 	var tteam := int(r.get("target_team", -1))
+	if _combat_progress != null:
+		var live := bool(r.get("target_was_combat_effective", true))
+		if r.get("hit", false) and tteam >= 0 and tteam != shooter.team and live:
+			for bonus in _combat_progress.shot(str(shooter.name), target, r, float(env.tick) / Engine.physics_ticks_per_second):
+				_add(str(shooter.name), float(bonus.value), str(bonus.reason))
 	for e in model.shot_rewards(shooter.name, shooter.team, target, tteam, r):
 		_add(e.tank, float(e.value) * float(w.event_scale), str(e.reason))
 	if bool(w.get("battle_shaping", false)) and not r.get("hit", false):
-		_near_miss(shooter, r.get("near_miss", {}))
+		var near: Dictionary = r.get("near_miss", {})
+		if _combat_progress != null:
+			if not near.is_empty() and int(near.get("target_team", shooter.team)) != shooter.team:
+				_add(str(shooter.name), _combat_progress.near_miss(str(shooter.name), near), "near_miss")
+		else:
+			_near_miss(shooter, near)
 	var live_hit := not bool(w.combat.get("live_target_only", false)) or bool(r.get("target_was_combat_effective", true))
 	if env.config.has("scenario") and r.get("hit", false) and target == str(env.tanks[0].name) and tteam != shooter.team:
 		_sc_taken.hits += 1
@@ -213,8 +226,14 @@ func decision() -> Dictionary:
 	var dt := float(TankAgent.PERCEIVE_EVERY) / Engine.physics_ticks_per_second
 	if env.config.has("terrain_course"):
 		return _course_decision(dt)
-	if env.config.has("scenario"):
+	if env.config.has("scenario") and env.config.scenario.get("goal", "") != "battle":
 		return _scenario_decision(dt)
+	if env.config.get("scenario", {}).get("goal", "") == "battle":
+		var me: Tank = env.tanks[0]
+		_sc_path += me.global_position.distance_to(_sc_last)
+		_sc_last = me.global_position
+		if env.decisions % 5 == 0:
+			_sc_exposure(me, dt * 5.0)
 	var kind := config_kind()
 	var out := {"done": false}
 	var arrived := false
@@ -325,6 +344,8 @@ func _battle_approach(t: Tank) -> void:
 	var improvement := maxf(0, maxf(previous, 25) - maxf(nearest, 25))
 	best[closest.name] = minf(previous, nearest)
 	var progress := minf(own_closing, improvement)
+	if _combat_progress != null and not _combat_progress.pressure_active(str(t.name), float(env.tick) / Engine.physics_ticks_per_second):
+		return  # Keep consuming new-best distances so circling cannot cash them in later.
 	var reward := minf(progress * float(w.get("closing_per_m", 0.03)), maxf(0, float(w.get("closing_budget", 4)) - float(_closing_paid[t.name])))
 	_closing_paid[t.name] += reward
 	_add(t.name, reward, "closing")

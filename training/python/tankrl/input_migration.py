@@ -12,10 +12,11 @@ from .storage import sha256
 
 LEGACY_SITUATION_SIZE = 419
 THREAT_INPUT_SIZE = 437
+BATTLE_INPUT_SIZE = THREAT_INPUT_SIZE + 4 * 7 * 6
 FIRST_LAYERS = ("mlp_extractor.policy_net.0.weight", "mlp_extractor.value_net.0.weight")
 
 
-def expand_fire_inputs(source: Path, observation_space, output_dir: Path) -> Path:
+def expand_fire_inputs(source: Path, observation_space, output_dir: Path, *, allow_battle: bool = False) -> Path:
     """Create an immutable derivative. The source model and all old input columns stay intact."""
     source = Path(source).resolve()
     data, params, variables = load_from_zip_file(source, device="cpu")
@@ -23,7 +24,11 @@ def expand_fire_inputs(source: Path, observation_space, output_dir: Path) -> Pat
     new_shape = tuple(observation_space.shape)
     if old_shape == new_shape:
         return source
-    if old_shape != (LEGACY_SITUATION_SIZE,) or new_shape != (THREAT_INPUT_SIZE,):
+    supported = old_shape == (LEGACY_SITUATION_SIZE,) and new_shape == (THREAT_INPUT_SIZE,)
+    if allow_battle:
+        supported = supported or (old_shape in ((LEGACY_SITUATION_SIZE,), (THREAT_INPUT_SIZE,))
+                                   and new_shape == (BATTLE_INPUT_SIZE,))
+    if not supported:
         raise ValueError(f"Unsupported policy input migration: {old_shape} -> {new_shape}")
     digest = sha256(source)
     output_dir = Path(output_dir)

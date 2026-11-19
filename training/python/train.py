@@ -34,6 +34,8 @@ from tankrl.control import TrainController
 from tankrl.curriculum import STAGE_IDS, STAGES, Curriculum
 from tankrl import curriculum_v4
 from tankrl.curriculum_v4 import CurriculumV4
+from tankrl import battle_curriculum
+from tankrl.battle_curriculum import BattleCurriculum
 from tankrl.control import write_json_atomic
 from tankrl.godot_env import GodotVecEnv
 from tankrl.health import HealthConfig, HealthMonitor
@@ -72,11 +74,11 @@ def parse():
     ap.add_argument("--run", default="", help="실행 이름(runs/<run>). 비우면 날짜시각")
     ap.add_argument("--runs-dir", default=str(default_runs_dir()))
     ap.add_argument("--pool-dir", default="", help="자기대전 상대 정책 풀(기본 runs/pool)")
-    ap.add_argument("--curriculum", default="v1", choices=["v1", "v4"],
+    ap.add_argument("--curriculum", default="v1", choices=["v1", "v4", "battle"],
                     help="v1 = 기존 10단계, v4 = 결과 기반 보상·변형 혼합(기동·사격·전술·최종), 상황 관측 사용")
     ap.add_argument("--entropy-boost", type=float, default=0.003, help="v4: 단계 진입 직후 탐색 계수")
     ap.add_argument("--entropy-steps", type=int, default=300_000, help="v4: 탐색 계수를 기본값으로 줄이는 스텝 수")
-    ap.add_argument("--start-stage", default="", choices=[""] + STAGE_IDS + curriculum_v4.STAGE_IDS,
+    ap.add_argument("--start-stage", default="", choices=[""] + STAGE_IDS + curriculum_v4.STAGE_IDS + battle_curriculum.STAGE_IDS,
                     help="이 단계부터 시작")
     ap.add_argument("--resume", action="store_true", help="runs/<run>/<tank>/latest.zip 과 커리큘럼 상태에서 이어서")
     ap.add_argument("--terrain-course", default="", choices=[""] + COURSE_IDS,
@@ -141,6 +143,8 @@ def write_manifest(run_dir: Path, args, env: GodotVecEnv, runtime: dict) -> None
                                 "threat_obs_version": env.procs[0].hello.get("threat_obs_version", 0),
                                 "projectile_version": env.procs[0].hello.get("projectile_version", 0),
                                 "assessment_version": getattr(env.curriculum, "assessment_version", 1),
+                                "balance_version": getattr(env.curriculum, "balance_version", 1),
+                                "reward_version": getattr(env.curriculum, "reward_version", 1),
                                 "terrain_courses": COURSES,
                                 "physics_hz": env.procs[0].hello.get("physics_hz")},
                                ensure_ascii=False, indent=1), encoding="utf-8")
@@ -160,9 +164,10 @@ def build_model(args, env, checkpoint: Path | None = None):
                  if getattr(args, k) is not None}
     overrides.update(gamma=args.gamma, gae_lambda=args.gae_lambda, ent_coef=args.ent_coef)
     if checkpoint is not None:
-        if getattr(getattr(env, "curriculum", None), "obs", "") == "situation_v3":
+        if getattr(getattr(env, "curriculum", None), "obs", "") in ("situation_v3", "battle"):
             from tankrl.input_migration import expand_fire_inputs
-            migrated = expand_fire_inputs(checkpoint, env.observation_space, env.run_dir / "input_migrations")
+            migrated = expand_fire_inputs(checkpoint, env.observation_space, env.run_dir / "input_migrations",
+                                           allow_battle=env.curriculum.obs == "battle")
             if migrated != Path(checkpoint).resolve():
                 print(f"[model] 사격 관측 입력 확장: 기존 가중치·optimizer·누적 스텝 보존 → {migrated}", flush=True)
             checkpoint = migrated
@@ -191,7 +196,11 @@ def branch_source(args, run_dir: Path, tank: str):
     model, cpath = checkpoint_paths(sdir)
     if model is None:
         return None
-    shared = CurriculumV4.load(cpath, curriculum_v4.SHARED, review_prob=args.review_prob, seed=args.seed,
+    saved = json.loads(cpath.read_text(encoding="utf-8"))
+    cls = BattleCurriculum if saved.get("curriculum_version") == battle_curriculum.VERSION else CurriculumV4
+    if args.curriculum == "battle" and cls is not BattleCurriculum:
+        raise ValueError("전투 자기 대전의 분화 원본에는 완료된 전투 공통 모델이 필요합니다")
+    shared = cls.load(cpath, curriculum_v4.SHARED, review_prob=args.review_prob, seed=args.seed,
                                entropy_boost=args.entropy_boost, entropy_steps=args.entropy_steps)
     info = json.loads((sdir / "checkpoint.json").read_text(encoding="utf-8")) if (sdir / "checkpoint.json").exists() else {}
     source = f"{src_run.name}/{curriculum_v4.SHARED}/step_{int(info.get('num_timesteps', 0)):09d}"
@@ -233,12 +242,18 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     checkpoint, cpath = checkpoint_paths(tdir)
     resume = checkpoint is not None
     branched = None if resume else branch_source(args, run_dir, tank)
+    battle = args.curriculum == "battle" or (branched is not None and isinstance(branched[1], BattleCurriculum))
     v4 = args.curriculum == "v4" or tank == curriculum_v4.SHARED or branched is not None
     if cpath.exists() and (resume or args.resume or args.rotate):
         # 저장된 진행 상태가 v4 면 대시보드의 "이어서"도 v4 로 이어 간다
-        v4 = v4 or json.loads(cpath.read_text(encoding="utf-8")).get("curriculum_version") == curriculum_v4.VERSION
-    cls, ids = (CurriculumV4, curriculum_v4.STAGE_IDS) if v4 else (Curriculum, STAGE_IDS)
-    kw = dict(entropy_boost=args.entropy_boost, entropy_steps=args.entropy_steps) if v4 else {}
+        saved_version = json.loads(cpath.read_text(encoding="utf-8")).get("curriculum_version")
+        if battle and saved_version != battle_curriculum.VERSION:
+            raise ValueError("기존 실행은 다른 커리큘럼입니다. 전투 자기 대전에는 새 --run 이름을 사용하세요")
+        battle = saved_version == battle_curriculum.VERSION
+        v4 = v4 or saved_version == curriculum_v4.VERSION
+    cls, ids = ((BattleCurriculum, battle_curriculum.STAGE_IDS) if battle else
+                (CurriculumV4, curriculum_v4.STAGE_IDS) if v4 else (Curriculum, STAGE_IDS))
+    kw = dict(entropy_boost=args.entropy_boost, entropy_steps=args.entropy_steps) if v4 or battle else {}
     start = ids.index(args.start_stage) if args.start_stage else 0
     if branched is not None:
         cur = branched[1].branch(tank, 0, branched[2])
@@ -257,7 +272,11 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     ctl.info.update({"tank": tank, "target_timesteps": None})
     ctl.write_status(None, force=True, phase="starting")
     inference_device = "cpu" if args.device in ("auto", "hybrid") else args.resolved_device
-    pool = OpponentPool(pool_dir, exclude=tank, device=inference_device)
+    pool = OpponentPool(pool_dir, exclude=None if battle else tank, device=inference_device)
+    if battle and branched is not None:
+        initial = pool_dir / "shared" / f"step_{int(branched[3].get('num_timesteps', 0)):09d}.zip"
+        if not initial.exists():
+            atomic_copy(branched[0], initial)
     # 재개할 때마다 다른 배치 순서(같은 시드면 처음 수천 판이 매번 똑같이 반복됐다). 시드는 run.json 에 기록된다.
     resume_steps = int(json.loads((tdir / "checkpoint.json").read_text(encoding="utf-8")).get("num_timesteps", 0)) \
         if (tdir / "checkpoint.json").exists() else 0
@@ -274,6 +293,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     try:
         init = Path(args.init_model).resolve() if args.init_model and not resume and not branched else None
         model = build_model(args, env, checkpoint if resume else (branched[0] if branched else init))
+        if battle and not resume:
+            cur.stage_start_step = model.num_timesteps
         if branched is not None:
             cur.stage_start_step = model.num_timesteps
             cur.history[-1]["global_step"] = model.num_timesteps
@@ -404,6 +425,10 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
                                           encoding="utf-8")
         if snapshot:
             name = f"step_{model.num_timesteps:09d}.zip"
+            if battle:
+                # 콜백 저장 직후 PPO 갱신/재개/복구로 같은 스텝에 다른 가중치가 생길 수 있다.
+                # 기존 상대 파일을 덮어쓰면 경기 도중 상대가 바뀌므로 매번 새 경로를 만든다.
+                name = f"step_{model.num_timesteps:09d}_{__import__('time').time_ns():020d}.zip"
             atomic_copy(latest, tdir / name)
             atomic_copy(latest, pdir / name)
             if health is not None:
@@ -424,6 +449,9 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
 
     ctl.handlers.update({"checkpoint": on_checkpoint, "set_stage": on_set_stage})
     try:
+        if battle:
+            # reset()에서 상대를 고르기 전에 초기/재개 정책의 고정 복사본이 반드시 있어야 한다.
+            save(snapshot=True)
         model.learn(total_timesteps=steps, callback=Cb(), reset_num_timesteps=False, progress_bar=False)
     finally:
         try:
@@ -449,7 +477,11 @@ def main():
     run = args.run or dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = (Path(args.runs_dir) / run).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
-    pool_dir = Path(args.pool_dir).resolve() if args.pool_dir else (Path(args.runs_dir) / "pool").resolve()
+    manifest = run_dir / "run.json"
+    if manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("curriculum_version") == battle_curriculum.VERSION:
+        args.curriculum = "battle"
+    pool_dir = Path(args.pool_dir).resolve() if args.pool_dir else (
+        run_dir / "opponents" if args.curriculum == "battle" else (Path(args.runs_dir) / "pool").resolve())
     with RunLock(run_dir):
         run_training(args, run_dir, pool_dir)
 

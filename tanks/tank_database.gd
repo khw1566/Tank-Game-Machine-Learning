@@ -10,6 +10,7 @@ extends RefCounted
 ## 자세한 근거와 가정은 tanks/README.md 참고.
 
 const IDS := ["tiger1", "sherman75", "t34_76"]
+const BALANCE_VERSION := 2
 
 
 static func get_spec(id: String) -> TankSpec:
@@ -186,7 +187,7 @@ static func tiger1() -> TankSpec:
 		"0.79m 장애물까지 넘음. 무겁고 감쇠 좋은 토션바 현가 → 출렁임이 빨리 가라앉음",
 	]
 	s.notes = "넓고 각진 상자형 실루엣(피탄면적 큼). 측면 하부 60mm 가 약점이지만 대형 보기륜·궤도가 15mm 만큼 막아 준다."
-	return s
+	return _battle_profile(s)
 
 
 # --------------------------------------------------------------------------
@@ -335,7 +336,7 @@ static func sherman75() -> TankSpec:
 		"75mm 는 티거 정면 불가 → 헐다운으로 버티며 다른 전차가 측면을 잡게 하거나 근접 측면 공격",
 	]
 	s.notes = "피탄면적은 셋 중 가장 크고(특히 높이) 장갑은 얇다. 대신 헐다운하면 포탑(76mm@30°)+포방패만 노출된다."
-	return s
+	return _battle_profile(s)
 
 
 # --------------------------------------------------------------------------
@@ -485,7 +486,85 @@ static func t34_76() -> TankSpec:
 		"포 내림 −5° → 능선 위 헐다운에서 아래쪽 적을 못 겨눔. 정지 사격도 조준이 느림(3.0s)",
 	]
 	s.notes = "피탄면적은 작지만 88mm 에는 어디든 관통된다. 장점은 '덜 맞고, 튕기고, 빨리 다가가는 것'."
+	return _battle_profile(s)
+
+
+## Legacy IDs stay stable for policy one-hot inputs and checkpoint compatibility.
+## These are intentional gameplay values, not historical penetration measurements.
+static func _battle_profile(s: TankSpec) -> TankSpec:
+	s.balance_version = BALANCE_VERSION
+	if s.id == "tiger1":
+		s.armor.mantlet.t = 200.0
+		s.notes = "Balance v2: 포방패 200mm. 연합군 훈련 철갑탄은 100~500m 정면 차체 관통, 차체 35°에서는 방어하도록 조정."
+		s.traits.append("학습 조정: 35° 티타임으로 차체를 방어하고, 포방패 200mm로 포탑 중심 피격을 견딤")
+		return s
+	var sherman := s.id == "sherman75"
+	s.display_name = "M4 Sherman (76mm 장포신)" if sherman else "T-34-85"
+	var g := s.gun
+	g.id = "m1_76_training" if sherman else "t34_85_training"
+	g.display_name = "76mm 장포신 · 학습 조정" if sherman else "85mm 주포 · 학습 조정"
+	g.caliber_mm = 76.2 if sherman else 85.0
+	g.muzzle_velocity_ms = 790.0 if sherman else 800.0
+	g.shell_name = "76mm APCBC · 훈련 조정" if sherman else "85mm APHE · 훈련 조정"
+	g.shell_type = "APCBC" if sherman else "APHE"
+	g.shell_mass_kg = 7.0 if sherman else 9.2
+	g.filler_g = 65.0 if sherman else 120.0
+	g.normalization_deg = 0.0
+	g.penetration_sigma = 0.008
+	g.reload_s = 5.0 if sherman else 6.0
+	g.penetration_table_30deg = _training_pen_table([[0, 115], [100, 114.5], [500, 113], [1000, 110], [1500, 104], [2000, 96]])
+	g.sources = ["Intentional gameplay balance v2; Tiger frontal hull vs 35-degree angling calibration, not historical data"]
+	var apcr := g.variant(g.id + "_apcr", "76mm HVAP · 훈련 조정" if sherman else "85mm APCR · 훈련 조정", "APCR")
+	apcr.muzzle_velocity_ms = 1030.0
+	apcr.shell_mass_kg = 4.0 if sherman else 5.0
+	apcr.normalization_deg = 0.0
+	apcr.penetration_sigma = 0.008
+	apcr.ricochet_angle_deg = 65.0
+	apcr.penetration_table_30deg = _training_pen_table([[0, 117.5], [100, 117], [500, 115], [1000, 112], [1500, 108], [2000, 102]])
+	apcr.sources = g.sources
+	var he := g.variant(g.id + "_he", "76mm HE" if sherman else "85mm HE", "HE")
+	he.shell_mass_kg = 6.8 if sherman else 9.2
+	he.filler_g = 700 if sherman else 900
+	he.fuse_delay_m = 0.05
+	he.penetration_table_30deg = [[0, 12], [2000, 12]]
+	he.normalization_deg = 0
+	he.ricochet_angle_deg = 89
+	he.penetration_sigma = 0.1
+	s.ammo_types = [g, apcr, he]
+	s.barrel_length = 4.2
+	s.turret_width = 2.1 if sherman else 2.22
+	s.turret_length = 2.4 if sherman else 2.6
+	s.turret_height = 0.9 if sherman else 0.94
+	s.turret_front_slope_deg = 20
+	s.turret_side_slope_deg = 10 if sherman else 15
+	s.mantlet_size = Vector3(1.5, 0.64, 0.25)
+	s.gun_height = 0.48
+	s.armor.turret_front.t = 76.2 if sherman else 90.0
+	s.armor.turret_side.t = 63.5 if sherman else 75.0
+	s.armor.mantlet.t = 89.0 if sherman else 90.0
+	if not sherman:
+		s.commander_is_gunner = false
+		s.aim_time_s = 2.6
+		s.crew = [
+			_crew("driver", "driver", Vector3(-0.45, 0.95, -2.20), 0.33, false),
+			_crew("radio", "radio", Vector3(0.45, 0.95, -2.20), 0.33, false),
+			_crew("commander", "commander", Vector3(-0.4, 0.15, 0.5), 0.32, true),
+			_crew("gunner", "gunner", Vector3(-0.45, -0.12, -0.28), 0.32, true),
+			_crew("loader", "loader", Vector3(0.5, -0.2, 0.05), 0.33, true)]
+	var zf := s.gun_height * tan(deg_to_rad(s.turret_front_slope_deg)) - s.turret_length * 0.5
+	s.modules = s.modules.filter(func(m): return not m.in_turret) + _turret_modules(zf, s.gun_height, -0.4)
+	s.traits = s.traits.filter(func(t): return "전차장 겸 포수" not in t)
+	s.traits = s.traits.map(func(t): return str(t).replace("전고 2.37m", "전고 2.59m"))
+	s.traits.append("76mm/85mm 신형 포탑·주포. 차체 경사와 측후면 우회를 활용. 관통력은 학습용 조정값")
+	s.notes = "Balance v2: 주력 철갑탄은 티거 정면 차체를 관통하지만 차체 35°에서는 막힘(100~500m 검증). 기존 내부 ID는 모델 호환용."
 	return s
+
+
+static func _training_pen_table(vertical: Array) -> Array:
+	var out := []
+	for row in vertical:
+		out.append([row[0], float(row[1]) * cos(deg_to_rad(GunSpec.REFERENCE_ANGLE_DEG))])
+	return out
 
 
 ## 모든 전차 공통 포탑 내부 모듈(포탑 좌표계).

@@ -220,6 +220,7 @@ func _update_contacts(tanks: Array) -> void:
 			contacts[t.name] = c
 		var identified := px >= identify_px
 		c.enemy = t.team != tank.team
+		c.target_name = str(t.name)  # 내부 대응용. 관측에는 이름이나 노드 참조가 나가지 않는다.
 		c.t = time
 		c.visible_now = true
 		c.screen = sp

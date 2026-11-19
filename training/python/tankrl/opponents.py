@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import random
+from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
@@ -18,7 +19,7 @@ class OpponentPool:
         self.exclude = exclude          # 지금 학습 중인 종류(그 종류는 copy 로 현재 정책을 쓴다)
         self.latest_prob = latest_prob
         self.device = device
-        self._models: dict[str, object] = {}
+        self._models: OrderedDict[str, object] = OrderedDict()
         self._mtime: dict[str, float] = {}
 
     def _files(self, tank: str) -> list[Path]:
@@ -49,6 +50,15 @@ class OpponentPool:
                 return version
         return version
 
+    def pick_frozen(self, tank: str, rng: random.Random, fallback: str = "shared") -> str:
+        """경기 중 교체되지 않는 스냅숏만 선택. 분화 전에는 공통 정책을 사용한다."""
+        for key in dict.fromkeys((tank, fallback)):
+            snapshots = self._files(key)
+            if snapshots:
+                chosen = snapshots[-1] if rng.random() < self.latest_prob else rng.choice(snapshots)
+                return f"{key}/{chosen.name}"
+        raise RuntimeError(f"자기 대전 상대 스냅숏이 없습니다: {tank} (fallback={fallback})")
+
     def _load(self, version: str):
         from stable_baselines3 import PPO
         path = self.dir / version
@@ -56,6 +66,10 @@ class OpponentPool:
         if version not in self._models or self._mtime.get(version) != mt:
             self._models[version] = PPO.load(str(path), device=self.device)
             self._mtime[version] = mt
+        self._models.move_to_end(version)
+        while len(self._models) > 64:
+            oldest, _ = self._models.popitem(last=False)
+            self._mtime.pop(oldest, None)
         return self._models[version]
 
     def act(self, version: str, obs: np.ndarray) -> np.ndarray:
