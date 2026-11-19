@@ -14,6 +14,7 @@ extends Node3D
 
 const PROTOCOL := "tankgame-train"
 const PROTOCOL_VERSION := 1
+const FINAL_BATTLE_VERSION := 1   # 최종 1대6: 지정 지형(custom_ridges·mounds), 생울타리·돌담·건물 배치, 엄폐 보상
 const EPISODE_FORMAT := "tankgame-train-episode"
 ## 결정(행동 선택) 간격 = 관측 갱신 간격(3틱 = 0.1초, 10Hz)
 const REPEAT := TankAgent.PERCEIVE_EVERY
@@ -145,7 +146,7 @@ func _ready() -> void:
 		"scenario_version": ScenarioLayout.VERSION, "situation_obs_version": SituationObs.VERSION if situation else 0,
 		"driving_reward_version": 2,
 		"threat_obs_version": ThreatObs.VERSION if threat_inputs else 0, "projectile_version": TrainingProjectileField.VERSION,
-		"pace_version": 1, "perf_version": 1})
+		"pace_version": 1, "perf_version": 1, "final_battle_version": FINAL_BATTLE_VERSION})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 
 
@@ -363,6 +364,9 @@ func _ensure_map(mc: Dictionary) -> void:
 	map.size_m = float(mc.get("size_m", 1200.0))
 	map.cell_m = float(mc.get("cell_m", 5.0))
 	map.ridge_count = int(mc.get("ridge_count", 3))
+	map.noise_frequency = float(mc.get("noise_frequency", 0.0025))
+	map.custom_ridges = mc.get("custom_ridges", [])
+	map.mounds = mc.get("mounds", [])
 	add_child(map)
 	if mc.get("profile", "") == "battle_compact":
 		CompactBattle.populate(map)

@@ -191,6 +191,11 @@ class GodotVecEnv(VecEnv):
         cfg = curriculum_v4.make_config(stage, extra, actual, lu, seed, uid, record, meta, self.reward_overrides)
         cfg["curriculum_version"] = self.curriculum.version
         cfg["learner_team"] = lu[0]["team"]
+        if extra.get("map_seed") is not None:
+            # 고정 맵(최종 1대6): 맵 시드를 고정해 Godot 이 매 판 지형을 다시 만들지 않게 한다
+            cfg["map"]["seed"] = int(extra["map_seed"])
+        if int(extra.get("final_battle_version", 0)) > int(self.procs[i].hello.get("final_battle_version", 0)):
+            raise RuntimeError("최종 1대6 맵·엄폐 보상을 지원하는 새 게임 실행 파일(build/TankGame_final.exe)이 필요합니다")
         if extra.get("balance_version"):
             cfg["balance_version"] = extra["balance_version"]
         ext = [k for k, item in enumerate(lu) if item["ctrl"] == "external"]

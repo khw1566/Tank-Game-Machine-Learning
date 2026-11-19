@@ -77,6 +77,14 @@ var _sc_longest_cover := 0.0
 var _sc_fire_cue := false
 var _sc_enemy_seen := false
 var _sc_enemy_shots := 0
+# 최종 1대6 엄폐 보상(config.reward.cover). 학습 전차(tanks[0])만 계산한다.
+var _cov_cost := 0.0          # 지금까지 낸 노출 감점(양수로 누적)
+var _cov_paid := 0.0          # 지금까지 받은 관측 우위 보상
+var _cov_seen_s := 0.0        # 차체가 적 1대 이상에게 보인 시간
+var _cov_multi_s := 0.0       # 차체가 적 2대 이상에게 동시에 보인 시간
+var _cov_overwatch_s := 0.0   # 적을 보면서 차체는 가린 시간(헐다운·수풀 은폐)
+var _cov_hidden_s := 0.0      # 어떤 적에게도 안 보인 시간
+var _cov_observers_sum := 0.0
 var _sc_spawn := Vector3.ZERO
 
 
@@ -232,8 +240,13 @@ func decision() -> Dictionary:
 		var me: Tank = env.tanks[0]
 		_sc_path += me.global_position.distance_to(_sc_last)
 		_sc_last = me.global_position
-		if env.decisions % 5 == 0:
-			_sc_exposure(me, dt * 5.0)
+		var cover: Dictionary = w.get("cover", {})
+		var every := int(cover.get("every", 5))
+		if env.decisions % every == 0:
+			if cover.is_empty():
+				_sc_exposure(me, dt * 5.0)
+			else:
+				_cover_step(me, dt * every, cover)
 	var kind := config_kind()
 	var out := {"done": false}
 	var arrived := false
@@ -294,6 +307,9 @@ func decision() -> Dictionary:
 				for t in env.tanks:
 					if winner >= 0:
 						_add(t.name, float(w.win) if t.team == winner else float(w.loss), "win" if t.team == winner else "loss")
+						# 이긴 팀에서 끝까지 살아남은 전차: 팀 승리에 기여하면서 자기 전차도 지킨 것
+						if t.team == winner and t.damage.is_combat_effective() and float(w.get("survive_win", 0.0)) != 0.0:
+							_add(t.name, float(w.survive_win), "survive_win")
 				return _done("elimination", winner == lt, winner)
 	if timeout:
 		if kind == "combat" and bool(w.get("battle_shaping", false)):
@@ -620,6 +636,67 @@ func _sc_exposure(me: Tank, span: float) -> void:
 		_sc_turret += span
 
 
+## 엄폐 보상: 살아 있는 적 각각의 눈 위치에서 학습 전차의 차체·포탑이 보이는지(실제 시선, 수풀 투과율 포함).
+## - 차체가 보이는 적 수(최대 max_observers)만큼 seen_hull_per_s 감점 → 여러 대에게 동시에 드러나는 위치를 피하게
+## - 학습 전차가 적을 보고 있는데(지각 기준) 차체는 어떤 적에게도 안 보이면 overwatch_per_s 보상 → 헐다운·은폐 사격
+## 둘 다 경기당 한도가 있고 승리(+200)·시간 초과(-35)보다 훨씬 작아 숨어만 있는 무승부는 손해다.
+func _cover_step(me: Tank, span: float, cv: Dictionary) -> void:
+	if not me.damage.is_combat_effective():
+		return
+	var observers := 0
+	var hull := false
+	var turret := false
+	for i in range(1, env.tanks.size()):
+		var e: Tank = env.tanks[i]
+		if e.team == me.team or not e.damage.is_combat_effective():
+			continue
+		var r := SituationObs.exposure_from(env.map, LineOfSight.eye_position(e), me, [me.get_rid(), e.get_rid()])
+		if r.hull:
+			observers += 1
+		hull = hull or r.hull
+		turret = turret or r.turret
+	_sc_checks += 1
+	if hull or turret:
+		_sc_exposed += span
+	if hull:
+		_sc_hull += span
+	elif turret:
+		_sc_turret += span
+	var sees := false
+	for c in env.agents[0].perception.contacts.values():
+		if c.enemy and c.visible_now and not c.get("knocked_out", false):
+			sees = true
+			break
+	_cov_observers_sum += observers * span
+	if observers > 0:
+		_cov_seen_s += span
+		if observers > 1:
+			_cov_multi_s += span
+		var n := mini(observers, int(cv.get("max_observers", 3)))
+		var cost := minf(absf(float(cv.get("seen_hull_per_s", -0.1))) * n * span,
+			maxf(0.0, absf(float(cv.get("exposure_budget", -20.0))) - _cov_cost))
+		if cost > 0.0:
+			_cov_cost += cost
+			_add(me.name, -cost, "cover_exposed")
+	else:
+		if not turret:
+			_cov_hidden_s += span
+		if sees:
+			_cov_overwatch_s += span
+			var bonus := minf(float(cv.get("overwatch_per_s", 0.05)) * span,
+				maxf(0.0, float(cv.get("overwatch_budget", 8.0)) - _cov_paid))
+			if bonus > 0.0:
+				_cov_paid += bonus
+				_add(me.name, bonus, "cover_overwatch")
+
+
+func cover_summary() -> Dictionary:
+	return {"version": 1, "seen_s": snappedf(_cov_seen_s, 0.01), "multi_seen_s": snappedf(_cov_multi_s, 0.01),
+		"overwatch_s": snappedf(_cov_overwatch_s, 0.01), "hidden_s": snappedf(_cov_hidden_s, 0.01),
+		"mean_observers": snappedf(_cov_observers_sum / maxf(0.001, _sc_checks * float(w.get("cover", {}).get("every", 5)) * float(TankAgent.PERCEIVE_EVERY) / Engine.physics_ticks_per_second), 0.001),
+		"exposure_cost": snappedf(_cov_cost, 0.001), "overwatch_paid": snappedf(_cov_paid, 0.001)}
+
+
 func scenario_summary() -> Dictionary:
 	var sc: Dictionary = env.config.scenario
 	var me: Tank = env.tanks[0]
@@ -639,7 +716,8 @@ func scenario_summary() -> Dictionary:
 		"longest_cover_s": snappedf(_sc_longest_cover, 0.01),
 		"projectiles": env.projectiles.summary() if env.projectiles != null else {},
 		"reward_components": _battle_parts.get(str(me.name), {}).duplicate(),
-		"relocated": env.config.get("scenario_relocated", [])}
+		"relocated": env.config.get("scenario_relocated", []),
+		"cover": cover_summary() if w.has("cover") else {}}
 
 
 func course_summary() -> Dictionary:

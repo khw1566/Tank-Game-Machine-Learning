@@ -35,11 +35,12 @@ sys.path.insert(0, str(HERE))
 from tankrl.curriculum import STAGE_IDS as V1_STAGE_IDS, STAGES as V1_STAGES  # noqa: E402
 from tankrl import curriculum_v4  # noqa: E402
 from tankrl import battle_curriculum  # noqa: E402
+from tankrl import final_curriculum  # noqa: E402
 from tankrl.objectives import v4_color  # noqa: E402
 
 # 기존 10단계 뒤에 커리큘럼 v4 단계를 이어 붙인다(번호가 겹치지 않게).
-STAGES = V1_STAGES + curriculum_v4.STAGES + battle_curriculum.STAGES
-STAGE_IDS = V1_STAGE_IDS + curriculum_v4.STAGE_IDS + battle_curriculum.STAGE_IDS
+STAGES = V1_STAGES + curriculum_v4.STAGES + battle_curriculum.STAGES + final_curriculum.STAGES
+STAGE_IDS = V1_STAGE_IDS + curriculum_v4.STAGE_IDS + battle_curriculum.STAGE_IDS + final_curriculum.STAGE_IDS
 from tankrl.runtime import select_device  # noqa: E402
 from tankrl.terrain import COURSES
 from tankrl.storage import default_runs_dir
@@ -420,7 +421,8 @@ class Dashboard:
             if not d.is_dir() or d.name == "pool":
                 continue
             progress = d / "progress.csv"
-            v4 = read_json(d / "run.json").get("curriculum_version") in (curriculum_v4.VERSION, battle_curriculum.VERSION)
+            v4 = read_json(d / "run.json").get("curriculum_version") in (curriculum_v4.VERSION, battle_curriculum.VERSION,
+                                                                         final_curriculum.VERSION)
             files = [f for f in ("training_report.html", "evaluation_report.html") if (d / f).exists()]
             if not progress.exists() and not files:
                 continue
@@ -474,14 +476,30 @@ class Dashboard:
                 info = read_json(d / curriculum_v4.SHARED / "checkpoint.json")
                 best = (key, {"path": str(model), "run": d.name, "stage": c.get("stage", ""),
                               "version": f"{d.name}/step_{int(info.get('num_timesteps', 0)):09d}"})
-        return {"mode": "battle", "run_prefix": "battle", "timesteps": 80_000_000,
+        return {"mode": "final", "run_prefix": "FINAL", "timesteps": 80_000_000, "final_source": self.final_source(),
                 "rotate_steps": 3_000_000, "cycles": 3, "n_envs": max(1, min(8, (os.cpu_count() or 4) - 2)),
                 "record_every": 100, "save_every": 100_000, "init_model": None}
+
+    def final_source(self) -> str:
+        """최종 1대6 학습의 시작 모델: "V5run 1" 이 있으면 그것, 없으면 가장 최근의 전투(V5) 공통 모델 실행."""
+        if not self.runs_dir.exists():
+            return ""
+        preferred = self.runs_dir / "V5run 1"
+        if (preferred / curriculum_v4.SHARED / "latest.zip").exists():
+            return preferred.name
+        best = None
+        for d in self.runs_dir.iterdir():
+            model = d / curriculum_v4.SHARED / "latest.zip"
+            if model.exists() and read_json(d / curriculum_v4.SHARED / "curriculum.json").get("curriculum_version") == battle_curriculum.VERSION:
+                if best is None or model.stat().st_mtime > best[0]:
+                    best = (model.stat().st_mtime, d.name)
+        return best[1] if best else ""
 
     def info(self) -> dict:
         return {"stages": [{"id": s["id"], "kind": s["kind"], "promote": s.get("promote"),
                             "time_limit_s": s["time_limit_s"], "v4": s["id"] not in V1_STAGE_IDS,
-                            "battle": s["id"] in battle_curriculum.STAGE_IDS, "min_steps": s.get("min_steps", 0),
+                            "battle": s["id"] in battle_curriculum.STAGE_IDS + final_curriculum.STAGE_IDS,
+                            "final": s["id"] in final_curriculum.STAGE_IDS, "min_steps": s.get("min_steps", 0),
                             "label": s.get("label", ""), "learn": s.get("learn", ""), "goal": s.get("goal", ""),
                             "lesson": s.get("lesson", ""),
                             "variant_notes": s.get("variants_desc", {})} for s in STAGES],
@@ -489,6 +507,7 @@ class Dashboard:
                 "runs_dir": str(self.runs_dir), "platform": sys.platform, "deps": self.deps_info(),
                 "recommended": self.recommended(),
                 "battle_godot": str(HERE.parents[1] / "build" / "TankGame_battle.exe"),
+                "final_godot": str(HERE.parents[1] / "build" / "TankGame_final.exe"),
                 "terrain_courses": COURSES}
 
     # ------------------------------------------------------------ 학습용 Python·패키지
@@ -601,6 +620,11 @@ class Dashboard:
             cmd += ["--tank", a.get("tank", "tiger1"), "--timesteps", str(int(a.get("timesteps", 1000000)))]
         if a.get("curriculum") and a.get("tank") != curriculum_v4.SHARED and not a.get("rotate"):
             cmd += ["--curriculum", a["curriculum"]]
+        if a.get("curriculum") == "final" and a.get("rotate"):
+            # 최종 1대6: 전차별 모델 교대 학습. 첫 실행은 V5 공통 모델(branch_from)에서 각 전차 모델을 만든다
+            cmd += ["--curriculum", "final"]
+            if a.get("branch_from"):
+                cmd += ["--branch-from", str(a["branch_from"])]
         if a.get("init_model") and not a.get("resume"):
             cmd += ["--init-model", a["init_model"]]
         if a.get("start_stage"):
