@@ -1,0 +1,786 @@
+{
+  "entries": [
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\python314.dll",
+      "bytes": 6778592,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\DLLs\\libcrypto-3.dll",
+      "bytes": 6242552,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\DLLs\\libssl-3.dll",
+      "bytes": 1329912,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\DLLs\\sqlite3.dll",
+      "bytes": 1584864,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\DLLs\\tcl86t.dll",
+      "bytes": 1841888,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\DLLs\\tk86t.dll",
+      "bytes": 1591520,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\numpy.libs\\libscipy_openblas64_-4e39871015dc1470c682dc512497ee22.dll",
+      "bytes": 20589568,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\_VF.pyi",
+      "bytes": 1138653,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch-2.15.0.dist-info\\RECORD",
+      "bytes": 1493117,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\bin\\protoc.exe",
+      "bytes": 2809856,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\c10.dll",
+      "bytes": 1135104,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\fmt-module.lib",
+      "bytes": 2614802,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\fmt.lib",
+      "bytes": 1431778,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\libiomp5md.dll",
+      "bytes": 1633408,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\sleef.lib",
+      "bytes": 8811892,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\torch_cpu.dll",
+      "bytes": 309509120,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\torch_cpu.lib",
+      "bytes": 29194968,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\torch_python.dll",
+      "bytes": 20495360,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\_C\\_VariableFunctions.pyi",
+      "bytes": 1138653,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\testing\\_internal\\common_methods_invocations.py",
+      "bytes": 1357611,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\include\\ATen\\RedispatchFunctions.h",
+      "bytes": 2231209,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\include\\ATen\\VmapGeneratedPlumbing.h",
+      "bytes": 1766142,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\numpy\\_core\\_multiarray_umath.cp314-win_amd64.pyd",
+      "bytes": 3865600,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\ensurepip\\_bundled\\pip-26.1.2-py3-none-any.whl",
+      "bytes": 1813144,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\python314.dll",
+      "bytes": 6778592,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\DLLs\\libcrypto-3.dll",
+      "bytes": 6242552,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\DLLs\\libssl-3.dll",
+      "bytes": 1329912,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\DLLs\\sqlite3.dll",
+      "bytes": 1584864,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\DLLs\\tcl86t.dll",
+      "bytes": 1841888,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\DLLs\\tk86t.dll",
+      "bytes": 1591520,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\numpy.libs\\libscipy_openblas64_-4e39871015dc1470c682dc512497ee22.dll",
+      "bytes": 20589568,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\_VF.pyi",
+      "bytes": 1138653,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch-2.15.0.dist-info\\RECORD",
+      "bytes": 1493117,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\bin\\protoc.exe",
+      "bytes": 2809856,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\c10.dll",
+      "bytes": 1135104,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\fmt-module.lib",
+      "bytes": 2614802,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\fmt.lib",
+      "bytes": 1431778,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\libiomp5md.dll",
+      "bytes": 1633408,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\sleef.lib",
+      "bytes": 8811892,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\torch_cpu.dll",
+      "bytes": 309509120,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\torch_cpu.lib",
+      "bytes": 29194968,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\lib\\torch_python.dll",
+      "bytes": 20495360,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\_C\\_VariableFunctions.pyi",
+      "bytes": 1138653,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\testing\\_internal\\common_methods_invocations.py",
+      "bytes": 1357611,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\include\\ATen\\RedispatchFunctions.h",
+      "bytes": 2231209,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\torch\\include\\ATen\\VmapGeneratedPlumbing.h",
+      "bytes": 1766142,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\site-packages\\numpy\\_core\\_multiarray_umath.cp314-win_amd64.pyd",
+      "bytes": 3865600,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable relocation check\\20261118_105224\\TankGameML_Battle_Windows_20261118_105224\\python\\Lib\\ensurepip\\_bundled\\pip-26.1.2-py3-none-any.whl",
+      "bytes": 1813144,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_105224.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\python314.dll",
+      "bytes": 6778592,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\DLLs\\libcrypto-3.dll",
+      "bytes": 6242552,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\DLLs\\libssl-3.dll",
+      "bytes": 1329912,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\DLLs\\sqlite3.dll",
+      "bytes": 1584864,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\DLLs\\tcl86t.dll",
+      "bytes": 1841888,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\DLLs\\tk86t.dll",
+      "bytes": 1591520,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\numpy.libs\\libscipy_openblas64_-4e39871015dc1470c682dc512497ee22.dll",
+      "bytes": 20589568,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\_VF.pyi",
+      "bytes": 1138653,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch-2.15.0.dist-info\\RECORD",
+      "bytes": 1493117,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\bin\\protoc.exe",
+      "bytes": 2809856,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\c10.dll",
+      "bytes": 1135104,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\fmt-module.lib",
+      "bytes": 2614802,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\fmt.lib",
+      "bytes": 1431778,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\libiomp5md.dll",
+      "bytes": 1633408,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\sleef.lib",
+      "bytes": 8811892,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\torch_cpu.dll",
+      "bytes": 309509120,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\torch_cpu.lib",
+      "bytes": 29194968,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\torch_python.dll",
+      "bytes": 20495360,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\_C\\_VariableFunctions.pyi",
+      "bytes": 1138653,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\testing\\_internal\\common_methods_invocations.py",
+      "bytes": 1357611,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\include\\ATen\\RedispatchFunctions.h",
+      "bytes": 2231209,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\include\\ATen\\VmapGeneratedPlumbing.h",
+      "bytes": 1766142,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\numpy\\_core\\_multiarray_umath.cp314-win_amd64.pyd",
+      "bytes": 3865600,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\ensurepip\\_bundled\\pip-26.1.2-py3-none-any.whl",
+      "bytes": 1813144,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\python314.dll",
+      "bytes": 6778592,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\DLLs\\libcrypto-3.dll",
+      "bytes": 6242552,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\DLLs\\libssl-3.dll",
+      "bytes": 1329912,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\DLLs\\sqlite3.dll",
+      "bytes": 1584864,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\DLLs\\tcl86t.dll",
+      "bytes": 1841888,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\DLLs\\tk86t.dll",
+      "bytes": 1591520,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\numpy.libs\\libscipy_openblas64_-4e39871015dc1470c682dc512497ee22.dll",
+      "bytes": 20589568,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\_VF.pyi",
+      "bytes": 1138653,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch-2.15.0.dist-info\\RECORD",
+      "bytes": 1493117,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\bin\\protoc.exe",
+      "bytes": 2809856,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\c10.dll",
+      "bytes": 1135104,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\fmt-module.lib",
+      "bytes": 2614802,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\fmt.lib",
+      "bytes": 1431778,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\libiomp5md.dll",
+      "bytes": 1633408,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\sleef.lib",
+      "bytes": 8811892,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\torch_cpu.dll",
+      "bytes": 309509120,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\torch_cpu.lib",
+      "bytes": 29194968,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\lib\\torch_python.dll",
+      "bytes": 20495360,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\_C\\_VariableFunctions.pyi",
+      "bytes": 1138653,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\testing\\_internal\\common_methods_invocations.py",
+      "bytes": 1357611,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\include\\ATen\\RedispatchFunctions.h",
+      "bytes": 2231209,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\torch\\include\\ATen\\VmapGeneratedPlumbing.h",
+      "bytes": 1766142,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\site-packages\\numpy\\_core\\_multiarray_umath.cp314-win_amd64.pyd",
+      "bytes": 3865600,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\portable v2 validation\\TankGameML_Battle_Windows_20261118_114645\\python\\Lib\\ensurepip\\_bundled\\pip-26.1.2-py3-none-any.whl",
+      "bytes": 1813144,
+      "reason": "runtime_file_preserved_in_verified_zip",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\packages\\TankGameML_Battle_Windows_20261118_114645.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\TankGame_battle_v2.exe",
+      "bytes": 87321584,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\build\\TankGame_battle.exe"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\TankGame_blocking_io.exe",
+      "bytes": 86443184,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\build\\TankGame.exe"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\TankGame_curriculum_v3_final.exe",
+      "bytes": 86154384,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\build\\TankGame_before_individuals_20261117.exe"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\TankGame_fast_combat_rewards_applied.exe",
+      "bytes": 86443104,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\build\\TankGame_before_socket_optimization_20261117.exe"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\TankGame_final.exe",
+      "bytes": 86128080,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\build\\TankGame_before_human_controls_20261117.exe"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\TankGame_human_final.exe",
+      "bytes": 86151520,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\build\\TankGame_before_terrain_v3_20261117.exe"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\TankGame_individuals_compact.exe",
+      "bytes": 86430048,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runtimes\\21dabbe617594d224f1ac139323d77862196514fac4cfdced0921c1795d0970e\\TankGame_individuals_compact.exe"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\TankGame_individuals_compact_final.exe",
+      "bytes": 86430016,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\build\\TankGame_before_fast_rewards_20261117.exe"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\20261117_063506.zip",
+      "bytes": 590,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\20261117_063506.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\20261117_063521.zip",
+      "bytes": 147883877,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\20261117_063521.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\evaluation_compact_individuals_20261117.zip",
+      "bytes": 30453130,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\evaluation_compact_individuals_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\evaluation_final_20261117_1v6.zip",
+      "bytes": 8379236,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\evaluation_final_20261117_1v6.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\evaluation_final_isolated_20261117_1v6.zip",
+      "bytes": 18466425,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\evaluation_final_isolated_20261117_1v6.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\eval_smoke_final_20261117.zip",
+      "bytes": 7296490,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\eval_smoke_final_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\eval_smoke_isolated_20261117.zip",
+      "bytes": 7296816,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\eval_smoke_isolated_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\gpu_hybrid_validation_20261117.zip",
+      "bytes": 1607570,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\gpu_hybrid_validation_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\gpu_integration_20261117.zip",
+      "bytes": 10390557,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\gpu_integration_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\gpu_validation_20261117.zip",
+      "bytes": 352911,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\gpu_validation_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\human_graphics_smoke.zip",
+      "bytes": 2961,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\human_graphics_smoke.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\independent_20261117_141925_385870.zip",
+      "bytes": 70024282,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\independent_20261117_141925_385870.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_first_attempt\\archives\\independent_su1117_02.zip",
+      "bytes": 71227725,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\independent_su1117_02.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\20261117_063506.zip",
+      "bytes": 590,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\20261117_063506.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\20261117_063521.zip",
+      "bytes": 147883877,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\20261117_063521.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\evaluation_compact_individuals_20261117.zip",
+      "bytes": 30453130,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\evaluation_compact_individuals_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\evaluation_final_20261117_1v6.zip",
+      "bytes": 8379236,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\evaluation_final_20261117_1v6.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\evaluation_final_isolated_20261117_1v6.zip",
+      "bytes": 18466425,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\evaluation_final_isolated_20261117_1v6.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\eval_smoke_final_20261117.zip",
+      "bytes": 7296490,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\eval_smoke_final_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\eval_smoke_isolated_20261117.zip",
+      "bytes": 7296816,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\eval_smoke_isolated_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\gpu_hybrid_validation_20261117.zip",
+      "bytes": 1607570,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\gpu_hybrid_validation_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\gpu_integration_20261117.zip",
+      "bytes": 10390557,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\gpu_integration_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\gpu_validation_20261117.zip",
+      "bytes": 352911,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\gpu_validation_20261117.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\human_graphics_smoke.zip",
+      "bytes": 2961,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\human_graphics_smoke.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\independent_20261117_141925_385870.zip",
+      "bytes": 70024282,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\independent_20261117_141925_385870.zip"
+    },
+    {
+      "path": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\_sync\\partial_snapshot_second_attempt\\archives\\independent_su1117_02.zip",
+      "bytes": 71227725,
+      "reason": "identical_staging_copy",
+      "retained": "C:\\Users\\khw\\Desktop\\Tank Game Machine Learning\\training\\snapshots\\20261117_164221_learning_progress\\archives\\independent_su1117_02.zip"
+    }
+  ],
+  "files": 130,
+  "bytes": 3167864312
+}

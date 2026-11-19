@@ -1,0 +1,92 @@
+[
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\20261117_063506",
+    "Files": 1,
+    "Bytes": 875.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\eval_smoke_final_20261117",
+    "Files": 34,
+    "Bytes": 13016812.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\eval_smoke_isolated_20261117",
+    "Files": 34,
+    "Bytes": 13018557.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\evaluation_compact_individuals_20261117",
+    "Files": 65,
+    "Bytes": 47904950.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\evaluation_final_20261117_1v6",
+    "Files": 17,
+    "Bytes": 24712377.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\evaluation_final_isolated_20261117_1v6",
+    "Files": 49,
+    "Bytes": 107613158.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\FINAL-1",
+    "Files": 89,
+    "Bytes": 116498673.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\gpu_hybrid_validation_20261117",
+    "Files": 340,
+    "Bytes": 4010333.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\gpu_integration_20261117",
+    "Files": 31,
+    "Bytes": 16679561.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\gpu_validation_20261117",
+    "Files": 77,
+    "Bytes": 884378.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\human_graphics_smoke",
+    "Files": 3,
+    "Bytes": 3587.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\independent_20261117_141925_385870",
+    "Files": 383,
+    "Bytes": 163353693.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\independent_su1117_02",
+    "Files": 181,
+    "Bytes": 95933912.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\terrain_diagnostics_20261117",
+    "Files": 14,
+    "Bytes": 5212235.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\terrain_final_checks",
+    "Files": 61,
+    "Bytes": 1528840.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\terrain_safety_checks",
+    "Files": 61,
+    "Bytes": 1530746.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\terrain_v2_checks",
+    "Files": 61,
+    "Bytes": 1502548.0
+  },
+  {
+    "Path": "C:\\Users\\khw\\AppData\\Local\\TankGameML\\training\\runs\\terrain_v2_20261117\\sherman75",
+    "Files": 7,
+    "Bytes": 4173653.0
+  }
+]
