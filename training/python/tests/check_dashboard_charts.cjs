@@ -44,3 +44,28 @@ vm.runInContext(filterFuncs, filterContext);
 assert.equal(filterContext.filterPred()(['final/objective:v1/battle', 'urban']), true);
 assert.equal(filterContext.filterPred()(['final/objective:v1/battle', 'open']), false);
 console.log('PASS: final curriculum map variant filtering');
+
+const rateStart = html.indexOf('function trainingRatePoints(');
+const rateEnd = html.indexOf('\nfunction ', rateStart + 1);
+const rateColumns = ['wall_time', 'global_step', 'model', 'tank'];
+const rateContext = vm.createContext({col: name => rateColumns.indexOf(name)});
+vm.runInContext(html.slice(rateStart, rateEnd), rateContext);
+const models = ['tiger1', 'sherman75'];
+const segment = (time, step, model) => Array.from({length: 11}, (_, i) => [time + i, step + 1000 * i, model, 0]);
+const recording = [
+  ...segment(0, 2500000, 'tiger1'),
+  ...segment(11, 800000, 'sherman75'),
+  ...segment(22, 3000000, 'tiger1'),
+  ...segment(33, 2500000, 'tiger1'), // restored checkpoint
+  ...segment(700, 2510000, 'tiger1'), // resumed after an idle gap
+];
+const runRates = (rows, selected = '') => rateContext.trainingRatePoints(rows, selected, models, e => e[1]);
+const rates = runRates(recording);
+const points = rows => Array.from(rows, row => Array.from(row));
+assert.deepEqual(points(rates.decisions), [2510000, 810000, 3010000, 2510000, 2520000].map(x => [x, 1000, true]));
+assert.deepEqual(Array.from(rates.perMinute, p => p[1]), [60, 60, 60, 60, 60]);
+assert.deepEqual(points(runRates(recording, 'sherman75').decisions), [[810000, 1000, true]]);
+const shared = segment(0, 1000000, 'shared').map((row, index) => [row[0], row[1], row[2], index % 2]);
+assert.deepEqual(points(runRates(shared, 'tiger1').decisions), [[1010000, 1000, true]]);
+assert.equal(runRates([[1, 100, 'tiger1', 0], [1, 130, 'tiger1', 0]]).decisions.length, 0);
+console.log('PASS: throughput across tank rotations, rollback, idle gaps and shared-policy episodes');

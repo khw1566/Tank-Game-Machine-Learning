@@ -66,6 +66,27 @@ class V6CurriculumTest(unittest.TestCase):
         self.assertEqual(len(back.metrics["v6_1v3"]["valley@sherman75"]), 1)
         self.assertIsNotNone(json.dumps(back.state()))
 
+    def test_old_assessment_is_archived_without_changing_stage(self):
+        import json, tempfile
+        from pathlib import Path
+        old = v6.V6Curriculum("tiger1", start_stage=1).state()
+        old["reward_version"] = 1
+        old["results"]["v6_1v2"]["valley@tiger1"] = [1, 0, 1]
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory) / "curriculum.json"
+            p.write_text(json.dumps(old), encoding="utf-8")
+            cur = v6.V6Curriculum.load(p, "tiger1")
+        self.assertEqual(cur.stage["id"], "v6_1v2")
+        self.assertFalse(cur.results["v6_1v2"]["valley@tiger1"])
+        self.assertEqual(cur.previous_assessments[0]["results"]["v6_1v2"]["valley@tiger1"], [1, 0, 1])
+        self.assertEqual(cur.history[-1]["reason"], "assessment_upgrade")
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory) / "curriculum.json"
+            cur.save(p)
+            again = v6.V6Curriculum.load(p, "tiger1")
+        self.assertFalse(again.assessment_upgraded)
+        self.assertEqual(len(again.previous_assessments), 1)
+
     def test_episode_review_uses_lower_stage(self):
         cur = v6.V6Curriculum("tiger1", start_stage=3, review_prob=1.0)
         st, lu, extra = cur.build_episode("tiger1", random.Random(1), 7)

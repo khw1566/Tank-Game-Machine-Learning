@@ -17,6 +17,7 @@ const PROTOCOL_VERSION := 1
 const FINAL_BATTLE_VERSION := 1   # 최종 1대6: 지정 지형(custom_ridges·mounds), 생울타리·돌담·건물 배치, 엄폐 보상
 const ATTACK_SHAPING_VERSION := 1
 const V6_VERSION := 1   # V6: 비례 보상(exchange), 규칙 AI 연합군(ctrl "rule"), 적 슬롯 6
+const V6_TACTICS_VERSION := 1  # LOS-aware position, bounded reposition progress and blocked-shot cost
 const EPISODE_FORMAT := "tankgame-train-episode"
 ## 결정(행동 선택) 간격 = 관측 갱신 간격(3틱 = 0.1초, 10Hz)
 const REPEAT := TankAgent.PERCEIVE_EVERY
@@ -150,6 +151,7 @@ func _ready() -> void:
 		"threat_obs_version": ThreatObs.VERSION if threat_inputs else 0, "projectile_version": TrainingProjectileField.VERSION,
 		"pace_version": 1, "perf_version": 1, "final_battle_version": FINAL_BATTLE_VERSION,
 		"attack_shaping_version": ATTACK_SHAPING_VERSION, "exchange_reward_version": 1, "v6_version": V6_VERSION,
+		"v6_tactics_version": V6_TACTICS_VERSION,
 		"fire_line_obs_version": FireLineObs.VERSION if targeting_inputs else 0, "contact_team_flag_version": 1})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 

@@ -21,7 +21,7 @@ from . import battle_curriculum, final_curriculum, scenarios
 from .final_curriculum import FinalCurriculum, MAP_IDS, MAPS, build_map
 
 VERSION = 7                    # curriculum_version (final = 6)
-REWARD_VERSION = 1
+REWARD_VERSION = 2
 BALANCE_VERSION = 3
 TANKS = final_curriculum.TANKS
 ALLIED = ["sherman75", "t34_76"]
@@ -158,7 +158,10 @@ def reward_config(stage: dict) -> dict:
     # 사격 위치 퍼텐셜: 적을 뚫을 수 있는 자리(근접·측면)로 갈수록 +, 적에게 뚫리는 자리일수록 −(변화량만)
     q = float(stage.get("position", 0.0))
     if q > 0:
-        reward["position"] = {"version": 1, "every": 5, "attack": 20.0 * q, "threat": 10.0 * q}
+        reward["position"] = {"version": 2, "every": 5, "attack": 20.0 * q, "threat": 10.0 * q}
+        reward["reposition"] = {"version": 1, "per_m": 0.4 * q, "budget": 20.0 * q,
+                                "open_bonus": 8.0 * q, "stall_after_s": 10.0,
+                                "stall_per_s": 0.1 * q, "blocked_shot": 0.3}
     reward.update(attack)
     reward["combat"].update(friendly_fire=-3.0, friendly_knockout=-60.0)
     return reward
@@ -166,7 +169,7 @@ def reward_config(stage: dict) -> dict:
 
 class V6Curriculum(FinalCurriculum):
     version = VERSION
-    assessment_version = 1
+    assessment_version = 2
     balance_version = BALANCE_VERSION
     reward_version = REWARD_VERSION
     obs = "battle"
@@ -177,6 +180,8 @@ class V6Curriculum(FinalCurriculum):
         super().__init__(tank, review_prob=review_prob, seed=seed, entropy_boost=entropy_boost,
                          entropy_steps=entropy_steps)
         self.stage_idx = int(start_stage)
+        self.previous_assessments = []
+        self.assessment_upgraded = False
         self.results = {s["id"]: {self.key(v, tank): deque(maxlen=200) for v in s["variants"]} for s in STAGES}
         self.metrics = {s["id"]: {self.key(v, tank): deque(maxlen=200) for v in s["variants"]} for s in STAGES}
 
@@ -210,6 +215,7 @@ class V6Curriculum(FinalCurriculum):
                         "reward": reward_config(st), "kind": "combat", "time_limit_s": st["time_limit_s"],
                         "curriculum_version": VERSION, "stageset": "v6-ladder", "map_seed": mc["seed"],
                         "balance_version": BALANCE_VERSION, "final_battle_version": 1, "v6_version": 1,
+                        "v6_tactics_version": 1,
                         "learning_objective": {"id": st["id"], "label": st["label"], "version": REWARD_VERSION}}
 
     def report_battle(self, sid, success, global_step, variant, learner, stats, episode):
@@ -275,7 +281,7 @@ class V6Curriculum(FinalCurriculum):
                 "stage_idx": self.stage_idx, "common_complete": False,
                 "episodes_in_stage": self.episodes_in_stage, "stage_start_step": self.stage_start_step,
                 "branched_from": self.branched_from, "initialized_from": self.initialized_from,
-                "history": self.history,
+                "history": self.history, "previous_assessments": self.previous_assessments,
                 "results": {s: {k: list(v) for k, v in vals.items()} for s, vals in self.results.items()},
                 "metrics": {s: {k: list(v) for k, v in vals.items()} for s, vals in self.metrics.items()},
                 "recent_success": {s: self.success_rate(s, 60) for s in STAGE_IDS}}
@@ -291,6 +297,16 @@ class V6Curriculum(FinalCurriculum):
         c = cls(tank, start_stage=int(state.get("stage_idx", 0)), **kw)
         for name in ("episodes_in_stage", "stage_start_step", "branched_from", "initialized_from", "history"):
             setattr(c, name, state.get(name, getattr(c, name)))
+        c.previous_assessments = state.get("previous_assessments", [])
+        if state.get("reward_version", 1) < REWARD_VERSION:
+            c.assessment_upgraded = True
+            c.previous_assessments.append({k: state.get(k) for k in
+                                          ("reward_version", "results", "metrics", "episodes_in_stage", "stage_start_step")})
+            c.episodes_in_stage = 0
+            c.history.append({"tank": tank, "from": c.stage["id"], "to": c.stage["id"],
+                              "reason": "assessment_upgrade", "reward_version": REWARD_VERSION,
+                              "global_step": 0, "episodes": 0, "success_rate": 0.0})
+            return c
         for name in ("results", "metrics"):
             for sid, vals in state.get(name, {}).items():
                 for k, values in vals.items():

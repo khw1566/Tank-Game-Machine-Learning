@@ -1,7 +1,9 @@
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from dashboard import Dashboard
 
@@ -43,3 +45,12 @@ class DashboardCurriculumTests(unittest.TestCase):
             self.assertFalse((run / "control.jsonl").exists())
             dash.control(run.name, dict(cmd="set_stage", stage="battle_terrain"))
             self.assertEqual(json.loads((run / "control.jsonl").read_text(encoding="utf-8"))["stage"], "battle_terrain")
+
+    def test_exited_process_does_not_hide_live_replacement(self):
+        with tempfile.TemporaryDirectory() as root:
+            dash = self.dashboard(root)
+            dash.procs = {"V6-1": SimpleNamespace(pid=100, poll=lambda: 0)}
+            status = dict(pid=101, phase="collecting", updated=time.time())
+            self.assertTrue(dash.alive("V6-1", status))
+            self.assertFalse(dash.alive("V6-1", status | {"pid": 100}))
+            self.assertFalse(dash.alive("V6-1", status | {"updated": time.time() - 30}))

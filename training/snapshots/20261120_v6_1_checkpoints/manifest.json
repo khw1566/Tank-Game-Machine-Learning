@@ -1,0 +1,120 @@
+{
+  "file_count": 22,
+  "total_bytes": 134169380,
+  "training_state": {
+    "num_timesteps": 13977994
+  },
+  "latest_checkpoint_sha256": "8cc69c46ad9c1b23cdc8f8a62530e33c77bfc71c35a7ab02b26f1bc5107590d3",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 2008,
+      "sha256": "cd287eb197fb1fe7e0a1ac81ad0a8d69efdb5b278d1a89eacc5f1e203dee52cc"
+    },
+    {
+      "path": "runs/V6-1/opponents/shared/step_001743804.zip",
+      "bytes": 6290247,
+      "sha256": "a137f84152ea88a6d2af225b631611bb58e843e58192032950110aac484b96c1"
+    },
+    {
+      "path": "runs/V6-1/opponents/sherman75/step_009200014.zip",
+      "bytes": 6410625,
+      "sha256": "bb5509557cabc512f42412aa71b386976ea513c9a5a35502f2136af8686ba14a"
+    },
+    {
+      "path": "runs/V6-1/opponents/t34_76/step_007826364.zip",
+      "bytes": 6410631,
+      "sha256": "2d020224eeb42f1c2212d873f1132a6f51aa3cc858ce53ff89c80665e8aa87b9"
+    },
+    {
+      "path": "runs/V6-1/opponents/tiger1/step_013977994.zip",
+      "bytes": 6410626,
+      "sha256": "8cc69c46ad9c1b23cdc8f8a62530e33c77bfc71c35a7ab02b26f1bc5107590d3"
+    },
+    {
+      "path": "runs/V6-1/sherman75/checkpoint.json",
+      "bytes": 236,
+      "sha256": "17a31ecf0663ba5eddd1d3603c01c0f7266a3b54560f168e96512b78b21c92f8"
+    },
+    {
+      "path": "runs/V6-1/sherman75/checkpoints/step_009200014_20261120_085919_222466_9897bc/curriculum.json",
+      "bytes": 211874,
+      "sha256": "c10014e7a2a806993eabefdfd53b47cc433e386f731a86150401d13bd0f72188"
+    },
+    {
+      "path": "runs/V6-1/sherman75/checkpoints/step_009200014_20261120_085919_222466_9897bc/metadata.json",
+      "bytes": 225,
+      "sha256": "4ce872fec14fb41befa6d517a1bce4169d118a95bae0b5d21394030ccf8994d9"
+    },
+    {
+      "path": "runs/V6-1/sherman75/checkpoints/step_009200014_20261120_085919_222466_9897bc/model.zip",
+      "bytes": 6410625,
+      "sha256": "bb5509557cabc512f42412aa71b386976ea513c9a5a35502f2136af8686ba14a"
+    },
+    {
+      "path": "runs/V6-1/sherman75/curriculum.json",
+      "bytes": 211874,
+      "sha256": "c10014e7a2a806993eabefdfd53b47cc433e386f731a86150401d13bd0f72188"
+    },
+    {
+      "path": "runs/V6-1/t34_76/checkpoint.json",
+      "bytes": 236,
+      "sha256": "fbc7162060e60376edcd939a50e4a0e27c85cd8841e62fbf4363feb085c8097e"
+    },
+    {
+      "path": "runs/V6-1/t34_76/checkpoints/step_007826364_20261120_080320_090405_63e4aa/curriculum.json",
+      "bytes": 108785,
+      "sha256": "0abb8e5a96f48cf0e8098be8dfa3cddcfed945524f41d6cc92adcd518ab0731c"
+    },
+    {
+      "path": "runs/V6-1/t34_76/checkpoints/step_007826364_20261120_080320_090405_63e4aa/metadata.json",
+      "bytes": 225,
+      "sha256": "7e68124d9583ba481942daadf5f06417832fc7a3f03509dfe505bc117f5b56c7"
+    },
+    {
+      "path": "runs/V6-1/t34_76/checkpoints/step_007826364_20261120_080320_090405_63e4aa/model.zip",
+      "bytes": 6410631,
+      "sha256": "2d020224eeb42f1c2212d873f1132a6f51aa3cc858ce53ff89c80665e8aa87b9"
+    },
+    {
+      "path": "runs/V6-1/t34_76/curriculum.json",
+      "bytes": 108785,
+      "sha256": "0abb8e5a96f48cf0e8098be8dfa3cddcfed945524f41d6cc92adcd518ab0731c"
+    },
+    {
+      "path": "runs/V6-1/tiger1/checkpoint.json",
+      "bytes": 237,
+      "sha256": "c4d1086932b9296f14d20ef8b3509218a66441d7d1d8600372c132ee983f27ae"
+    },
+    {
+      "path": "runs/V6-1/tiger1/checkpoints/step_013977994_20261120_084745_635979_3e2861/curriculum.json",
+      "bytes": 218266,
+      "sha256": "fb642be08b89542ff81b0805b155970d6cc80a3716182a9e48603dcf02063b22"
+    },
+    {
+      "path": "runs/V6-1/tiger1/checkpoints/step_013977994_20261120_084745_635979_3e2861/metadata.json",
+      "bytes": 226,
+      "sha256": "e6a37eefd83321072e756a6722f25187d7b920dba7e9e74e504b735a443e426f"
+    },
+    {
+      "path": "runs/V6-1/tiger1/checkpoints/step_013977994_20261120_084745_635979_3e2861/model.zip",
+      "bytes": 6410626,
+      "sha256": "8cc69c46ad9c1b23cdc8f8a62530e33c77bfc71c35a7ab02b26f1bc5107590d3"
+    },
+    {
+      "path": "runs/V6-1/tiger1/curriculum.json",
+      "bytes": 218266,
+      "sha256": "fb642be08b89542ff81b0805b155970d6cc80a3716182a9e48603dcf02063b22"
+    },
+    {
+      "path": "runtime/TankGame_v6_tactics_v2.exe",
+      "bytes": 88332656,
+      "sha256": "595db6734e125c27849038e53f50aff3a15336759116f8d3a23cc90bcf11bc87"
+    },
+    {
+      "path": "training_state.json",
+      "bytes": 1470,
+      "sha256": "1ca315ba09fcc84dbe62f1fcfc9ccddfe43e4d1f1dc5677906553b41430e1c08"
+    }
+  ]
+}

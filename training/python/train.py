@@ -99,11 +99,11 @@ def parse():
     ap.add_argument("--batch-size", type=int, default=None,
                     help="PPO 갱신 배치(새 정책 최대 2048, 재개 시 생략하면 기존 값)")
     ap.add_argument("--n-epochs", type=int, default=None, help="PPO 갱신 반복(새 정책 8)")
-    ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--lr", type=float, default=None, help="학습률. 지정하면 재개 모델에도 적용, 생략하면 저장값 유지(새 모델 0.0003)")
     ap.add_argument("--ent-coef", type=float, default=0.001,
                     help="행동을 −1~1 로 자르는 구조에서는 잡음을 키워도 손해가 없어 큰 값이 잡음만 키운다")
-    ap.add_argument("--gamma", type=float, default=0.995, help="할인율(결정 10Hz, 0.995 ≈ 반감기 14초). 이어받는 모델에도 적용")
-    ap.add_argument("--gae-lambda", type=float, default=0.97, help="GAE λ. 이어받는 모델에도 적용")
+    ap.add_argument("--gamma", type=float, default=None, help="할인율. 기본 V6=0.999(반감기 69초), 나머지=0.995. 재개에도 적용")
+    ap.add_argument("--gae-lambda", type=float, default=None, help="GAE λ. 기본 V6=0.995, 나머지=0.97. 재개에도 적용")
     ap.add_argument("--sde-freq", type=int, default=20, help="gSDE 탐색 잡음을 몇 결정마다 다시 뽑을지(20 = 2초)")
     ap.add_argument("--speed-cap", type=float, default=0.0,
                     help="실시간 대비 최대 배속(모든 환경 합, 0 = 무제한). PC 를 같이 쓸 때 낮춘다")
@@ -151,6 +151,7 @@ def write_manifest(run_dir: Path, args, env: GodotVecEnv, runtime: dict) -> None
                                 "assessment_version": getattr(env.curriculum, "assessment_version", 1),
                                 "balance_version": getattr(env.curriculum, "balance_version", 1),
                                 "reward_version": getattr(env.curriculum, "reward_version", 1),
+                                "v6_tactics_version": env.procs[0].hello.get("v6_tactics_version", 0),
                                 "terrain_courses": COURSES,
                                 "physics_hz": env.procs[0].hello.get("physics_hz")},
                                ensure_ascii=False, indent=1), encoding="utf-8")
@@ -163,12 +164,18 @@ def build_model(args, env, checkpoint: Path | None = None):
     from tankrl.rollout_buffer import CudaRolloutBuffer
     from tankrl.hybrid_ppo import HybridPPO
 
+    if args.gamma is None:
+        args.gamma = 0.999 if args.curriculum == "v6" else 0.995
+    if args.gae_lambda is None:
+        args.gae_lambda = 0.995 if args.curriculum == "v6" else 0.97
     device = args.resolved_device
     algorithm = HybridPPO if device.startswith("cuda") and args.device in ("auto", "hybrid") else PPO
     buffer_class = CudaRolloutBuffer if device.startswith("cuda") else RolloutBuffer
     overrides = {k: getattr(args, k) for k in ("n_steps", "batch_size", "n_epochs")
                  if getattr(args, k) is not None}
     overrides.update(gamma=args.gamma, gae_lambda=args.gae_lambda, ent_coef=args.ent_coef)
+    if args.lr is not None:
+        overrides["learning_rate"] = args.lr
     if checkpoint is not None:
         if getattr(getattr(env, "curriculum", None), "version", 0) == v6_curriculum.VERSION:
             from tankrl.input_migration import migrate_for_env
@@ -189,7 +196,7 @@ def build_model(args, env, checkpoint: Path | None = None):
     return algorithm("MlpPolicy", env, n_steps=n_steps,
                # 큰 롤아웃(환경 100개 이상)은 큰 미니배치가 GPU 에서 빠르고 기울기 잡음도 적다
                batch_size=args.batch_size or min(8192 if n_steps * env.num_envs >= 65536 else 2048, n_steps * env.num_envs),
-               learning_rate=args.lr, gamma=args.gamma, gae_lambda=args.gae_lambda,
+               learning_rate=args.lr if args.lr is not None else 3e-4, gamma=args.gamma, gae_lambda=args.gae_lambda,
                ent_coef=args.ent_coef, clip_range=0.2, n_epochs=args.n_epochs or 8,
                # 새 정책 기본 = 행동별 표준편차(상한이 실제 행동 잡음에 그대로 적용된다).
                # gSDE 는 잡음 = 특징값 × 행렬이라 행렬을 제한해도 실제 잡음이 커질 수 있었다(V4RUN 1~3 에서 확인).
@@ -381,7 +388,7 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             write_json_atomic(tdir / "branch.json", {"source": branched[2], "source_checkpoint": branched[3],
                                                      "source_model": str(branched[0]), "tank": tank,
                                                      "start_stage": cur.stage["id"]})
-        if cur.history and cur.history[-1].get("reason") == "assessment_upgrade":
+        if cur.history and cur.history[-1].get("reason") == "assessment_upgrade" and (not v6 or cur.assessment_upgraded):
             cur.stage_start_step = model.num_timesteps
             cur.history[-1]["global_step"] = model.num_timesteps
             print(f"[curriculum] 평가 v{cur.assessment_version}: 기존 모델을 유지하고 {cur.stage['id']}부터 진행합니다", flush=True)
@@ -425,6 +432,10 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     def stage_success() -> float | None:
         """현재 단계 성공률: 기록이 있는 변형 × 전차의 최근 40판 평균(없으면 None)."""
         sid = cur.stage["id"]
+        # On a fresh assessment, quick wins finish before 150-second timeouts.
+        # Do not promote that biased first handful of games to a rollback target.
+        if v6 and any(len(values) < 40 for values in cur.results[sid].values()):
+            return None
         if hasattr(cur, "variant_rates"):
             rates = [v for k, v in cur.variant_rates(sid, 40).items() if cur.results[sid][k]]
             return round(sum(rates) / len(rates), 4) if rates else None
@@ -456,7 +467,7 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
                   rollback_count=target["count"])
         env.log_stage_change(ev)
         ctl.note(f"자동 복구: {', '.join(result['reasons'])} → step {target['step']:,} ({target['count']}/{target['limit']})")
-    if cur.history and cur.history[-1].get("reason") == "assessment_upgrade":
+    if cur.history and cur.history[-1].get("reason") == "assessment_upgrade" and (not v6 or cur.assessment_upgraded):
         env.log_stage_change(cur.history[-1])
 
     class Cb(BaseCallback):

@@ -96,6 +96,7 @@ var _ex_lost := [0.0, 0.0]    # 팀별 누적 전력 손실(0~1)
 # V6 사격 위치 퍼텐셜(config.reward.position): 지금 자리에서 적을 뚫을 확률 − 적이 나를 뚫을 확률. 변화량만 보상.
 var _pos_phi := {}
 static var _pen_cache := {}
+var _firing_progress: FiringPositionProgress
 
 
 func _init(p_env, overrides := {}) -> void:
@@ -106,6 +107,8 @@ func _init(p_env, overrides := {}) -> void:
 	model = RewardModel.new(w.combat)
 	if bool(w.get("progressive_combat_v2", false)):
 		_combat_progress = CombatProgress.new(w)
+	if not w.get("reposition", {}).is_empty():
+		_firing_progress = FiringPositionProgress.new(env, w.reposition)
 
 
 func config_kind() -> String:
@@ -235,6 +238,8 @@ func on_shot(shooter: Tank, r: Dictionary) -> void:
 				_add(str(shooter.name), float(bonus.value), str(bonus.reason))
 	for e in model.shot_rewards(shooter.name, shooter.team, target, tteam, r):
 		_add(e.tank, float(e.value) * float(w.event_scale), str(e.reason))
+	if _firing_progress != null and not r.get("hit", false) and str(r.get("blocked_by", "none")) != "none":
+		_add(shooter.name, -float(w.reposition.get("blocked_shot", 0.3)), "blocked_shot")
 	if bool(w.get("battle_shaping", false)) and not r.get("hit", false):
 		var near: Dictionary = r.get("near_miss", {})
 		if _combat_progress != null:
@@ -278,6 +283,9 @@ func decision() -> Dictionary:
 		var position: Dictionary = w.get("position", {})
 		if not position.is_empty() and env.decisions % int(position.get("every", 5)) == 0:
 			_position_step(position)
+		if _firing_progress != null and env.decisions % 5 == 0 and me.damage.is_combat_effective():
+			for bonus in _firing_progress.step(me, float(env.tick) / Engine.physics_ticks_per_second, dt * 5.0):
+				_add(me.name, float(bonus.value), str(bonus.reason))
 		if env.decisions % every == 0:
 			if cover.is_empty():
 				_sc_exposure(me, dt * 5.0)
@@ -960,14 +968,20 @@ func _position_step(cfg: Dictionary) -> void:
 		for e in env.tanks:
 			if e.team == t.team or not e.damage.is_combat_effective():
 				continue
-			attack = maxf(attack, pen_chance(t, e))
-			threat = maxf(threat, pen_chance(e, t))
+			var can_fire := 1.0
+			var can_threaten := 1.0
+			if int(cfg.get("version", 1)) >= 2 and _firing_progress != null:
+				can_fire = _firing_progress.clear_fraction(t, e, t.global_position)
+				can_threaten = _firing_progress.clear_fraction(e, t, e.global_position)
+			attack = maxf(attack, pen_chance(t, e) * can_fire)
+			threat = maxf(threat, pen_chance(e, t) * can_threaten)
 		var phi := float(cfg.get("attack", 20.0)) * attack - float(cfg.get("threat", 10.0)) * threat
 		if _pos_phi.has(t.name):
 			var d: float = phi - float(_pos_phi[t.name])
-			if absf(d) > 0.0001:
+			# v2 pays only a new episode best; opening/closing a sightline cannot farm rewards.
+			if d > 0.0001 or (int(cfg.get("version", 1)) < 2 and absf(d) > 0.0001):
 				_add(t.name, d, "position")
-		_pos_phi[t.name] = phi
+		_pos_phi[t.name] = maxf(phi, float(_pos_phi.get(t.name, phi))) if int(cfg.get("version", 1)) >= 2 else phi
 
 
 ## shooter 가 지금 자리에서 target 의 차체 상부를 쐈을 때 관통 확률(25m·5° 단위로 기억)

@@ -1,0 +1,40 @@
+{
+  "source_run": "V6-1",
+  "curriculum": "v6",
+  "reward_version": 2,
+  "num_timesteps": 13977994,
+  "models": {
+    "tiger1": {
+      "num_timesteps": 13977994,
+      "stage": "v6_1v1",
+      "created": "2026-11-20T08:47:45.684722+09:00",
+      "sha256": "8cc69c46ad9c1b23cdc8f8a62530e33c77bfc71c35a7ab02b26f1bc5107590d3",
+      "model": "runs/V6-1/tiger1/checkpoints/step_013977994_20261120_084745_635979_3e2861/model.zip",
+      "sb3": "2.9.2"
+    },
+    "sherman75": {
+      "num_timesteps": 9200014,
+      "stage": "v6_1v1",
+      "created": "2026-11-20T08:59:19.280699+09:00",
+      "sha256": "bb5509557cabc512f42412aa71b386976ea513c9a5a35502f2136af8686ba14a",
+      "model": "runs/V6-1/sherman75/checkpoints/step_009200014_20261120_085919_222466_9897bc/model.zip",
+      "sb3": "2.9.2"
+    },
+    "t34_76": {
+      "num_timesteps": 7826364,
+      "stage": "v6_1v1",
+      "created": "2026-11-20T08:03:20.146956+09:00",
+      "sha256": "2d020224eeb42f1c2212d873f1132a6f51aa3cc858ce53ff89c80665e8aa87b9",
+      "model": "runs/V6-1/t34_76/checkpoints/step_007826364_20261120_080320_090405_63e4aa/model.zip",
+      "sb3": "2.9.2"
+    }
+  },
+  "reference_opponent": {
+    "file": "runs/V6-1/opponents/shared/step_001743804.zip",
+    "sha256": "a137f84152ea88a6d2af225b631611bb58e843e58192032950110aac484b96c1"
+  },
+  "runtime": {
+    "file": "runtime/TankGame_v6_tactics_v2.exe",
+    "sha256": "595db6734e125c27849038e53f50aff3a15336759116f8d3a23cc90bcf11bc87"
+  }
+}

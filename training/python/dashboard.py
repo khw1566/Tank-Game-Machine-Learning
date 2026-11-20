@@ -92,8 +92,7 @@ def default_combat_godot(final: bool = False) -> str:
 
 
 def default_v6_godot() -> str:
-    """V6 게임(비례 보상·적 슬롯 6·balance v3). 없으면 기대 경로를 돌려준다(시작할 때 '없음' 안내)."""
-    return str(HERE.parents[1] / "build" / "TankGame_v6.exe")
+    return str(HERE.parents[1] / "build" / "TankGame_v6_tactics_v2.exe")
 
 
 def num(v: str):
@@ -422,7 +421,11 @@ class Dashboard:
     def alive(self, run: str, status: dict) -> bool:
         p = self.procs.get(run)
         if p is not None:
-            return p.poll() is None
+            if p.poll() is None:
+                return True
+            # A replacement launched outside this dashboard can own the same run.
+            if not status.get("pid") or status["pid"] == p.pid:
+                return False
         if not status or status.get("phase") == "stopped":
             return False
         age = time.time() - float(status.get("updated", 0))
