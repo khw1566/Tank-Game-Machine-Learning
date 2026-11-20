@@ -9,7 +9,7 @@ extends Node
 ##   → 기록된 (관측, 행동) 쌍은 정책이 그대로 낼 수 있는 행동이다(행동 복제 정답).
 ## - 관측은 같은 결정 시점에 학습 전차와 같은 함수(_observation)로 만든다.
 ##
-## 조작: W/S 전후진 · Q/A 왼쪽 궤도 · E/D 오른쪽 궤도 · Space 제동 · 마우스 조준 · 좌클릭/F 발사
+## 조작: W/S 전후진 · A/D 방향(안쪽 궤도를 멈춰 선회) · Space 제동 · 마우스 조준 · 좌클릭/F 발사
 ##       Shift 포수 조준경 ↔ 3인칭 · B 전차장 · 우클릭/C(3인칭) 둘러보기 · 휠 배율 · 1/2/3 탄종
 ##       Esc/P 일시정지
 
@@ -32,6 +32,15 @@ var _prev_fov := 0.0
 var _result_text := ""
 ## 자동 시험용(--human-autopilot): 사람 대신 전진·선회·주기 사격 입력을 넣는다
 var autopilot := "--human-autopilot" in OS.get_cmdline_user_args()
+## 사격 표시: 예광탄(비행 중인 포탄), 탄착 표시, 포구 섬광, 사격 기록
+var _tracer := MeshInstance3D.new()
+var _tracer_mesh := ImmediateMesh.new()
+var _marks: Array = []
+var _shot_log: Array = []
+var log_label: Label
+var _flash: OmniLight3D
+var _flash_t := 0.0
+var _layer: CanvasLayer
 
 
 func _ready() -> void:
@@ -52,11 +61,13 @@ func _ready() -> void:
 	camera.reticle.free()
 	camera.reticle = null
 	camera.centered_pointer = true
-	camera.set_process_unhandled_input(false)
 	add_child(camera)
+	# 입력은 _input 에서 한 번만 넘긴다(add_child 뒤에 꺼야 _ready 가 다시 켜지 않는다: Shift·휠 이중 처리 방지)
+	camera.set_process_unhandled_input(false)
 	camera.current = true
 	var layer := CanvasLayer.new()
 	add_child(layer)
+	_layer = layer
 	reticle = HumanPilotReticle.new()
 	reticle.rig = camera
 	reticle.pilot = self
@@ -77,6 +88,33 @@ func _ready() -> void:
 	banner.add_theme_color_override("font_outline_color", Color.BLACK)
 	banner.add_theme_constant_override("outline_size", 6)
 	layer.add_child(banner)
+	log_label = Label.new()
+	log_label.anchor_top = 1.0
+	log_label.anchor_bottom = 1.0
+	log_label.offset_left = 120
+	log_label.offset_top = -190
+	log_label.offset_right = 900
+	log_label.offset_bottom = -12
+	log_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	log_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	log_label.add_theme_font_size_override("font_size", 17)
+	log_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	log_label.add_theme_constant_override("outline_size", 5)
+	layer.add_child(log_label)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_tracer.mesh = _tracer_mesh
+	_tracer.material_override = mat
+	_tracer.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_tracer)
+	_flash = OmniLight3D.new()
+	_flash.light_color = Color(1.0, 0.8, 0.45)
+	_flash.omni_range = 14.0
+	_flash.light_energy = 0.0
+	add_child(_flash)
 	DisplayServer.window_set_title("Tank Game · 실제 전투 시범 수집 (행동 복제)")
 
 
@@ -102,6 +140,16 @@ func bind(p_env: Node, p_tank: Tank, p_agent: TankAgent) -> void:
 	_result_text = ""
 	_prev_look = _look_state()
 	_prev_fov = agent.view.fov()
+	for m in _marks:
+		m.node.queue_free()
+		if m.label != null:
+			m.label.queue_free()
+	_marks.clear()
+	for t in env.tanks:
+		if not t.shot_fired.is_connected(_on_shot):
+			t.shot_fired.connect(_on_shot)
+	if not tank.shot_launched.is_connected(_on_launch):
+		tank.shot_launched.connect(_on_launch)
 	_show_banner()
 
 
@@ -111,7 +159,7 @@ func blocks_time() -> bool:
 
 ## 결정 시점마다 1회: 사람 입력 → 정책 공간 행동 11개(-1~1, 양자화 전)
 func sample() -> Array:
-	var keys := _autopilot_keys() if autopilot else KeyboardController.read()
+	var keys := _autopilot_keys() if autopilot else _read_keys()
 	var looking := camera.is_free_look_pressed() or camera.mode == TankView.COMMANDER
 	camera.pointer_active = true
 	camera.update_pointer(tank)
@@ -148,13 +196,191 @@ func sample() -> Array:
 	return raw
 
 
+## 사람용 키 배치: W/S 스로틀, A/D 방향.
+## 달리면서 A/D = 안쪽 궤도를 멈추고 바깥 궤도로 민다(그쪽을 축으로 선회).
+## 멈춰서 A/D = 제자리 선회 가능 전차(티거)는 두 궤도를 반대로, 아니면 바깥 궤도만 지금 기어 방향으로(후진으로 바뀌지 않게).
+## 결과는 정책이 낼 수 있는 궤도 명령(-1~1) 그대로다.
+func _read_keys() -> TankControlInput:
+	var c := KeyboardController.read()
+	var t := KeyboardController._axis(KEY_W, KEY_S)
+	var s := KeyboardController._axis(KEY_D, KEY_A)
+	if t != 0.0:
+		c.left_track = 0.0 if s < 0.0 else t
+		c.right_track = 0.0 if s > 0.0 else t
+	elif s != 0.0:
+		if tank.spec.neutral_steer:
+			c.left_track = s
+			c.right_track = -s
+		else:
+			var g := float(tank.gear if tank.gear != 0 else 1)
+			c.left_track = g if s > 0.0 else 0.0
+			c.right_track = g if s < 0.0 else 0.0
+	else:
+		c.left_track = 0.0
+		c.right_track = 0.0
+	return c
+
+
+func _on_launch(shooter: Tank, _result: Dictionary) -> void:
+	if shooter == tank:
+		_flash.global_position = tank.muzzle_position()
+		_flash_t = 0.09
+		_flash.light_energy = 6.0
+
+
+func _on_shot(shooter: Tank, r: Dictionary) -> void:
+	if tank == null or not is_instance_valid(tank):
+		return
+	var mine := shooter == tank
+	var at_me := str(r.get("target_name", "")) == str(tank.name)
+	var hp: Array = r.get("hit_pos", [])
+	var outcome := _outcome(r)
+	var color: Color = {"관통": Color(1.0, 0.25, 0.15), "격파": Color(1.0, 0.1, 0.6), "도탄": Color(0.4, 0.8, 1.0),
+		"비관통": Color(1.0, 0.85, 0.2)}.get(outcome, Color(0.85, 0.85, 0.8))
+	if hp.size() == 3 and (mine or at_me):
+		_add_mark(Vector3(hp[0], hp[1], hp[2]), color, outcome if mine else "", 1.0 if mine else 0.6)
+	if not (mine or at_me):
+		return
+	var who := _tank_label(str(r.get("target_name", ""))) if mine else _tank_label(str(shooter.name))
+	var zone := _zone_label(str(r.get("zone", "")))
+	var dist := float(r.get("distance_m", 0.0))
+	var src: Array = r.get("from", [])
+	if dist <= 0.0 and hp.size() == 3 and src.size() == 3:
+		dist = Vector3(src[0], src[1], src[2]).distance_to(Vector3(hp[0], hp[1], hp[2]))
+	var line := ""
+	if mine:
+		line = "▶ 내 사격: %s" % outcome
+		if bool(r.get("hit", false)):
+			line += " · %s %s" % [who, zone]
+		elif outcome == "엄폐물에 막힘":
+			line += " (%s)" % str(r.get("blocked_by"))
+	else:
+		line = "◀ 피격: %s · %s 의 사격 · %s" % [outcome, who, zone]
+	if dist > 0.0:
+		line += " · %d m" % int(dist)
+	_shot_log.append([line, color])
+	if _shot_log.size() > 6:
+		_shot_log.pop_front()
+	print("[demo] ", line)
+
+
+func _outcome(r: Dictionary) -> String:
+	if not bool(r.get("hit", false)):
+		var b := str(r.get("blocked_by", "none"))
+		return "빗나감" if b == "none" or b == "" else ("지면" if "ground" in b.to_lower() or "terrain" in b.to_lower() else "엄폐물에 막힘")
+	for e in r.get("events", []):
+		if str(e).begins_with("knocked_out"):
+			return "격파"
+	if bool(r.get("penetrated", false)):
+		return "관통"
+	if bool(r.get("ricochet", false)):
+		return "도탄"
+	return "비관통"
+
+
+func _tank_label(n: String) -> String:
+	for t in env.tanks:
+		if str(t.name) == n:
+			return t.spec.display_name if t.spec.display_name != "" else t.spec.id
+	return n
+
+
+static func _zone_label(z: String) -> String:
+	if z == "":
+		return ""
+	var out := z
+	for pair in [["hull", "차체"], ["turret", "포탑"], ["mantlet", "포 방패"], ["front", "정면"], ["side", "측면"],
+			["rear", "후면"], ["roof", "상면"], ["upper", "상부"], ["lower", "하부"], ["track", "궤도"], ["_", " "]]:
+		out = out.replace(pair[0], pair[1])
+	return out
+
+
+func _add_mark(pos: Vector3, color: Color, text: String, size: float) -> void:
+	var root := Node3D.new()
+	add_child(root)
+	root.global_position = pos
+	var ball := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.5 * size
+	sphere.height = 1.0 * size
+	ball.mesh = sphere
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = color
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ball.material_override = m
+	ball.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(ball)
+	var label: Label = null
+	if text != "":
+		# 화면 글씨(조준경 배율과 무관하게 같은 크기): 탄착 지점 위에 띄운다
+		label = Label.new()
+		label.text = text
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.add_theme_font_size_override("font_size", 20)
+		label.add_theme_color_override("font_color", color)
+		label.add_theme_color_override("font_outline_color", Color.BLACK)
+		label.add_theme_constant_override("outline_size", 6)
+		_layer.add_child(label)
+	_marks.append({"node": root, "mat": m, "t": 0.0, "life": 6.0, "label": label, "pos": pos})
+
+
+func _update_effects(delta: float) -> void:
+	if _flash_t > 0.0:
+		_flash_t -= delta
+		if _flash_t <= 0.0:
+			_flash.light_energy = 0.0
+	var keep := []
+	for mk in _marks:
+		mk.t += delta
+		var f: float = 1.0 - float(mk.t) / float(mk.life)
+		if f <= 0.0:
+			mk.node.queue_free()
+			if mk.label != null:
+				mk.label.queue_free()
+			continue
+		if mk.label != null:
+			var behind := camera.is_position_behind(mk.pos)
+			mk.label.visible = not behind
+			if not behind:
+				mk.label.position = camera.unproject_position(mk.pos) + Vector2(-24, -44 - mk.t * 10.0)
+			mk.label.modulate.a = f
+		mk.mat.albedo_color.a = f
+		mk.node.scale = Vector3.ONE * (1.0 + mk.t * 1.5)
+		keep.append(mk)
+	_marks = keep
+	_tracer_mesh.clear_surfaces()
+	var field = env.projectiles if env != null else null
+	if field == null or field.active.is_empty():
+		return
+	var eye := camera.global_position
+	_tracer_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for pr in field.active:
+		var shooter = pr.shooter.get_ref()
+		var head: Vector3 = pr.pos
+		var vel: Vector3 = pr.velocity
+		var dir := vel.normalized()
+		var tail := head - dir * minf(35.0, maxf(float(pr.distance), 0.5))
+		var dist := eye.distance_to(head)
+		var w := clampf(dist * 0.0025, 0.06, 2.5)
+		var side := dir.cross(eye - head).normalized() * w
+		var c := Color(1.0, 0.75, 0.3) if shooter == tank else Color(1.0, 0.4, 0.3)
+		var c0 := Color(c, 0.0)
+		for v in [[tail - side, c0], [head - side, c], [head + side, c], [tail - side, c0], [head + side, c], [tail + side, c0]]:
+			_tracer_mesh.surface_set_color(v[1])
+			_tracer_mesh.surface_add_vertex(v[0])
+	_tracer_mesh.surface_end()
+
+
 func _autopilot_keys() -> TankControlInput:
 	var k := decisions
 	var shot_dir := OS.get_environment("TANKGAME_DEMO_SHOTS")
-	if shot_dir != "" and k in [60, 90, 180]:
+	if shot_dir != "" and k in [60, 61, 62, 90, 101, 102, 141, 180]:
 		get_viewport().get_texture().get_image().save_png(shot_dir.path_join("demo_%03d_%s.png" % [k, TankView.MODE_LABELS[agent.view.mode]]))
 	if k == 100:
 		camera.set_mode(TankView.THIRD)
+	if k == 95:
+		camera._pointer_motion += Vector2(0, -40)
 	if k == 40:
 		camera._pointer_motion += Vector2(-120, 0)   # 마우스를 왼쪽으로 민 것처럼: 포탑이 따라 돈다
 	var c := TankControlInput.new()
@@ -223,6 +449,13 @@ func _process(delta: float) -> void:
 	if not waiting:
 		camera.update_pointer(tank)
 	reticle.queue_redraw()
+	_update_effects(delta)
+	var lines := []
+	for e in _shot_log:
+		lines.append(e[0])
+	log_label.text = "\n".join(lines)
+	if not _shot_log.is_empty():
+		log_label.add_theme_color_override("font_color", _shot_log[-1][1])
 	var d := tank.damage
 	var seen := 0
 	for n in agent.perception.contacts:
@@ -237,6 +470,6 @@ func _process(delta: float) -> void:
 			absf(tank.forward_speed()) * 3.6, tank.gear, d.status_label(), d.ammo_remaining,
 			"장전 완료" if tank.reload_timer <= 0.0 and d.can_fire() else "재장전 %.1fs" % tank.reload_timer],
 		"보이는 적 %d" % seen,
-		"W/S 전후진 · Q/A·E/D 궤도 · Space 제동 · 마우스 조준 · 좌클릭/F 발사 · Shift 포수↔3인칭 · B 전차장 · 우클릭/C 둘러보기 · 휠 배율 · 1/2/3 탄종 · Esc 일시정지"])
+		"W/S 전후진 · A/D 방향 · Space 제동 · 마우스 조준 · 좌클릭/F 발사 · Shift 포수↔3인칭 · B 전차장 · 우클릭/C 둘러보기 · 휠 배율 · 1/2/3 탄종 · Esc 일시정지"])
 	if waiting and banner.text == "":
 		_show_banner()
