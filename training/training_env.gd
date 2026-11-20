@@ -19,6 +19,7 @@ const ATTACK_SHAPING_VERSION := 1
 const V6_VERSION := 1   # V6: 비례 보상(exchange), 규칙 AI 연합군(ctrl "rule"), 적 슬롯 6
 const V6_TACTICS_VERSION := 1  # LOS-aware position, bounded reposition progress and blocked-shot cost
 const EPISODE_FORMAT := "tankgame-train-episode"
+const HUMAN_DEMO_VERSION := 1  # ctrl "human": 창 모드 실제 전투 시범(관측·정책 공간 행동을 Python 으로 보낸다)
 ## 결정(행동 선택) 간격 = 관측 갱신 간격(3틱 = 0.1초, 10Hz)
 const REPEAT := TankAgent.PERCEIVE_EVERY
 const TASK_SIZE := 8
@@ -71,6 +72,11 @@ var active := false
 var done := false
 var time_limit_ticks := 0
 var view_lock := -1
+## 실제 전투 시범(ctrl "human"): 창 모드에서 사람이 조종하는 전차 1대
+var _pilot: HumanPilot
+var _human_idx := -1
+var _human_obs := PackedFloat32Array()
+var _human_actions: Array = []
 var _last_actions: Array = []    # ext 순서, 각 11개(양자화·변환된 값)
 var _act_bytes := PackedByteArray()
 var _rew_bytes := PackedByteArray()
@@ -151,7 +157,7 @@ func _ready() -> void:
 		"threat_obs_version": ThreatObs.VERSION if threat_inputs else 0, "projectile_version": TrainingProjectileField.VERSION,
 		"pace_version": 1, "perf_version": 1, "final_battle_version": FINAL_BATTLE_VERSION,
 		"attack_shaping_version": ATTACK_SHAPING_VERSION, "exchange_reward_version": 1, "v6_version": V6_VERSION,
-		"v6_tactics_version": V6_TACTICS_VERSION,
+		"v6_tactics_version": V6_TACTICS_VERSION, "human_demo_version": HUMAN_DEMO_VERSION,
 		"fire_line_obs_version": FireLineObs.VERSION if targeting_inputs else 0, "contact_team_flag_version": 1})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 
@@ -248,6 +254,13 @@ func _send_obs(nrew: int) -> void:
 	_perf_add("obs_build", t0)
 	var tb := Time.get_ticks_usec()
 	var h := {"type": "obs", "tick": tick, "decision": decisions, "done": done, "agents": meta}
+	if _human_idx >= 0:
+		var ht: Tank = tanks[_human_idx]
+		h["human"] = {"name": ht.name, "tank": ht.spec.id, "team": ht.team, "alive": ht.damage.is_combat_effective(),
+			"n": _human_actions.size(), "actions": _human_actions, "reward_total": snappedf(rewarder.total(ht.name), 0.0001)}
+		obs.append_array(_human_obs)
+		_human_obs = PackedFloat32Array()
+		_human_actions = []
 	if done:
 		_end["perf"] = perf_summary()
 		h["episode"] = _end
@@ -329,12 +342,48 @@ func reset_episode(p_config: Dictionary) -> void:
 		if ctrls[i] == "external":
 			ext.append(i)
 			_last_actions.append(_neutral_action())
+	_bind_human()
+	if _spawn_error != "":
+		active = false
+		return
 	if bool(config.get("record", false)):
 		_start_recorder()
 	active = true
 	for ag in agents:
 		ag.update(tanks, 0.0)
 	_record_path_point()
+
+
+func _bind_human() -> void:
+	_human_idx = ctrls.find("human")
+	_human_obs = PackedFloat32Array()
+	_human_actions = []
+	if _human_idx < 0:
+		return
+	if _headless or ctrls.count("human") > 1:
+		_spawn_error = "ctrl human needs a game window and exactly one human tank"
+		return
+	if _pilot == null:
+		_pilot = HumanPilot.new()
+		add_child(_pilot)
+	_pilot.bind(self, tanks[_human_idx], agents[_human_idx])
+
+
+## 결정 시점: 사람 입력 → PPO 와 같은 int8 양자화·변환 → 3틱 유지. 관측은 외부 전차와 같은 시점에 만든다.
+func _human_decide() -> void:
+	var t: Tank = tanks[_human_idx]
+	if not t.damage.is_combat_effective():
+		t.control = TankControlInput.new()
+		return
+	var obs := _observation(_human_idx)
+	var raw := _pilot.sample()
+	var q := []
+	for j in ACT_SIZE:
+		q.append(roundi(clampf(float(raw[j]), -1.0, 1.0) * 127.0) / 127.0)
+	_human_obs.append_array(obs)
+	_human_actions.append(q)
+	_pilot.decisions += 1
+	_pilot.apply(policy_to_action(q, view_lock))
 
 
 func _neutral_action() -> Array:
@@ -566,6 +615,14 @@ func _physics_process(dt: float) -> void:
 	if not _repro.is_empty():
 		_repro_tick(dt)
 		return
+	if _human_idx >= 0 and tick % REPEAT == 0:
+		if tick == 0 or _pilot.blocks_time():
+			# 첫 입력 전·일시정지 중에는 시간을 멈춘다(Python 은 다음 관측을 기다린다)
+			_pilot.sample()
+			if _pilot.blocks_time():
+				return
+		if tick == 0:
+			_human_decide()
 	# 결정 시점(첫 결정은 reset 직후 _serve 안에서 이미 받음): 보상·종료 판정 → 관측 전송 → 다음 행동 수신
 	var tf := Time.get_ticks_usec()
 	if _frame_t > 0:
@@ -575,6 +632,11 @@ func _physics_process(dt: float) -> void:
 		var te := Time.get_ticks_usec()
 		_evaluate()
 		_perf_add("reward", te)
+		if _human_idx >= 0:
+			if done:
+				_pilot.finish(_end)
+			else:
+				_human_decide()
 		if done:
 			_end["perf"] = perf_summary()   # 에피소드 파일에도 남긴다
 			var tff := Time.get_ticks_usec()
@@ -677,6 +739,12 @@ func _advance(dt: float) -> void:
 			"scripted":
 				if alive:
 					a = ag.step_ai(tanks, dt)
+			"human":
+				if alive:
+					ag.update(tanks, dt)
+					a = _pilot.last_raw
+				else:
+					t.control = TankControlInput.new()
 			"mover":
 				ag.update(tanks, dt)
 				a = drivers[t.name].act(t, dt) if alive else []
@@ -686,6 +754,8 @@ func _advance(dt: float) -> void:
 				t.control = TankControlInput.new()
 		if log_now and alive and not a.is_empty():
 			var info := {"controller": ctrls[i], "stage": config.get("stage", ""), "perception": ag.perception.summary()}
+			if ctrls[i] == "human":
+				info["policy"] = "human"
 			if ctrls[i] == "external":
 				info["policy"] = config.get("meta", {}).get("policies", {}).get(t.name, "")
 				info["reward_total"] = snappedf(rewarder.total(t.name), 0.0001)
