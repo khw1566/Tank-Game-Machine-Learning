@@ -13,10 +13,14 @@ from .storage import sha256
 LEGACY_SITUATION_SIZE = 419
 THREAT_INPUT_SIZE = 437
 BATTLE_INPUT_SIZE = THREAT_INPUT_SIZE + 4 * 7 * 6
+V6_INPUT_SIZE = 750
+V6_OCCLUSION_LABELS = [f"cover{slot}.{part}_occluded" for slot in range(6) for part in ("hull", "turret")]
+V6_COVER_INPUT_SIZE = V6_INPUT_SIZE + len(V6_OCCLUSION_LABELS)
 FIRST_LAYERS = ("mlp_extractor.policy_net.0.weight", "mlp_extractor.value_net.0.weight")
 
 
-def expand_fire_inputs(source: Path, observation_space, output_dir: Path, *, allow_battle: bool = False) -> Path:
+def expand_fire_inputs(source: Path, observation_space, output_dir: Path, *, allow_battle: bool = False,
+                       allow_v6_cover: bool = False) -> Path:
     """Create an immutable derivative. The source model and all old input columns stay intact."""
     source = Path(source).resolve()
     data, params, variables = load_from_zip_file(source, device="cpu")
@@ -28,12 +32,15 @@ def expand_fire_inputs(source: Path, observation_space, output_dir: Path, *, all
     if allow_battle:
         supported = supported or (old_shape in ((LEGACY_SITUATION_SIZE,), (THREAT_INPUT_SIZE,))
                                    and new_shape == (BATTLE_INPUT_SIZE,))
+    if allow_v6_cover:
+        supported = supported or (old_shape == (V6_INPUT_SIZE,) and new_shape == (V6_COVER_INPUT_SIZE,))
     if not supported:
         raise ValueError(f"Unsupported policy input migration: {old_shape} -> {new_shape}")
     digest = sha256(source)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    destination = output_dir / f"{digest[:24]}_fire_inputs_{new_shape[0]}.zip"
+    kind = "target_occlusion" if allow_v6_cover else "fire_inputs"
+    destination = output_dir / f"{digest[:24]}_{kind}_{new_shape[0]}.zip"
     if destination.exists():
         return destination
     shapes = set()
@@ -55,7 +62,7 @@ def expand_fire_inputs(source: Path, observation_space, output_dir: Path, *, all
     data["observation_space"] = observation_space
     data["_last_obs"] = None
     data["_last_original_obs"] = None
-    data["input_migration"] = {"version": 1, "source": str(source), "source_sha256": digest,
+    data["input_migration"] = {"version": 3 if allow_v6_cover else 1, "kind": kind, "source": str(source), "source_sha256": digest,
                                "old_size": old_shape[0], "new_size": new_shape[0],
                                "new_columns": "zero", "optimizer": "preserved_with_zero_padded_moments"}
     fd, name = tempfile.mkstemp(prefix="fire_inputs_", suffix=".zip", dir=output_dir)
@@ -157,7 +164,7 @@ def saved_input_size(path: Path) -> int:
 
 
 def migrate_for_env(checkpoint: Path, env, output_dir: Path) -> Path:
-    """체크포인트 입력 크기를 환경에 맞춘다: 419/437 → 605(사격·부위 관측) → 적 슬롯 6(V6)."""
+    """체크포인트 입력을 419/437 → 605 → 750 → 762 순서로 확장한다."""
     import gymnasium as gym
     import numpy as np
     checkpoint = Path(checkpoint).resolve()
@@ -172,19 +179,11 @@ def migrate_for_env(checkpoint: Path, env, output_dir: Path) -> Path:
     if size == target:
         return checkpoint
     labels = list(getattr(env, "obs_labels", []) or [])
+    if target == V6_COVER_INPUT_SIZE:
+        if labels[-len(V6_OCCLUSION_LABELS):] != V6_OCCLUSION_LABELS:
+            raise ValueError("Unexpected V6 target occlusion labels")
+        if size != V6_INPUT_SIZE:
+            base_space = gym.spaces.Box(-np.inf, np.inf, shape=(V6_INPUT_SIZE,), dtype=np.float32)
+            checkpoint = expand_enemy_slots(checkpoint, base_space, labels[:-len(V6_OCCLUSION_LABELS)], output_dir)
+        return expand_fire_inputs(checkpoint, env.observation_space, output_dir, allow_v6_cover=True)
     return expand_enemy_slots(checkpoint, env.observation_space, labels, output_dir)
-
-
-def migrate_pool(pool_dir: Path, env, output_dir: Path) -> list[str]:
-    """상대 풀 스냅숏 중 입력 크기가 다른 것을 같은 이름으로 교체(원본은 output_dir 에 이전본으로 남는다)."""
-    import shutil
-    changed = []
-    for path in sorted(Path(pool_dir).glob("*/step_*.zip")):
-        migrated = migrate_for_env(path, env, output_dir)
-        if migrated != path.resolve():
-            backup = Path(output_dir) / f"pool_original_{path.parent.name}_{path.name}"
-            if not backup.exists():
-                shutil.copy2(path, backup)
-            shutil.copy2(migrated, path)
-            changed.append(f"{path.parent.name}/{path.name}")
-    return changed

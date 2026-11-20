@@ -1,7 +1,7 @@
 """V6 커리큘럼: 티거 1대 vs 연합군, 적 수 사다리(1 → 2 → 3 → 6), 엄폐 맵 5종, 비례 보상(전력 교환).
 
 - 전차 종류마다 모델 하나(티거·셔먼·T-34). 같은 종류 전차들은 그 종류 모델(학습 중이면 과거 스냅숏)을 쓴다.
-- 연합군 일부는 게임의 규칙 AI(ScriptedAI, ctrl "scripted")가 조종한다:
+- 1대1 엄폐 출발에서는 모든 차종이 규칙 AI와 고정 정책을 절반 확률로 만난다. 다대전에서는 연합군 일부를 규칙 AI가 조종한다.
     우회조 = 측면 오프셋을 크게 두고 접근해 근거리에서 사격, 견제조 = 정면에서 중거리 정지 사격.
   학습 전차가 연합군이면 그 전차는 항상 모델이 조종한다.
 - 보상 = 전력 교환(config.reward.exchange, Godot training_reward.gd):
@@ -17,18 +17,21 @@ import math
 import random
 from collections import deque
 
-from . import battle_curriculum, final_curriculum, scenarios
+from . import battle_curriculum, final_curriculum, scenarios, v6_duel_maps
 from .final_curriculum import FinalCurriculum, MAP_IDS, MAPS, build_map
 
 VERSION = 7                    # curriculum_version (final = 6)
-REWARD_VERSION = 2
+REWARD_VERSION = 3
+TARGET_OCCLUSION_VERSION = 1
+ASSESSMENT_VERSION = 4
 BALANCE_VERSION = 3
+DUEL_DRIVE_STD_FLOOR = 0.60
 TANKS = final_curriculum.TANKS
 ALLIED = ["sherman75", "t34_76"]
 
 # 단계별 보조 보상 배율(사다리를 오를수록 결과 보상만 남긴다)
 STAGES = [
-    {"id": "v6_1v1", "label": "V6-1 · 1대1 엄폐 맵", "allies": 1, "rule": [0, 1], "distance": (120, 250),
+    {"id": "v6_1v1", "label": "V6-1 · 1대1 엄폐 출발", "allies": 1, "rule": [0, 1], "distance": v6_duel_maps.DISTANCE,
      "time_limit_s": 150, "shaping": 1.0, "position": 1.0, "envs_per_core": 2.5,
      "promote": {"window": 60, "resolved": 0.6, "win": 0.4, "path_m": 30.0, "min_episodes": 60}},
     {"id": "v6_1v2", "label": "V6-2 · 1대2", "allies": 2, "rule": [1, 1], "distance": (180, 300),
@@ -95,24 +98,30 @@ def spawn(rng: random.Random, n: int, distance_range: tuple[float, float]):
     return tiger, allies, theta, distance
 
 
-def arena(stage: dict, map_id: str, tank: str, seed: int):
+def arena(stage: dict, map_id: str, tank: str, seed: int, *, legacy_open_start: bool = False):
     """학습 전차가 항상 첫 번째. 반환 (lineup, scenario, map config, rule AI 수)."""
     rng = random.Random(seed)
-    mc, obstacles = build_map(map_id)
+    concealed_start = stage["id"] == "v6_1v1" and not legacy_open_start
+    mc, obstacles = (v6_duel_maps.build_duel_map if concealed_start else build_map)(map_id)
     n = int(stage["allies"])
     types = allied_lineup(n, rng)
     if tank != "tiger1" and tank not in types:
         types[rng.randrange(n)] = tank
-    tiger, allies, theta, distance = spawn(rng, n, stage["distance"])
+    if concealed_start:
+        tiger, allies, theta, distance = v6_duel_maps.duel_spawns(rng)
+    else:
+        old_distance = (120, 250) if stage["id"] == "v6_1v1" else stage["distance"]
+        tiger, allies, theta, distance = spawn(rng, n, old_distance)
     order = [("tiger1", tiger)] + list(zip(types, allies))
     if tank != "tiger1":
         k = next(i for i, (t, _) in enumerate(order) if t == tank)
         order.insert(0, order.pop(k))
     lo, hi = stage["rule"]
     n_rule = rng.randint(lo, hi)
-    allied_idx = [i for i, (t, _) in enumerate(order) if t != "tiger1" and i != 0]
-    rng.shuffle(allied_idx)
-    rule_idx = set(allied_idx[:min(n_rule, len(allied_idx))])
+    # In a duel the other tank can always be scripted, including a Tiger facing an Allied learner.
+    candidates = [1] if concealed_start else [i for i, (typ, _) in enumerate(order) if i > 0 and typ != "tiger1"]
+    rng.shuffle(candidates)
+    rule_idx = set(candidates[:n_rule])
     allied_c = (sum(p[0] for p in allies) / n, sum(p[1] for p in allies) / n)
     lu, places = [], []
     flank_side = rng.choice([-1.0, 1.0])
@@ -121,11 +130,24 @@ def arena(stage: dict, map_id: str, tank: str, seed: int):
         lu.append({"type": typ, "team": scenarios.TEAM_OF[typ], "ctrl": "scripted" if rule else "external",
                    "role": "learner" if i == 0 else ("rule" if rule else "opponent")})
         target = allied_c if typ == "tiger1" else tiger
-        place = {"p": p, "yaw": round(scenarios.yaw_to(p, target) + rng.uniform(-0.45, 0.45), 4)}
+        if concealed_start:
+            # Start pointed partly towards either exit. Keep which side is chosen variable.
+            side = rng.choice((-1, 1))
+            target = [side * 15.0, math.copysign(v6_duel_maps.FLANK_Z, p[1])]
+        jitter = 0.18 if concealed_start else 0.45
+        place = {"p": p, "yaw": round(scenarios.yaw_to(p, target) + rng.uniform(-jitter, jitter), 4)}
         if rule:
             # 첫 규칙 AI 는 우회조, 1대6 의 두 번째는 견제조
             if len([j for j in rule_idx if j < i]) == 0:
-                place["ai"] = dict(RULE_FLANK, flank_offset=flank_side * rng.uniform(180.0, 260.0))
+                if concealed_start:
+                    flank = rng.uniform(260.0, 320.0)
+                    if typ == "tiger1" and map_id in ("village", "boulder_field"):
+                        # ScriptedAI scales this offset by (distance - 75) / 400. The wide
+                        # approach gives the Tiger room to turn around the solid centre.
+                        flank = 1000.0
+                    place["ai"] = dict(RULE_FLANK, engage_range=75.0, flank_offset=flank_side * flank)
+                else:
+                    place["ai"] = dict(RULE_FLANK, flank_offset=flank_side * rng.uniform(180.0, 260.0))
             else:
                 place["ai"] = dict(RULE_PIN)
         places.append(place)
@@ -134,6 +156,9 @@ def arena(stage: dict, map_id: str, tank: str, seed: int):
           "final": {"version": final_curriculum.VERSION, "map": map_id, "map_version": final_curriculum.MAP_VERSION,
                     "entry_angle": round(theta, 4), "distance_m": round(distance, 1)},
           "v6": {"version": VERSION, "allies": n, "rule_ai": len(rule_idx)}}
+    if concealed_start:
+        sc["final"]["map_version"] = v6_duel_maps.VERSION
+        sc["v6"]["concealed_start"] = True
     return lu, sc, mc, len(rule_idx)
 
 
@@ -144,7 +169,8 @@ def reward_config(stage: dict) -> dict:
     for name in ("near_miss_bonus", "aim_alignment_bonus", "aim_overlap_per_s", "aimed_fire_bonus"):
         attack[name] = attack[name] * k
     reward = {"battle_shaping": True, "progressive_combat_v2": True, "reward_version": battle_curriculum.REWARD_VERSION,
-              "v6_reward_version": REWARD_VERSION, "time_per_s": -0.02, "win": 0.0, "loss": 0.0,
+              "v6_reward_version": REWARD_VERSION, "near_miss_visible_pass_only": True,
+              "time_per_s": -0.02, "win": 0.0, "loss": 0.0,
               "timeout_penalty": 0.0, "survive_win": 0.0, "spot": 0.0, "shaping_scale": k,
               "near_miss_radius_m": 4.0, "near_miss_bonus": 2.0 * k, "near_miss_budget": 3.0 * k,
               "near_pen_bonus": 2.0 * k, "near_pen_budget": 4.0 * k,
@@ -162,6 +188,9 @@ def reward_config(stage: dict) -> dict:
         reward["reposition"] = {"version": 1, "per_m": 0.4 * q, "budget": 20.0 * q,
                                 "open_bonus": 8.0 * q, "stall_after_s": 10.0,
                                 "stall_per_s": 0.1 * q, "blocked_shot": 0.3}
+    # 맹목 사격 비용(모든 단계 동일): 보이는 적을 겨누지 않은 발사 −0.3. 막힌 탄(−0.3)과 허공 탄(−0.05)의
+    # 차이 때문에 포를 들어 하늘로 쏘는 습관이 생겼다(V6-2 셔먼 명중 0, 허공 탄 82%).
+    reward["fire_discipline"] = {"version": 1, "blind": 0.3, "cone_deg": 3.0}
     reward.update(attack)
     reward["combat"].update(friendly_fire=-3.0, friendly_knockout=-60.0)
     return reward
@@ -169,10 +198,10 @@ def reward_config(stage: dict) -> dict:
 
 class V6Curriculum(FinalCurriculum):
     version = VERSION
-    assessment_version = 2
+    assessment_version = ASSESSMENT_VERSION
     balance_version = BALANCE_VERSION
     reward_version = REWARD_VERSION
-    obs = "battle"
+    obs = "battle_v6_cover"
     stages = STAGES
     stage_ids = STAGE_IDS
 
@@ -201,6 +230,21 @@ class V6Curriculum(FinalCurriculum):
                 k: sum(row.get(k, 0) for row in recent) / len(recent) if recent else 0.0 for k in fields}}
         return out
 
+    def drive_std_floor(self) -> float:
+        """Keep exploring movement while the opening still rarely leads to combat."""
+        if self.stage['id'] != 'v6_1v1':
+            return 0.0
+        rule = self.stage['promote']
+        for values in self.metrics[self.stage['id']].values():
+            recent = list(values)[-rule['window']:]
+            if len(recent) < rule['min_episodes']:
+                return DUEL_DRIVE_STD_FLOOR
+            resolved = sum(row['resolved'] for row in recent) / len(recent)
+            path = sorted(row['path_m'] for row in recent)[len(recent) // 2]
+            if resolved < rule['resolved'] or path < rule['path_m']:
+                return DUEL_DRIVE_STD_FLOOR
+        return 0.0
+
     def build_episode(self, learner, rng, seed):
         st = self.stage
         if self.stage_idx > 0 and self.review_prob > 0 and rng.random() < self.review_prob:
@@ -210,13 +254,17 @@ class V6Curriculum(FinalCurriculum):
         key = rng.choice([k for k, v in counts.items() if len(v) == minimum])
         variant, actual = key.split("@")
         lu, sc, mc, n_rule = arena(st, variant, actual, seed)
+        if st["id"] == "v6_1v1":
+            sc["v6"].update(opponent_mix_version=2, opponent_kind="scripted" if n_rule else "frozen")
+        sc["target_occlusion_version"] = TARGET_OCCLUSION_VERSION
         st = dict(st, map=mc)
         return st, lu, {"scenario": sc, "learner": actual, "model": self.tank, "selfplay": True,
                         "reward": reward_config(st), "kind": "combat", "time_limit_s": st["time_limit_s"],
                         "curriculum_version": VERSION, "stageset": "v6-ladder", "map_seed": mc["seed"],
                         "balance_version": BALANCE_VERSION, "final_battle_version": 1, "v6_version": 1,
-                        "v6_tactics_version": 1,
-                        "learning_objective": {"id": st["id"], "label": st["label"], "version": REWARD_VERSION}}
+                        "v6_tactics_version": 2,
+                        "learning_objective": {"id": st["id"], "label": st["label"],
+                                               "version": ASSESSMENT_VERSION if st["id"] == "v6_1v1" else REWARD_VERSION}}
 
     def report_battle(self, sid, success, global_step, variant, learner, stats, episode):
         key = self.key(variant, learner)
@@ -276,7 +324,7 @@ class V6Curriculum(FinalCurriculum):
         return ev
 
     def state(self):
-        return {"curriculum_version": VERSION, "reward_version": REWARD_VERSION, "map_version": final_curriculum.MAP_VERSION,
+        return {"curriculum_version": VERSION, "reward_version": REWARD_VERSION, "map_version": v6_duel_maps.VERSION,
                 "balance_version": BALANCE_VERSION, "tank": self.tank, "stage": self.stage["id"],
                 "stage_idx": self.stage_idx, "common_complete": False,
                 "episodes_in_stage": self.episodes_in_stage, "stage_start_step": self.stage_start_step,
@@ -298,17 +346,25 @@ class V6Curriculum(FinalCurriculum):
         for name in ("episodes_in_stage", "stage_start_step", "branched_from", "initialized_from", "history"):
             setattr(c, name, state.get(name, getattr(c, name)))
         c.previous_assessments = state.get("previous_assessments", [])
+        reset_stages = set()
         if state.get("reward_version", 1) < REWARD_VERSION:
-            c.assessment_upgraded = True
+            reset_stages.update(STAGE_IDS)
+        elif state.get("map_version", 1) < v6_duel_maps.VERSION:
+            reset_stages.add("v6_1v1")
+        if reset_stages:
             c.previous_assessments.append({k: state.get(k) for k in
-                                          ("reward_version", "results", "metrics", "episodes_in_stage", "stage_start_step")})
+                                          ("reward_version", "map_version", "results", "metrics", "episodes_in_stage", "stage_start_step")})
+        if c.stage["id"] in reset_stages:
+            c.assessment_upgraded = True
             c.episodes_in_stage = 0
             c.history.append({"tank": tank, "from": c.stage["id"], "to": c.stage["id"],
                               "reason": "assessment_upgrade", "reward_version": REWARD_VERSION,
+                              "map_version": v6_duel_maps.VERSION,
                               "global_step": 0, "episodes": 0, "success_rate": 0.0})
-            return c
         for name in ("results", "metrics"):
             for sid, vals in state.get(name, {}).items():
+                if sid in reset_stages:
+                    continue
                 for k, values in vals.items():
                     if sid in getattr(c, name) and k in getattr(c, name)[sid]:
                         getattr(c, name)[sid][k].extend(values)

@@ -278,7 +278,8 @@ class RunWatch:
         marker = '/objective:v4/'
         records = [(r, r['objective'].split(marker, 1)[1]) for r in rows
                    if r.get('stage') in curriculum_v4.STAGE_IDS and marker in r.get('objective', '')]
-        bucket, grid, recent = self.map_history(records, window=40)
+        log = read_jsonl(self.run_dir / "curriculum_log.jsonl")
+        bucket, grid, recent, rgrid, starts = self.map_history(records, window=40, log=log)
         stages = [{"id": s["id"], "part": s["part"], "scope": s["scope"], "label": s["label"], "variants": s["variants"],
                    "learn": s.get("learn", ""), "goal": s.get("goal", ""), "lesson": s.get("lesson", ""),
                    "variant_notes": s.get("variants_desc", {}),
@@ -293,7 +294,7 @@ class RunWatch:
                              "common_complete": c.get("common_complete", False), "branched_from": c.get("branched_from", ""),
                              "episodes_in_stage": c.get("episodes_in_stage", 0), "shaping_scale": c.get("shaping_scale")}
         branch = {m: read_json(self.run_dir / m / 'branch.json') for m in TANKS if (self.run_dir / m / 'branch.json').exists()}
-        return {"bucket": bucket, "grid": grid, "recent": recent,
+        return {"bucket": bucket, "grid": grid, "recent": recent, "rgrid": rgrid, "starts": starts,
                 "stages": stages, "models": models, "branch": branch, "tanks": curriculum_v4.SHARED_TANKS}
 
     def v6_summary(self, rows: list[dict], status: dict, tanks: dict) -> dict:
@@ -332,12 +333,13 @@ class RunWatch:
                 if f"/objective:v{assessment}/" not in row.get("objective", ""):
                     continue
             records.append((row, f"{sid}:{variant}"))
-        bucket, grid, _ = self.map_history(records)
+        log = read_jsonl(self.run_dir / "curriculum_log.jsonl")
+        bucket, grid, _, rgrid, starts = self.map_history(records, log=log)
         stages = [{"id": s["id"], "part": "V6", "scope": "tank", "label": s["label"], "variants": s["variants"],
                    "promote": s["promote"], "threshold": (s["promote"] or {}).get("win"),
                    "variant_notes": s["variants_desc"], "color": objective_color(s["id"]),
                    "variant_colors": {v: objective_color(v) for v in s["variants"]}} for s in v6_curriculum.STAGES]
-        return {"bucket": bucket, "grid": grid, "recent": recent, "stages": stages,
+        return {"bucket": bucket, "grid": grid, "recent": recent, "rgrid": rgrid, "starts": starts, "stages": stages,
                 "models": {t: {"stage": m["stage"]} for t, m in models.items()}, "tanks": v6_curriculum.TANKS}
 
     @staticmethod
@@ -372,25 +374,58 @@ class RunWatch:
                 "reward_episodes": count, "reward_means": {k: v / count for k, v in ledger.items()}}
 
     @staticmethod
-    def map_history(records, window=0):
+    def map_history(records, window=0, log=None):
+        """grid = 전체 누적 스텝 구간별, rgrid = 단계 진입 시점(starts)부터 센 상대 스텝 구간별.
+        rgrid 칸 = [판수, 성공, 보상 합, 그중 복습 판수]. 복습 판 = 그 모델이 다음 단계에 들어간 뒤 이 단계를 다시 푼 판."""
         top = max((float(row.get("global_step") or 0) for row, _ in records), default=0)
         bucket = max(50_000, int(round(top / 30 / 50_000)) * 50_000)
-        grid, recent = {}, {}
+
+        def model_of(r):
+            parts = r.get("learner_policy", "").split("/")
+            return parts[1] if len(parts) > 2 else r.get("tank", "")
+
+        # 단계 진입 스텝: 커리큘럼 기록의 첫 진입과 그 단계 첫 판 중 이른 쪽
+        starts = {}
+        for p in log or []:
+            to, m = p.get("to"), p.get("tank")
+            if to and m and p.get("from") != to and (m, to) not in starts:
+                starts[(m, to)] = float(p.get("global_step") or 0)
+        for r, ident in records:
+            k = (model_of(r), ident.split(":", 1)[0])
+            step = float(r.get("global_step") or 0)
+            starts[k] = min(starts.get(k, step), step)
+        later = {}
+        for (m, _), s in starts.items():
+            later.setdefault(m, []).append(s)
+        grid, rgrid, recent = {}, {}, {}
         for r, ident in records:
             tank = r.get("tank", "")
-            parts = r.get("learner_policy", "").split("/")
-            model = parts[1] if len(parts) > 2 else tank
-            b = int(float(r.get("global_step") or 0) // bucket)
+            model = model_of(r)
+            sid = ident.split(":", 1)[0]
+            step = float(r.get("global_step") or 0)
+            b = int(step // bucket)
             ok = int(str(r.get("success")) in ("1", "1.0", "True"))
+            ret = float(r.get("return") or 0)
             key = f"{ident}@{tank}"
             cell = grid.setdefault(model, {}).setdefault(str(b), {}).setdefault(key, [0, 0, 0.0])
             cell[0] += 1
             cell[1] += ok
-            cell[2] += float(r.get("return") or 0)
+            cell[2] += ret
+            s0 = starts[(model, sid)]
+            rb = max(0, int((step - s0) // bucket))
+            review = any(s0 < s <= step for s in later.get(model, ()))
+            rc = rgrid.setdefault(model, {}).setdefault(str(rb), {}).setdefault(key, [0, 0, 0.0, 0])
+            rc[0] += 1
+            rc[1] += ok
+            rc[2] += ret
+            rc[3] += int(review)
             if window:
                 q = recent.setdefault(key, collections.deque(maxlen=window))
                 q.append(ok)
-        return bucket, grid, {k: [sum(v), len(v)] for k, v in recent.items()}
+        start_map = {}
+        for (m, sid), s in starts.items():
+            start_map.setdefault(m, {})[sid] = s
+        return bucket, grid, {k: [sum(v), len(v)] for k, v in recent.items()}, rgrid, start_map
 
     def tank_info(self) -> dict:
         res = {}
@@ -571,7 +606,7 @@ class Dashboard:
             progress = d / "progress.csv"
             v4 = read_json(d / "run.json").get("curriculum_version") in (curriculum_v4.VERSION, battle_curriculum.VERSION,
                                                                          final_curriculum.VERSION, v6_curriculum.VERSION)
-            files = [f for f in ("training_report.html", "evaluation_report.html", "analysis/shot_distribution/report.html") if (d / f).exists()]
+            files = [f for f in ("training_report.html", "evaluation_report.html", "analysis/shot_distribution/report.html", "analysis/shot_groups/report.html") if (d / f).exists()]
             if not progress.exists() and not files:
                 continue
             runs.append({"run": d.name, "v4": v4, "reports": files,
@@ -1188,6 +1223,29 @@ class Dashboard:
 
         return self.background(f"{run}: 학습 보고서", job)
 
+    def shot_groups(self, run: str) -> dict:
+        """탄착군 보고서만 갱신(학습 보고서보다 빠름). 이미 있으면 새 에피소드만 더 읽는다."""
+        d = self.run_dir(run)
+
+        def job():
+            r = subprocess.run([self.train_python(), "-m", "tankrl.shot_groups", str(d)], cwd=str(HERE),
+                               capture_output=True, text=True, encoding="utf-8", errors="replace")
+            if r.returncode != 0:
+                raise RuntimeError((r.stdout + r.stderr)[-500:])
+            return "analysis/shot_groups/report.html"
+
+        return self.background(f"{run}: 탄착군 보고서", job)
+
+    def shot_groups_state(self, run: str) -> dict:
+        d = self.run_dir(run)
+        page = d / "analysis" / "shot_groups" / "report.html"
+        running = any(j["title"] == f"{run}: 탄착군 보고서" and j["state"] == "running" for j in self.jobs)
+        out = {"exists": page.exists(), "running": running,
+               "url": "/files/" + urllib.parse.quote(f"{run}/analysis/shot_groups/report.html")}
+        if page.exists():
+            out["built"] = page.stat().st_mtime
+        return out
+
     def pdf(self, rel: str, fragment: str = "", name: str = "") -> dict:
         """runs 안의 HTML 보고서(학습·평가·경기 보고서) → 같은 폴더의 PDF. fragment = 보고서 필터(#stage=…&variant=…)."""
         from tankrl.pdf_export import file_to_pdf
@@ -1315,6 +1373,10 @@ def make_handler(dash: Dashboard):
                     return self.send_json(dash.reproduce(a["run"], a["episode_file"], bool(a.get("view", True))))
                 if u.path == "/api/report":
                     return self.send_json(dash.report(a["run"]))
+                if u.path == "/api/shot_groups":
+                    return self.send_json(dash.shot_groups(a["run"]))
+                if u.path == "/api/shot_groups_state":
+                    return self.send_json(dash.shot_groups_state(a["run"]))
                 if u.path == "/api/pdf":
                     return self.send_json(dash.pdf(a["path"], a.get("fragment", ""), a.get("name", "")))
                 if u.path == "/api/pdf_html":

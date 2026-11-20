@@ -17,7 +17,7 @@ const PROTOCOL_VERSION := 1
 const FINAL_BATTLE_VERSION := 1   # 최종 1대6: 지정 지형(custom_ridges·mounds), 생울타리·돌담·건물 배치, 엄폐 보상
 const ATTACK_SHAPING_VERSION := 1
 const V6_VERSION := 1   # V6: 비례 보상(exchange), 규칙 AI 연합군(ctrl "rule"), 적 슬롯 6
-const V6_TACTICS_VERSION := 1  # LOS-aware position, bounded reposition progress and blocked-shot cost
+const V6_TACTICS_VERSION := 2  # 1: LOS-aware position, bounded reposition progress and blocked-shot cost; 2: blind-fire cost
 const EPISODE_FORMAT := "tankgame-train-episode"
 const HUMAN_DEMO_VERSION := 1  # ctrl "human": 창 모드 실제 전투 시범(관측·정책 공간 행동을 Python 으로 보낸다)
 ## 결정(행동 선택) 간격 = 관측 갱신 간격(3틱 = 0.1초, 10Hz)
@@ -33,14 +33,15 @@ const TEAM_BASE_SIGN := [1.0, -1.0]   # 팀0(독일) = +축 쪽, 팀1(연합군)
 static var situation := false
 static var threat_inputs := false
 static var targeting_inputs := false
+static var occlusion_inputs := false
 
 
 static func obs_size() -> int:
-	return TankPerception.size() + TASK_SIZE + (SituationObs.size() if situation else 0) + (ThreatObs.LABELS.size() if threat_inputs else 0) + (TargetingObs.size() if targeting_inputs else 0) + (FireLineObs.LABELS.size() if targeting_inputs else 0)
+	return TankPerception.size() + TASK_SIZE + (SituationObs.size() if situation else 0) + (ThreatObs.LABELS.size() if threat_inputs else 0) + (TargetingObs.size() if targeting_inputs else 0) + (FireLineObs.LABELS.size() if targeting_inputs else 0) + (TargetOcclusionObs.size() if occlusion_inputs else 0)
 
 
 static func obs_labels() -> Array:
-	return TankPerception.labels() + TASK_LABELS + (SituationObs.labels() if situation else []) + (ThreatObs.LABELS if threat_inputs else []) + (TargetingObs.labels() if targeting_inputs else []) + (FireLineObs.LABELS if targeting_inputs else [])
+	return TankPerception.labels() + TASK_LABELS + (SituationObs.labels() if situation else []) + (ThreatObs.LABELS if threat_inputs else []) + (TargetingObs.labels() if targeting_inputs else []) + (FireLineObs.LABELS if targeting_inputs else []) + (TargetOcclusionObs.labels() if occlusion_inputs else [])
 
 
 var port := 11008
@@ -122,10 +123,11 @@ func _ready() -> void:
 		elif a == "--obs=situation_v3":
 			situation = true
 			threat_inputs = true
-		elif a == "--obs=battle":
+		elif a in ["--obs=battle", "--obs=battle_v6_cover"]:
 			situation = true
 			threat_inputs = true
 			targeting_inputs = true
+			occlusion_inputs = a == "--obs=battle_v6_cover"
 	if repro_path != "":
 		_start_reproduce(repro_path)
 		return
@@ -151,6 +153,7 @@ func _ready() -> void:
 		"terrain_course_version": TerrainCourse.VERSION, "spawn_safety_version": 1, "destruction_version": 1,
 		"compact_battle_version": 1, "fast_combat_reward_version": 1, "battle_selfplay_version": 1,
 		"targeting_obs_version": TargetingObs.VERSION if targeting_inputs else 0,
+		"target_occlusion_version": TargetOcclusionObs.VERSION if occlusion_inputs else 0,
 		"battle_balance_version": TankDatabase.BALANCE_VERSION,
 		"scenario_version": ScenarioLayout.VERSION, "situation_obs_version": SituationObs.VERSION if situation else 0,
 		"driving_reward_version": 2,
@@ -797,6 +800,8 @@ func _observation(i: int) -> PackedFloat32Array:
 	if targeting_inputs:
 		o.append_array(TargetingObs.compute(map, t, agents[i].perception, tanks))
 		o.append_array(FireLineObs.compute(t, agents[i].perception, tanks))
+	if occlusion_inputs:
+		o.append_array(TargetOcclusionObs.compute(map, t, agents[i].perception, tanks))
 	return o
 
 
@@ -980,8 +985,10 @@ func _start_reproduce(path: String) -> void:
 	if int(c.get("scenario", {}).get("observation_version", 0)) >= 3:
 		situation = true
 		threat_inputs = true
-	if int(c.get("curriculum_version", 0)) == 5:
+	if int(c.get("curriculum_version", 0)) in [5, 6, 7]:
 		targeting_inputs = true
+	if int(c.get("scenario", {}).get("target_occlusion_version", 0)) >= 1:
+		occlusion_inputs = true
 	c["record"] = true
 	c["save_episode"] = false
 	reset_episode(c)

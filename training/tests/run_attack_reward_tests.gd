@@ -130,6 +130,34 @@ func run() -> void:
 	env.rewarder._exchange_outcome(-1)
 	check(is_equal_approx(env.rewarder.total(enemy.name), 40.0) and is_equal_approx(env.rewarder.total(t.name), -120.0), "exchange: timeout counts as a loss for both teams")
 	ally.damage.knockout_cause = ""
+	# V6 맹목 사격 비용: 보이는 적을 겨눈 발사만 면제
+	var fd_cfg := cfg.duplicate(true)
+	fd_cfg["fire_discipline"] = {"version": 1, "blind": 0.3, "cone_deg": 3.0}
+	env.rewarder = TrainingReward.new(env, fd_cfg)
+	env.rewarder.start()
+	var me_idx: int = env.tanks.find(t)
+	env.agents[me_idx].perception.contacts[enemy.name] = {"visible_now": true, "enemy": true, "t": 0.0}
+	ally.position = Vector3(70, .5, 0)
+	aim_at(t, enemy)
+	await physics_frame
+	await physics_frame
+	check(env.rewarder.aimed_at_visible_enemy(t, 3.0), "fire discipline: aiming at a visible enemy is aimed fire")
+	var before_fd := env.rewarder.total(t.name)
+	env.rewarder.on_launch(t, {"from": TankSpec._v(t.muzzle_position()), "dir": TankSpec._v(t.gun_direction())})
+	check(not is_equal_approx(env.rewarder.total(t.name) - before_fd, -0.3), "fire discipline: aimed fire is not charged as blind")
+	aim_at(t, ally)
+	await physics_frame
+	await physics_frame
+	check(not env.rewarder.aimed_at_visible_enemy(t, 3.0), "fire discipline: aiming away from the enemy is blind fire")
+	var launch_blind := {"from": TankSpec._v(t.muzzle_position()), "dir": TankSpec._v(t.gun_direction())}
+	var before_blind := env.rewarder.total(t.name)
+	env.rewarder.on_launch(t, launch_blind)
+	check(bool(launch_blind.get("blind_fire", false)) and env.rewarder.total(t.name) - before_blind <= -0.3 + 0.0001, "fire discipline: blind fire costs 0.3 (%s)" % (env.rewarder.total(t.name) - before_blind))
+	env.agents[me_idx].perception.contacts[enemy.name]["visible_now"] = false
+	aim_at(t, enemy)
+	await physics_frame
+	await physics_frame
+	check(not env.rewarder.aimed_at_visible_enemy(t, 3.0), "fire discipline: firing at an unseen enemy behind cover is blind")
 	env.free()
 	print("Attack rewards: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

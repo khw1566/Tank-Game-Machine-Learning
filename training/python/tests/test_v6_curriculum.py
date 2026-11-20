@@ -19,10 +19,28 @@ class V6CurriculumTest(unittest.TestCase):
                     self.assertLessEqual(n_rule, hi)
                     rules = [d for d in lu if d["ctrl"] == "scripted"]
                     self.assertEqual(len(rules), n_rule)
-                    self.assertTrue(all(d["type"] != "tiger1" for d in rules))
+                    if stage["allies"] > 1:
+                        self.assertTrue(all(d["type"] != "tiger1" for d in rules))
                     self.assertEqual(len(sc["enemies"]), stage["allies"])
                     scripted_places = [p for d, p in zip(lu, [sc["learner"]] + sc["enemies"]) if d["ctrl"] == "scripted"]
                     self.assertTrue(all("ai" in p for p in scripted_places))
+
+    def test_each_duel_learner_receives_both_opponent_types(self):
+        for tank in v6.TANKS:
+            cur = v6.V6Curriculum(tank)
+            rng = random.Random(19)
+            scripted_count = 0
+            for seed in range(200):
+                _, lineup, extra = cur.build_episode(tank, rng, seed)
+                scenario = extra["scenario"]
+                scripted = lineup[1]["ctrl"] == "scripted"
+                self.assertEqual(scenario["v6"]["opponent_kind"], "scripted" if scripted else "frozen")
+                self.assertEqual(lineup[0]["ctrl"], "external")
+                if scripted:
+                    scripted_count += 1
+                    self.assertTrue(scenario["enemies"][0]["ai"]["advance"])
+            self.assertLessEqual(80, scripted_count)
+            self.assertLessEqual(scripted_count, 120)
 
     def test_reward_shaping_decays_and_exchange_is_constant(self):
         rewards = [v6.reward_config(s) for s in v6.STAGES]
@@ -92,6 +110,37 @@ class V6CurriculumTest(unittest.TestCase):
         st, lu, extra = cur.build_episode("tiger1", random.Random(1), 7)
         self.assertNotEqual(st["id"], "v6_1v6")
         self.assertEqual(extra["v6_version"], 1)
+
+    def test_drive_exploration_floor_tracks_duel_metrics(self):
+        cur = v6.V6Curriculum("tiger1")
+        self.assertEqual(cur.drive_std_floor(), 0.60)
+        for recent in cur.metrics["v6_1v1"].values():
+            recent.extend({"resolved": 1, "path_m": 50} for _ in range(60))
+        self.assertEqual(cur.drive_std_floor(), 0.0)
+        recent = cur.metrics["v6_1v1"]["valley@tiger1"]
+        recent.extend({"resolved": 0, "path_m": 50} for _ in range(25))
+        self.assertEqual(cur.drive_std_floor(), 0.60)
+        cur.set_stage("v6_1v2", 2000000)
+        self.assertEqual(cur.drive_std_floor(), 0.0)
+
+    def test_duel_map_upgrade_keeps_later_stage_assessments(self):
+        import json, tempfile
+        from pathlib import Path
+
+        old = v6.V6Curriculum("tiger1", start_stage=1).state()
+        old.pop("map_version")
+        old["episodes_in_stage"] = 5
+        old["results"]["v6_1v1"]["valley@tiger1"] = [1, 1]
+        old["results"]["v6_1v2"]["valley@tiger1"] = [0, 1]
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory) / "curriculum.json"
+            p.write_text(json.dumps(old), encoding="utf-8")
+            cur = v6.V6Curriculum.load(p, "tiger1")
+        self.assertEqual(cur.stage["id"], "v6_1v2")
+        self.assertEqual(cur.episodes_in_stage, 5)
+        self.assertFalse(cur.results["v6_1v1"]["valley@tiger1"])
+        self.assertEqual(list(cur.results["v6_1v2"]["valley@tiger1"]), [0, 1])
+        self.assertEqual(cur.previous_assessments[0]["results"]["v6_1v1"]["valley@tiger1"], [1, 1])
 
 
 class LegacyLabelTest(unittest.TestCase):

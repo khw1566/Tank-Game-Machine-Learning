@@ -4,6 +4,7 @@ Run: .venv/Scripts/python.exe -m unittest discover -s tests -p test_gpu_runtime.
 """
 from argparse import Namespace
 import json
+import random
 from pathlib import Path
 import tempfile
 import unittest
@@ -18,7 +19,8 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from dashboard import Dashboard
 from tankrl.rollout_buffer import CudaRolloutBuffer
 from tankrl.runtime import hardware_info, model_runtime, resolve_device, select_device
-from train import build_model
+from tankrl.opponents import OpponentPool
+from train import build_model, v6_sampling_seed
 
 
 class VectorEnv(gym.Env):
@@ -41,6 +43,33 @@ def args(device):
 
 
 class DeviceTests(unittest.TestCase):
+    def test_v6_sampling_changes_on_rotation_and_resume(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = v6_sampling_seed(root, 0, "tiger1", 1000)
+            self.assertEqual(first, v6_sampling_seed(root, 0, "tiger1", 1000))
+            other_tank = v6_sampling_seed(root, 0, "sherman75", 1000)
+            next_step = v6_sampling_seed(root, 0, "tiger1", 2000)
+            (root / "run.json").write_text(json.dumps({"sessions": [{}]}), encoding="utf-8")
+            same_step_resume = v6_sampling_seed(root, 0, "tiger1", 1000)
+            self.assertEqual(len({first, other_tank, next_step, same_step_resume}), 4)
+
+    def test_loading_v6_frozen_opponent_preserves_learner_random_streams(self):
+        env = DummyVecEnv([VectorEnv])
+        with tempfile.TemporaryDirectory() as directory:
+            pool = OpponentPool(directory)
+            pool.input_env = env
+            model = build_model(args("cpu"), env)
+            model.save(Path(directory) / "opponent.zip")
+            model.set_random_seed(7)
+            expected = (random.random(), np.random.random(), torch.rand(5))
+            model.set_random_seed(7)
+            pool._load("opponent.zip")
+            self.assertEqual(expected[0], random.random())
+            self.assertEqual(expected[1], np.random.random())
+            self.assertTrue(torch.equal(expected[2], torch.rand(5)))
+        env.close()
+
     def test_cpu_install_explicit_cuda_rejected_auto_allowed(self):
         info = {"cuda_available": False, "cuda_version": None}
         self.assertEqual(select_device("auto", info), "cpu")

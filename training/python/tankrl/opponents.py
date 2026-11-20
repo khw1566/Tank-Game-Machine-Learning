@@ -19,6 +19,7 @@ class OpponentPool:
         self.exclude = exclude          # 지금 학습 중인 종류(그 종류는 copy 로 현재 정책을 쓴다)
         self.latest_prob = latest_prob
         self.device = device
+        self.input_env = None
         self._models: OrderedDict[str, object] = OrderedDict()
         self._mtime: dict[str, float] = {}
 
@@ -59,8 +60,20 @@ class OpponentPool:
                 return f"{key}/{chosen.name}"
         raise RuntimeError(f"자기 대전 상대 스냅숏이 없습니다: {tank} (fallback={fallback})")
 
-    def _load(self, version: str):
+    def _load_policy(self, path: Path):
         from stable_baselines3 import PPO
+        if self.input_env is None:
+            return PPO.load(str(path), device=self.device)
+
+        # Building a frozen policy consumes Torch random numbers and SB3 normally restores
+        # its saved seed process-wide. Neither should change the learner's exploration.
+        import torch
+        device = torch.device(self.device)
+        devices = [device] if device.type == "cuda" else []
+        with torch.random.fork_rng(devices=devices):
+            return PPO.load(str(path), device=self.device, seed=None)
+
+    def _load(self, version: str):
         if version in self._models and not version.endswith("latest.zip"):
             # step_*.zip 스냅숏은 저장 후 바뀌지 않는다: 매 결정마다 파일 시각을 확인하지 않는다
             self._models.move_to_end(version)
@@ -68,7 +81,16 @@ class OpponentPool:
         path = self.dir / version
         mt = path.stat().st_mtime
         if version not in self._models or self._mtime.get(version) != mt:
-            self._models[version] = PPO.load(str(path), device=self.device)
+            model = self._load_policy(path)
+            if self.input_env is not None:
+                from .input_migration import V6_COVER_INPUT_SIZE, V6_INPUT_SIZE, migrate_for_env
+
+                width = model.observation_space.shape[0]
+                target = self.input_env.observation_space.shape[0]
+                if width != target and (width, target) != (V6_INPUT_SIZE, V6_COVER_INPUT_SIZE):
+                    migrated = migrate_for_env(path, self.input_env, self.input_env.run_dir / "input_migrations")
+                    model = self._load_policy(migrated)
+            self._models[version] = model
             self._mtime[version] = mt
         self._models.move_to_end(version)
         while len(self._models) > 64:
@@ -76,11 +98,23 @@ class OpponentPool:
             self._mtime.pop(oldest, None)
         return self._models[version]
 
+    @staticmethod
+    def compatible_observation(obs: np.ndarray, model) -> np.ndarray:
+        from .input_migration import V6_COVER_INPUT_SIZE, V6_INPUT_SIZE
+
+        if (obs.shape[-1], model.observation_space.shape[0]) == (V6_COVER_INPUT_SIZE, V6_INPUT_SIZE):
+            return obs[..., :V6_INPUT_SIZE]
+        return obs
+
     def act(self, version: str, obs: np.ndarray) -> np.ndarray:
-        a, _ = self._load(version).predict(obs, deterministic=False)
+        model = self._load(version)
+        a, _ = model.predict(self.compatible_observation(obs, model) if self.input_env is not None else obs,
+                             deterministic=False)
         return a
 
     def act_batch(self, version: str, obs: np.ndarray) -> np.ndarray:
         """같은 버전 정책을 쓰는 여러 전차(여러 환경)의 관측 [n, D] → 행동 [n, A], forward 1회."""
-        a, _ = self._load(version).predict(obs, deterministic=False)
+        model = self._load(version)
+        a, _ = model.predict(self.compatible_observation(obs, model) if self.input_env is not None else obs,
+                             deterministic=False)
         return np.asarray(a, dtype=np.float32).reshape(len(obs), -1)

@@ -39,13 +39,14 @@ from tankrl.battle_curriculum import BattleCurriculum
 from tankrl import final_curriculum
 from tankrl.final_curriculum import FinalCurriculum
 from tankrl import v6_curriculum
-from tankrl.v6_curriculum import V6Curriculum
 from tankrl import v7_curriculum
+from tankrl.v6_curriculum import V6Curriculum
 from tankrl.control import write_json_atomic
+from tankrl.auto_report import AutoReport
 from tankrl.godot_env import GodotVecEnv
 from tankrl.health import HealthConfig, HealthMonitor
 from tankrl.opponents import OpponentPool
-from tankrl.runtime import model_runtime, resolve_device
+from tankrl.runtime import V6_GAME, model_runtime, resolve_device, v6_game_path
 from tankrl.terrain import COURSE_IDS, COURSES
 from tankrl.storage import (RunLock, archive_runtime, atomic_copy, checkpoint_paths, default_runs_dir,
                             save_checkpoint, session_log_dir)
@@ -74,6 +75,8 @@ def parse():
     ap.add_argument("--rotate", default="", help="여러 종류를 번갈아 학습: tiger1,sherman75,t34_76")
     ap.add_argument("--rotate-steps", type=int, default=300_000, help="교대마다 한 종류의 학습 스텝")
     ap.add_argument("--cycles", type=int, default=1, help="--rotate 반복 횟수")
+    ap.add_argument("--continue-rotation", action="store_true",
+                    help="저장 후 중지한 교대 학습에서 해당 전차의 남은 스텝과 이후 순서를 이어간다")
     ap.add_argument("--timesteps", type=int, default=1_000_000, help="--rotate 가 없을 때 총 스텝(결정 수)")
     ap.add_argument("--n-envs", type=int, default=4, help="동시에 띄울 Godot 수(CPU 코어 수 정도)")
     ap.add_argument("--auto-envs", action="store_true",
@@ -91,6 +94,8 @@ def parse():
     ap.add_argument("--terrain-course", default="", choices=[""] + COURSE_IDS,
                     help="지형주행 단일 코스 고정 연습(생략하면 자동 승급)")
     ap.add_argument("--save-every", type=int, default=100_000)
+    ap.add_argument("--auto-report-min", type=float, default=10.0,
+                    help="체크포인트 저장 때 학습·탄착군 보고서를 백그라운드로 갱신하는 최소 간격(분, 0 = 끔). 단계 변경 때는 항상 갱신")
     ap.add_argument("--record-every", type=int, default=200, help="N 에피소드마다 전체 리플레이·보고서 기록(0 = 끔)")
     ap.add_argument("--review-prob", type=float, default=0.1, help="이전 단계 복습 확률")
     ap.add_argument("--seed", type=int, default=0)
@@ -130,13 +135,15 @@ def write_manifest(run_dir: Path, args, env: GodotVecEnv, runtime: dict) -> None
     runs = []
     if path.exists():
         runs = json.loads(path.read_text(encoding="utf-8")).get("sessions", [])
+    args_record = {key: value for key, value in vars(args).items() if not key.startswith("_")}
     runs.append({"started": dt.datetime.now().isoformat(timespec="seconds"), "argv": sys.argv,
-                 "args": vars(args), "git_commit": git_commit(args.project),
+                 "args": args_record, "git_commit": git_commit(args.project),
                  "python": sys.version.split()[0], "platform": platform.platform(),
                  "torch": torch.__version__, "stable_baselines3": stable_baselines3.__version__,
                  "godot": env.procs[0].hello.get("engine", ""), "godot_cmd": env.procs[0].cmd,
                  "runtime": runtime})
-    runs[-1]['preserved_runtime'] = archive_runtime(Path(shutil.which(args.godot) or args.godot).resolve(), args.project)
+    runs[-1]['preserved_runtime'] = getattr(args, "_v6_runtime", None) or archive_runtime(
+        Path(shutil.which(args.godot) or args.godot).resolve(), args.project)
     path.write_text(json.dumps({"format": "tankgame-train-run", "version": 1, "sessions": runs,
                                 "stages": getattr(env.curriculum, "stages", STAGES),
                                 "curriculum_version": getattr(env.curriculum, "version", 1),
@@ -153,6 +160,7 @@ def write_manifest(run_dir: Path, args, env: GodotVecEnv, runtime: dict) -> None
                                 "balance_version": getattr(env.curriculum, "balance_version", 1),
                                 "reward_version": getattr(env.curriculum, "reward_version", 1),
                                 "v6_tactics_version": env.procs[0].hello.get("v6_tactics_version", 0),
+                                "target_occlusion_version": env.procs[0].hello.get("target_occlusion_version", 0),
                                 "terrain_courses": COURSES,
                                 "physics_hz": env.procs[0].hello.get("physics_hz")},
                                ensure_ascii=False, indent=1), encoding="utf-8")
@@ -164,6 +172,9 @@ def build_model(args, env, checkpoint: Path | None = None):
     from stable_baselines3.common.buffers import RolloutBuffer
     from tankrl.rollout_buffer import CudaRolloutBuffer
     from tankrl.hybrid_ppo import HybridPPO
+    from tankrl.v6_control_policy import V6ControlPolicy
+
+    v6_policy = getattr(args, 'curriculum', None) == 'v6'
 
     if args.gamma is None:
         args.gamma = 0.999 if args.curriculum == "v6" else 0.995
@@ -182,7 +193,7 @@ def build_model(args, env, checkpoint: Path | None = None):
             from tankrl.input_migration import migrate_for_env
             migrated = migrate_for_env(checkpoint, env, env.run_dir / "input_migrations")
             if migrated != Path(checkpoint).resolve():
-                print(f"[model] 관측 입력 확장(적 슬롯 6): 기존 가중치·optimizer·누적 스텝 보존 → {migrated}", flush=True)
+                print(f"[model] V6 관측 입력 확장: 기존 가중치·optimizer·누적 스텝 보존 → {migrated}", flush=True)
             checkpoint = migrated
         elif getattr(getattr(env, "curriculum", None), "obs", "") in ("situation_v3", "battle"):
             from tankrl.input_migration import expand_fire_inputs
@@ -191,10 +202,12 @@ def build_model(args, env, checkpoint: Path | None = None):
             if migrated != Path(checkpoint).resolve():
                 print(f"[model] 사격 관측 입력 확장: 기존 가중치·optimizer·누적 스텝 보존 → {migrated}", flush=True)
             checkpoint = migrated
+        if v6_policy:
+            overrides['custom_objects'] = {'policy_class': V6ControlPolicy}
         return algorithm.load(str(checkpoint), env=env, device=device,
                               rollout_buffer_class=buffer_class, **overrides)
     n_steps = args.n_steps or 1024
-    return algorithm("MlpPolicy", env, n_steps=n_steps,
+    return algorithm(V6ControlPolicy if v6_policy else "MlpPolicy", env, n_steps=n_steps,
                # 큰 롤아웃(환경 100개 이상)은 큰 미니배치가 GPU 에서 빠르고 기울기 잡음도 적다
                batch_size=args.batch_size or min(8192 if n_steps * env.num_envs >= 65536 else 2048, n_steps * env.num_envs),
                learning_rate=args.lr if args.lr is not None else 3e-4, gamma=args.gamma, gae_lambda=args.gae_lambda,
@@ -252,28 +265,42 @@ def final_source(args):
     return model, f"{src_run.name}/{curriculum_v4.SHARED}/step_{int(info.get('num_timesteps', 0)):09d}", info
 
 
-def clamp_exploration(model, args) -> None:
+def clamp_exploration(model, args, drive_axes=(), drive_floor=0.0) -> float | None:
     """행동 잡음 상한과 KL 조기 중단(이어서 학습한 모델에도 적용). 상한에 걸리면 표준편차 로그에 그대로 보인다."""
     import math
     import torch
     model.target_kl = args.target_kl or None
-    if args.max_std <= 0:
-        return
     # HybridPPO: 갱신용(CUDA) 정책과 수집용(CPU) 복사본 모두. 수집 시작 콜백 시점의 model.policy 는 복사본이다.
     policies = {id(p): p for p in (model.policy, getattr(model, "_update_policy", None)) if p is not None}
+    drive_std = None
     for policy in policies.values():
         log_std = getattr(policy, "log_std", None)
         if log_std is None:
             continue
         cap = args.max_std
-        if getattr(policy, "use_sde", False):
+        use_sde = getattr(policy, "use_sde", False)
+        if cap > 0 and use_sde:
             # gSDE: 행동 잡음 표준편차 = sqrt(Σ_j latent_j² · σ_ij²), latent 는 tanh(|·|≤1) 이고 256개.
             # 원소 상한을 max_std / sqrt(latent 수) 로 두어야 실제 잡음이 max_std 를 넘지 않는다(V4RUN-3 에서 확인).
             cap = args.max_std / math.sqrt(log_std.shape[0])
         with torch.no_grad():
-            log_std.clamp_(min=math.log(min(0.05, cap * 0.5)), max=math.log(cap))
-    if getattr(model.policy, "use_sde", False):
+            if cap > 0:
+                log_std.clamp_(min=math.log(min(0.05, cap * 0.5)), max=math.log(cap))
+            if drive_axes and not use_sde:
+                if drive_floor > 0:
+                    floor = min(drive_floor, cap) if cap > 0 else drive_floor
+                    log_std[list(drive_axes)] = log_std[list(drive_axes)].clamp_min(math.log(floor))
+                drive_std = log_std[list(drive_axes)].exp().mean().item()
+    if args.max_std > 0 and getattr(model.policy, "use_sde", False):
         model.policy.reset_noise(model.n_envs)
+    return drive_std
+
+
+def v6_sampling_seed(run_dir: Path, seed: int, tank: str, previous_steps: int) -> int:
+    path = run_dir / "run.json"
+    sessions = len(json.loads(path.read_text(encoding="utf-8")).get("sessions", [])) if path.exists() else 0
+    stream = np.random.SeedSequence([seed & 0xffffffff, v6_curriculum.TANKS.index(tank), previous_steps, sessions])
+    return int(stream.generate_state(1)[0])
 
 
 def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: TrainController) -> bool:
@@ -353,21 +380,25 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     resume_steps = int(json.loads((tdir / "checkpoint.json").read_text(encoding="utf-8")).get("num_timesteps", 0)) \
         if (tdir / "checkpoint.json").exists() else 0
     env_seed = args.seed * 1000 + sum(map(ord, tank)) + resume_steps
-    cur.rng.seed(args.seed + resume_steps)
+    if v6:
+        env_seed = v6_sampling_seed(run_dir, args.seed, tank, resume_steps)
+    cur.rng.seed(env_seed if v6 else args.seed + resume_steps)
     ctl.info["env_seed"] = env_seed
     n_envs = env_count(args, cur)
     if n_envs != args.n_envs:
         print(f"[train] {tank}: 단계 {cur.stage['id']} → 동시 환경 {n_envs}개 (자동)", flush=True)
     ctl.env_restart = None
-    env = GodotVecEnv(n_envs, args.godot, args.project, run_dir, tank, cur, opponents=pool,
+    pinned = getattr(args, "_v6_runtime", None)
+    godot = pinned["executable"] if pinned else args.godot
+    env = GodotVecEnv(n_envs, godot, args.project, run_dir, tank, cur, opponents=pool,
                       seed=env_seed, record_every=ctl.record_every,
                       quiet=not args.verbose_godot, run_name=run_dir.name)
+    if getattr(ctl, "auto_report", None):
+        env.on_stage_change = lambda ev: ctl.auto_report.request(f"stage {ev.get('from')} -> {ev.get('to')}", force=True)
     ctl.env = env
     if v6:
-        from tankrl.input_migration import migrate_pool
-        moved = migrate_pool(pool_dir, env, run_dir / "input_migrations")
-        if moved:
-            print(f"[pool] 상대 스냅숏 관측 입력 확장: {', '.join(moved)}", flush=True)
+        # Frozen 750-input opponents consume the unchanged prefix of the new input vector.
+        pool.input_env = env
     latest = tdir / "latest.zip"
     if resume and not (args.resume or args.rotate):
         print(f"[train] 기존 {tank} 체크포인트 보호: 자동으로 이어서 학습합니다", flush=True)
@@ -375,6 +406,9 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
         init = Path(args.init_model).resolve() if args.init_model and not resume and not branched and not final else None
         model = build_model(args, env, checkpoint if resume else (final_src[0] if final_src else
                                                                   branched[0] if branched else init))
+        if v6:
+            # Loading PPO reseeds the attached VecEnv and learner RNG to the saved policy seed.
+            model.set_random_seed(env_seed)
         if final_src is not None:
             ev = cur.initialize_from(final_src[1], model.num_timesteps)
             write_json_atomic(tdir / "branch.json", {"source": final_src[1], "source_checkpoint": final_src[2],
@@ -394,6 +428,9 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
             cur.history[-1]["global_step"] = model.num_timesteps
             print(f"[curriculum] 평가 v{cur.assessment_version}: 기존 모델을 유지하고 {cur.stage['id']}부터 진행합니다", flush=True)
         runtime = model_runtime(model, args.device)
+        if v6:
+            runtime['action_likelihood'] = 'gsde' if model.use_sde else 'v6_int8_command_v2'
+            runtime["sampling_seed"] = env_seed
         runtime["input_migration"] = getattr(model, "input_migration", None)
         runtime['start_timesteps'] = model.num_timesteps
         runtime['resumed_from'] = str(checkpoint) if checkpoint else (str(branched[0]) if branched else None)
@@ -428,7 +465,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     env.learner_version = version()
     env.policy_fn = lambda o: model.predict(o, deterministic=False)[0]
     health = None if args.no_health else HealthMonitor(
-        tdir, HealthConfig(std_cap=args.max_std, max_rollbacks=args.rollback_limit))
+        tdir, HealthConfig(std_cap=args.max_std, max_rollbacks=args.rollback_limit),
+        namespace="v6_map2" if v6 else "")
 
     def stage_success() -> float | None:
         """현재 단계 성공률: 기록이 있는 변형 × 전차의 최근 40판 평균(없으면 None)."""
@@ -471,6 +509,10 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     if cur.history and cur.history[-1].get("reason") == "assessment_upgrade" and (not v6 or cur.assessment_upgraded):
         env.log_stage_change(cur.history[-1])
 
+    tracks = ("left_track", "right_track")
+    drive_axes = tuple(env.action_labels.index(name) for name in tracks) if v6 and all(
+        name in env.action_labels for name in tracks) and not model.use_sde else ()
+
     class Cb(BaseCallback):
         def __init__(self):
             super().__init__()
@@ -479,7 +521,11 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
         def _on_rollout_start(self) -> None:
             if hasattr(cur, "entropy_coef"):
                 model.ent_coef = cur.entropy_coef(args.ent_coef, self.num_timesteps)
-            clamp_exploration(model, args)
+            floor = cur.drive_std_floor() if drive_axes else 0.0
+            drive_std = clamp_exploration(model, args, drive_axes, floor)
+            if drive_std is not None:
+                self.logger.record("train/drive_std", drive_std)
+                self.logger.record("train/drive_std_floor", min(floor, args.max_std) if args.max_std > 0 else floor)
             ctl.write_status(self.num_timesteps, force=True, phase="collecting")
 
         def _on_step(self) -> bool:
@@ -505,6 +551,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
         def _on_rollout_end(self) -> None:
             # 직전 PPO 갱신의 지표(train/*)는 다음 로그 출력 전까지 logger 에 남아 있다
             health_check(self.num_timesteps, dict(self.logger.name_to_value))
+            if runtime.get("action_likelihood") == "v6_int8_command_v2":
+                self.logger.record("train/command_likelihood_version", 2)
             self.logger.record("curriculum/stage_idx", cur.stage_idx)
             self.logger.record("curriculum/success_rate", cur.success_rate(cur.stage["id"], 100))
             if hasattr(cur, "shaping_scale"):
@@ -534,6 +582,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
         ctl.last_save = {"t": round(__import__("time").time(), 1), "version": version(), "snapshot": snapshot,
                          "stage": cur.stage["id"]}
         print(f"[train] {tank}: 저장 {version()} (단계 {cur.stage['id']})", flush=True)
+        if snapshot and getattr(ctl, "auto_report", None):
+            ctl.auto_report.request(f"checkpoint {version()}")
 
     def on_checkpoint(_msg):
         save(snapshot=True)
@@ -582,19 +632,25 @@ def main():
     run_dir = (Path(args.runs_dir) / run).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest = run_dir / "run.json"
-    if manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("curriculum_version") == v7_curriculum.VERSION:
-        raise ValueError("Use train_v7.py to resume a V7 Godot run")
-    if manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("curriculum_version") == battle_curriculum.VERSION:
+    version = json.loads(manifest.read_text(encoding="utf-8")).get("curriculum_version") if manifest.exists() else None
+    if version == v7_curriculum.VERSION:
+        raise ValueError("V7 아케이드 실행은 train_v7.py로 재개하세요")
+    if version == battle_curriculum.VERSION:
         if args.curriculum == "final":
             raise ValueError(f"{run} 은 V5 전투 실행입니다. 최종 학습은 새 실행 이름(예: FINAL-1)에 --branch-from \"{run}\" 으로 시작하세요")
         args.curriculum = "battle"
-    elif manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("curriculum_version") == final_curriculum.VERSION:
+    elif version == final_curriculum.VERSION:
         args.curriculum = "final"
-    elif manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("curriculum_version") == v6_curriculum.VERSION:
+    elif version == v6_curriculum.VERSION:
         args.curriculum = "v6"
     pool_dir = Path(args.pool_dir).resolve() if args.pool_dir else (
         run_dir / "opponents" if args.curriculum in ("battle", "final", "v6") else (Path(args.runs_dir) / "pool").resolve())
     with RunLock(run_dir):
+        if args.curriculum == "v6" and not args.project:
+            args.godot = v6_game_path(args.godot)
+            if Path(args.godot).resolve() == V6_GAME:
+                # Freeze the bytes for this process, including all later tank rotations.
+                args._v6_runtime = archive_runtime(V6_GAME)
         run_training(args, run_dir, pool_dir)
 
 
@@ -619,16 +675,34 @@ def train_turn(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl) 
 def run_training(args, run_dir: Path, pool_dir: Path) -> None:
     ctl = TrainController(run_dir, record_every=args.record_every, review_prob=args.review_prob,
                           speed_cap=args.speed_cap)
+    first_cycle, first_tank, first_steps = 0, 0, args.rotate_steps
+    if args.continue_rotation:
+        tanks = [t.strip() for t in args.rotate.split(",") if t.strip()]
+        prior = json.loads(ctl.status_path.read_text(encoding="utf-8"))
+        rotation = prior.get("rotate", {})
+        if (not args.resume or not tanks or prior.get("phase") != "stopped" or rotation.get("tanks") != tanks
+                or rotation.get("cycles") != args.cycles or prior.get("tank") not in tanks
+                or not 1 <= rotation.get("cycle", 0) <= args.cycles or prior.get("target_timesteps") is None):
+            raise ValueError("저장 후 중지한 같은 교대 순서·사이클을 --resume으로 재개해야 합니다")
+        first_cycle = rotation["cycle"] - 1
+        first_tank = tanks.index(prior["tank"])
+        first_steps = max(0, int(prior["target_timesteps"]) - int(prior["num_timesteps"]))
+    ctl.auto_report = AutoReport(run_dir, 60.0 * getattr(args, "auto_report_min", 10.0))
     try:
         if args.rotate:
             tanks = [t.strip() for t in args.rotate.split(",") if t.strip()]
-            for c in range(args.cycles):
-                for t in tanks:
+            for c in range(first_cycle, args.cycles):
+                for i, t in enumerate(tanks):
                     if ctl.stop_requested:
                         break
-                    print(f"[train] 교대 {c + 1}/{args.cycles}: {t} {args.rotate_steps} 스텝")
+                    if c == first_cycle and i < first_tank:
+                        continue
+                    steps = first_steps if (c, i) == (first_cycle, first_tank) else args.rotate_steps
+                    if steps <= 0:
+                        continue
+                    print(f"[train] 교대 {c + 1}/{args.cycles}: {t} {steps} 스텝")
                     ctl.info["rotate"] = {"tanks": tanks, "cycle": c + 1, "cycles": args.cycles}
-                    train_turn(args, run_dir, pool_dir, t, args.rotate_steps, ctl)
+                    train_turn(args, run_dir, pool_dir, t, steps, ctl)
         else:
             done_common = train_turn(args, run_dir, pool_dir, args.tank, args.timesteps, ctl)
             if done_common and args.auto_branch and not ctl.stop_requested:
