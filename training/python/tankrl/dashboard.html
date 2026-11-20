@@ -114,7 +114,7 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
   <select id="runSel" aria-label="실행 선택"></select>
   <span id="badge" class="badge"><span class="dot"></span><span id="badgeText">-</span></span>
   <span class="spacer"></span>
-  <button id="arcadePlay">Godot에서 시범 플레이</button>
+  <button id="arcadePlay" title="V6 실제 전투에서 연합 전차를 직접 몰아 행동 복제용 시범을 모읍니다">Godot에서 시범 플레이</button>
     <button id="btnNew" class="primary">새 학습 / 이어서</button>
 </header>
 <main>
@@ -326,6 +326,28 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
       <button value="cancel" formnovalidate>취소</button>
       <button id="btnGo" class="primary" value="go">시작</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="demoDlg">
+  <form method="dialog" id="demoForm">
+    <h2 style="margin:0 0 4px;font-size:16px">실제 전투 시범 플레이</h2>
+    <p class="hint" style="margin:0 0 12px">V6 전투 그대로(실제 포탄·관통, 티거 상대)에서 전차 한 대를 직접 몹니다. 포수 조준경으로 시작하고, 0.1초마다 학습과 같은 관측·행동을 기록해 행동 복제에 씁니다.</p>
+    <div class="form">
+      <div class="ctl"><label>내 전차</label><select name="tank"><option value="sherman75">셔먼</option><option value="t34_76">T-34</option><option value="tiger1">티거</option></select></div>
+      <div class="ctl"><label>경기 인원</label><select name="stage"></select></div>
+      <div class="ctl"><label>상대 모델 실행 (비우면 규칙 AI)</label><input type="text" name="run" list="demoRuns" placeholder="(규칙 AI)"><datalist id="demoRuns"></datalist></div>
+      <div class="ctl"><label>맵</label><select name="map"><option value="">무작위 (V6 와 같음)</option></select></div>
+      <div class="ctl"><label>제한 시간(초, 비우면 단계 기본)</label><input type="number" name="time_limit" min="30" step="10" placeholder="(기본)"></div>
+      <div class="ctl"><label>저장된 시범</label><div class="sub" id="demoCounts">-</div></div>
+    </div>
+    <p class="hint" id="demoHelp">W/S 전후진 · Q/A·E/D 궤도 · Space 제동 · 마우스 조준 · 좌클릭/F 발사 · Shift 포수↔3인칭 · B 전차장 · 휠 배율 · Esc 일시정지. 첫 조작 전에는 시간이 멈춰 있고, 판이 끝나면 저장 후 다음 판이 준비됩니다. 창을 닫으면 끝납니다.</p>
+    <div style="display:flex;gap:8px;justify-content:space-between;margin-top:12px;flex-wrap:wrap">
+      <button id="demoV7" value="cancel" formnovalidate title="이전 V7 링 태그 연습(포탄 없음)">V7 링 연습</button>
+      <span style="display:flex;gap:8px">
+        <button value="cancel" formnovalidate>취소</button>
+        <button id="demoGo" class="primary" value="go">게임 시작</button>
+      </span>
     </div>
   </form>
 </dialog>
@@ -1136,15 +1158,50 @@ function wire() {
   $("btnReport").onclick = async () => { try { await api("/api/report", {run: RUN}); toast("보고서 만드는 중…"); } catch (e) { toast("실패: " + e.message, 5000); } };
   $("btnNew").onclick = openStart;
   $("arcadePlay").hidden = !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  const TANK_KO = {sherman75: "셔먼", t34_76: "T-34", tiger1: "티거"};
+  const demoForm = $("demoForm");
+  const demoPrefs = (() => { try { return JSON.parse(localStorage.getItem("combatDemo") || "{}"); } catch { return {}; } })();
   $("arcadePlay").onclick = async () => {
     $("arcadePlay").disabled = true;
+    try {
+      const info = await api("/api/combat_demo_info", {});
+      if (!demoForm.stage.options.length) {
+        demoForm.stage.innerHTML = info.stages.map(s => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join("");
+        demoForm.map.innerHTML += info.maps.map(m => `<option value="${esc(m.id)}">${esc(m.label)}</option>`).join("");
+      }
+      $("demoRuns").innerHTML = info.v6_runs.map(r => `<option value="${esc(r)}">`).join("");
+      demoForm.tank.value = demoPrefs.tank || "sherman75";
+      demoForm.stage.value = demoPrefs.stage || "v6_1v2";
+      demoForm.map.value = demoPrefs.map || "";
+      demoForm.time_limit.value = demoPrefs.time_limit || "";
+      // 기본 상대 = 지금 보고 있는 V6 실행(없으면 최근 V6 실행)
+      demoForm.run.value = demoPrefs.run ?? (info.v6_runs.includes(RUN) ? RUN : (info.v6_runs[0] || ""));
+      $("demoCounts").textContent = Object.entries(info.counts).map(([t, n]) => `${TANK_KO[t]} ${n}판`).join(" · ");
+      $("demoCounts").title = info.folder;
+      $("demoGo").disabled = info.running;
+      $("demoGo").textContent = info.running ? "게임 창 실행 중" : "게임 시작";
+      $("demoDlg").showModal();
+    } catch (error) { toast(error.message, 6500); }
+    finally { $("arcadePlay").disabled = false; }
+  };
+  $("demoV7").onclick = async () => {
     try {
       const result = await api("/api/arcade_play", {});
       if (result.url && !result.running) { location.assign("http://127.0.0.1:8780/"); return; }
       toast("Godot 게임 창에서 차종과 경기 인원을 선택하세요.");
     } catch (error) { toast(error.message, 6500); }
-    finally { $("arcadePlay").disabled = false; }
   };
+  $("demoDlg").addEventListener("close", async () => {
+    if ($("demoDlg").returnValue !== "go") return;
+    const body = {tank: demoForm.tank.value, stage: demoForm.stage.value, run: demoForm.run.value.trim(),
+                  map: demoForm.map.value, time_limit: demoForm.time_limit.value};
+    Object.assign(demoPrefs, body);
+    try { localStorage.setItem("combatDemo", JSON.stringify(body)); } catch {}
+    try {
+      const r = await api("/api/combat_demo", body);
+      toast(r.already ? "시범 게임 창이 이미 열려 있습니다." : `게임 창을 여는 중 · ${TANK_KO[body.tank]} · 조작을 시작하면 기록됩니다`, 6000);
+    } catch (error) { toast("시범 플레이 시작 실패: " + error.message, 8000); }
+  });
   const f = $("startForm");
   f.mode.onchange = () => {
     // 학습 방식마다 맞는 게임 실행 파일: 직접 고친 경로가 아니면(기본값 중 하나면) 방식에 맞게 바꾼다
