@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Godot 전차 플레이 · V7 시범 수집</title>
+<style>
+:root{color-scheme:dark;font:16px/1.6 "Malgun Gothic",sans-serif;color:#e6eee8;background:#121917}
+*{box-sizing:border-box}body{margin:0}main{max-width:620px;margin:12vh auto;padding:0 24px}h1{font-size:clamp(28px,5vw,40px);letter-spacing:-.05em;margin:0}
+p{margin:10px 0 22px;color:#afc1b6}.controls{display:flex;gap:16px;flex-wrap:wrap}label{flex:1;min-width:175px}
+select,button{display:block;width:100%;font:inherit;border-radius:5px;padding:10px 12px}
+select{margin-top:5px;background:#1d2823;color:inherit;border:1px solid #566a5c}
+button{cursor:pointer;font-weight:700;margin:22px 0 8px;border:0;background:#a4e7ac;color:#102516}
+button:disabled{cursor:default;background:#4c6553;color:#dce5df}#status{min-height:1.6em;margin:8px 0}footer{margin-top:28px;border-top:1px solid #39483d;padding-top:14px;color:#bdccc2}
+</style>
+<main>
+<h1>Godot 전차 플레이</h1>
+<p>이 PC에 게임 창을 열고 연합 전차 한 대를 직접 조종합니다. 완주하면 Godot이 관측과 조작을 차종별 시범으로 저장합니다.</p>
+<form id="play"><div class="controls">
+<label>내 전차<select id="tank"><option value="sherman75">셔먼 75</option><option value="t34_76">T-34 76</option></select></label>
+<label>경기 인원<select id="stage"><option value="v7_1v2">1 대 2 · 연합군 2대</option><option value="v7_1v3">1 대 3 · 연합군 3대</option><option value="v7_1v6">1 대 6 · 연합군 6대</option></select></label>
+</div><button id="launch" type="submit">Godot 게임 창 열기</button></form>
+<p id="status" role="status"></p>
+<footer>저장된 Godot 시범 <strong id="counts">확인 중</strong></footer>
+</main>
+<script>
+const el=id=>document.getElementById(id);
+let launching=false;
+function display(data){
+  el('counts').textContent='셔먼 '+data.counts.sherman75+'판 · T-34 '+data.counts.t34_76+'판';
+  el('launch').disabled=launching||data.running;
+  el('launch').textContent=data.running?'Godot 게임 실행 중':'Godot 게임 창 열기';
+  if(data.running) el('status').textContent='열려 있는 Godot 게임 창에서 플레이하세요.';
+  else if(!launching) el('status').textContent='';
+}
+async function refresh(){
+  if(launching)return;
+  try{const r=await fetch('/api/corpus');if(!r.ok)throw Error('시범 수집기에 연결할 수 없습니다.');
+    const data=await r.json();
+    if(data.service!=='tankgame-v7-controls-launcher'){location.replace('http://127.0.0.1:8780/');return}
+    display(data)}
+  catch(e){el('status').textContent=e.message}
+}
+el('play').addEventListener('submit',async e=>{
+  e.preventDefault();launching=true;el('launch').disabled=true;
+  try{const r=await fetch('/api/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tank:el('tank').value,stage:el('stage').value})});
+    const data=await r.json();if(!r.ok)throw Error(data.error);launching=false;display(data)}
+  catch(err){launching=false;el('launch').disabled=false;el('status').textContent=err.message}
+});
+refresh();setInterval(refresh,4000);
+</script>
+</html>

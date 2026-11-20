@@ -4,6 +4,26 @@ from __future__ import annotations
 import json
 import platform
 import sys
+from pathlib import Path
+
+
+V6_GAME = Path(__file__).resolve().parents[3] / "build" / "TankGame_v6.exe"
+_V6_BUILD_NAMES = {V6_GAME.name.lower(), "tankgame_v6_tactics_v2.exe", "tankgame_v6_cover.exe"}
+
+
+def v7_game_path() -> Path:
+    controls_build = V6_GAME.parent / "v7-controls" / V6_GAME.name
+    return controls_build if controls_build.is_file() else V6_GAME
+
+
+def v6_game_path(requested: str) -> str:
+    """Resolve old dashboard defaults in this checkout and retain explicit archive paths."""
+    if not requested:
+        return str(V6_GAME)
+    path = Path(requested).resolve()
+    if path.parent == V6_GAME.parent and path.name.lower() in _V6_BUILD_NAMES:
+        return str(V6_GAME)
+    return requested
 
 
 def hardware_info() -> dict:

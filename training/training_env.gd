@@ -354,32 +354,7 @@ func _ensure_map(mc: Dictionary) -> void:
 	if map:
 		remove_child(map)
 		map.free()
-	if mc.has("profile"):
-		var practice := PracticeMap.new()
-		practice.profile = str(mc.profile)
-		var layout: Dictionary = config.get("terrain_layout", {})
-		practice.course_angle = float(layout.get("angle", 0))
-		var center: Array = layout.get("center", [0, 0])
-		practice.course_center = Vector2(center[0], center[1])
-		map = practice
-	else:
-		map = HillMap.new()
-	map.map_seed = int(mc.get("seed", 1))
-	map.features_enabled = bool(mc.get("features", false))
-	map.height_amplitude = float(mc.get("amplitude", 15.0))
-	map.size_m = float(mc.get("size_m", 1200.0))
-	map.cell_m = float(mc.get("cell_m", 5.0))
-	map.ridge_count = int(mc.get("ridge_count", 3))
-	map.noise_frequency = float(mc.get("noise_frequency", 0.0025))
-	map.custom_ridges = mc.get("custom_ridges", [])
-	map.mounds = mc.get("mounds", [])
-	add_child(map)
-	if mc.get("profile", "") == "battle_compact":
-		CompactBattle.populate(map)
-	if config.has("terrain_layout"):
-		TerrainCourse.populate(map, config.terrain_layout)
-	if config.has("scenario"):
-		ScenarioLayout.populate(map, config.scenario)
+	map = ScenarioLayout.build_map(self, mc, config)
 	_map_key = key
 
 
@@ -475,14 +450,14 @@ func _spawn_scenario(specs: Array, rng: RandomNumberGenerator) -> void:
 	for i in specs.size():
 		var s: Dictionary = specs[i]
 		var pl: Dictionary = places[i]
-		var p := Vector2(float(pl.p[0]), float(pl.p[1]))
-		if not map.is_spawn_safe(p, 4.0, 6.0):
-			var q := _clear_spot(p, rng)
-			if q == Vector2.INF:
-				_spawn_error = "No safe scenario spawn for seed %s" % config.seed
-				return
-			moved.append({"index": i, "from": [p.x, p.y], "to": [q.x, q.y]})
-			p = q
+		var original := Vector2(float(pl.p[0]), float(pl.p[1]))
+		var reserved := tanks.map(func(t): return Vector2(t.global_position.x, t.global_position.z))
+		var p := ScenarioLayout.resolve_spawn(map, original, rng, reserved)
+		if p == Vector2.INF:
+			_spawn_error = "No safe scenario spawn for seed %s" % config.seed
+			return
+		if p != original:
+			moved.append({"index": i, "from": [original.x, original.y], "to": [p.x, p.y]})
 		_spawn_one(str(s.get("type", "tiger1")), int(s.get("team", 0)), p, float(pl.get("yaw", 0.0)),
 			rng.randi_range(1, 2147483646), str(s.get("ctrl", "scripted")), i)
 	config["scenario_relocated"] = moved

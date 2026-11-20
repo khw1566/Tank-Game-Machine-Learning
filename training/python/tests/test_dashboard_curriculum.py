@@ -1,14 +1,103 @@
 import json
+import io
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
-from dashboard import Dashboard
+from dashboard import Dashboard, EP_COLS, RunWatch, default_v6_godot
+from tankrl import curriculum_v4, v6_curriculum, v7_curriculum
+from tankrl.runtime import v6_game_path
 
 
 class DashboardCurriculumTests(unittest.TestCase):
+    def test_arcade_scratch_command_and_prepared_resume(self):
+        with tempfile.TemporaryDirectory() as root:
+            dash = self.dashboard(root)
+            args = dict(curriculum="v7", run="V7-1", n_envs=4, tank="sherman75", timesteps=500,
+                        behavior_clone=True, demos_dir="example demos", godot="legacy.exe",
+                        init_model="old.zip", branch_from="older")
+            cmd = dash.build_cmd(args)
+            self.assertEqual(Path(cmd[2]).name, "train_v7.py")
+            self.assertEqual(cmd[cmd.index("--tank") + 1], "sherman75")
+            self.assertEqual(cmd[cmd.index("--demos-dir") + 1], "example demos")
+            self.assertIn("--behavior-clone", cmd)
+            for flag in ("--godot", "--init-model", "--branch-from", "--resume"):
+                self.assertNotIn(flag, cmd)
+            run = Path(root) / args["run"]
+            run.mkdir()
+            (run / "run.json").write_text(json.dumps({"curriculum_version": v7_curriculum.VERSION,
+                                                      "stageset": v7_curriculum.STAGESET, "sessions": []}))
+            resumed = dash.build_cmd(dash.restart_args(run.name, {"n_envs": 3}))
+            for flag in ("--rotate", "--resume", "--behavior-clone"):
+                self.assertIn(flag, resumed)
+            self.assertEqual(resumed[resumed.index("--n-envs") + 1], "3")
+            with self.assertRaisesRegex(ValueError, "같은 이름"):
+                dash.start(args)
+            with self.assertRaisesRegex(ValueError, "V7"):
+                dash.control(run.name, {"cmd": "set_stage", "stage": v7_curriculum.STAGE_IDS[-1]})
+            dash.control(run.name, {"cmd": "checkpoint"})
+
+    def test_arcade_stage_map_and_reward_ledger_use_active_model_and_stage(self):
+        with tempfile.TemporaryDirectory() as root:
+            run = Path(root)
+            (run / "run.json").write_text(json.dumps({"curriculum_version": v7_curriculum.VERSION,
+                                                      "stageset": v7_curriculum.STAGESET}))
+            first = v7_curriculum.STAGE_IDS[0]
+            st = {"tank": "sherman75", "curriculum": {"stage": first}}
+            (run / "status.json").write_text(json.dumps(st))
+            state = RunWatch(run).state(0, {})
+            self.assertEqual(state["stage_ids"], v7_curriculum.STAGE_IDS)
+            self.assertIsNone(state["v6"])
+            self.assertEqual(state["v7"]["models"]["sherman75"]["stage"], first)
+            row = {"tank": "sherman75", "stage": first, "reward_components": '{"side_seen": 0.5}'}
+            summary = RunWatch.v7_summary(st, {}, [row, row | {"reward_components": "{}"}, row | {"tank": "tiger1"}])
+            self.assertEqual(summary["reward_episodes"], 2)
+            self.assertEqual(summary["reward_means"]["side_seen"], 0.25)
+
+    def test_start_preflights_selected_allied_demos_before_launch(self):
+        with tempfile.TemporaryDirectory() as root:
+            dash = self.dashboard(root)
+            dash.procs = {}
+            dash.deps = {"state": "ok", "python": "python"}
+            demo = Path(root) / "demos"
+            (demo / "sherman75").mkdir(parents=True)
+            (demo / "sherman75" / "finished.json").touch()
+            args = dict(curriculum="v7", run="arcade", demos_dir=str(demo), behavior_clone=True)
+            with patch("dashboard.subprocess.Popen") as launch:
+                with self.assertRaisesRegex(ValueError, "t34_76"):
+                    dash.start(args | {"rotate": "tiger1,sherman75,t34_76"})
+                launch.assert_not_called()
+                result = dash.start(args | {"tank": "sherman75"})
+                self.assertIn("--behavior-clone", result["cmd"])
+                launch.assert_called_once()
+
+    def test_collector_starts_once_and_reuses_known_service(self):
+        with tempfile.TemporaryDirectory() as root:
+            dash = self.dashboard(root)
+            dash.play_lock = threading.Lock()
+            dash.play_proc = None
+            with patch.object(dash, "collector_ready", side_effect=[False, True, True]), \
+                    patch("dashboard.subprocess.Popen") as launch, \
+                    patch("dashboard.urllib.request.urlopen", side_effect=lambda *a, **kw: io.BytesIO(b'{"running":true}')):
+                first = dash.open_collector()
+                self.assertEqual(dash.open_collector(), first)
+                self.assertTrue(first["running"])
+                self.assertEqual(Path(launch.call_args.args[0][2]).name, "play_v7.py")
+                launch.assert_called_once()
+    def test_duel_opponents_are_recovered_from_original_progress_rows(self):
+        with tempfile.TemporaryDirectory() as root:
+            watch = RunWatch(Path(root))
+            index = EP_COLS.index('duel_opponent')
+            base = {'tank': 'tiger1', 'stage': 'v6_1v1'}
+            self.assertEqual(watch.ep_compact(base | {'opponents': ''})[index], 'scripted')
+            self.assertEqual(watch.ep_compact(base | {'opponents': 'shared/step_1.zip'})[index], 'model')
+            self.assertEqual(watch.ep_compact(base)[index], '')
+            self.assertEqual(watch.ep_compact(base | {'stage': 'v6_1v2', 'opponents': ''})[index], '')
+
     def dashboard(self, root):
         dash = object.__new__(Dashboard)
         dash.runs_dir = Path(root)
@@ -54,3 +143,29 @@ class DashboardCurriculumTests(unittest.TestCase):
             self.assertTrue(dash.alive("V6-1", status))
             self.assertFalse(dash.alive("V6-1", status | {"pid": 100}))
             self.assertFalse(dash.alive("V6-1", status | {"updated": time.time() - 30}))
+
+    def test_v6_path_replaces_stale_build_choices_only(self):
+        canonical = Path(default_v6_godot())
+        self.assertEqual(canonical.name, "TankGame_v6.exe")
+        for name in ("TankGame_v6_cover.exe", "TankGame_v6_tactics_v2.exe"):
+            self.assertEqual(Path(v6_game_path(str(canonical.with_name(name)))), canonical)
+        with tempfile.TemporaryDirectory() as root:
+            archive = str(Path(root) / "TankGame_v6_cover.exe")
+            self.assertEqual(v6_game_path(archive), archive)
+
+    def test_v6_map_uses_stage_catalog_and_live_stats(self):
+        with tempfile.TemporaryDirectory() as root:
+            run = Path(root)
+            (run / "run.json").write_text(json.dumps({"curriculum_version": v6_curriculum.VERSION}))
+            st = {"tank": "tiger1", "curriculum": {"stage": "v6_1v1", "battle": {"metrics": {
+                "valley@tiger1": {"episodes": 50, "win": 0.36}}}}}
+            (run / "status.json").write_text(json.dumps(st))
+            state = RunWatch(run).state(0, {})
+            self.assertIsNone(state["v4"])
+            self.assertEqual([s["id"] for s in state["v6"]["stages"]], v6_curriculum.STAGE_IDS)
+            self.assertEqual(state["v6"]["recent"]["v6_1v1:valley@tiger1"], [18, 50])
+            self.assertEqual(state["v6"]["models"]["tiger1"]["stage"], "v6_1v1")
+            (run / "run.json").write_text(json.dumps({"curriculum_version": curriculum_v4.VERSION}))
+            state = RunWatch(run).state(0, {})
+            self.assertIsNone(state["v6"])
+            self.assertEqual([s["id"] for s in state["v4"]["stages"]], curriculum_v4.STAGE_IDS)

@@ -72,6 +72,87 @@ var _third_yaw := 0.0
 var _third_pitch := 0.0
 var _scope_target := Vector2.ZERO
 var _scope_valid := false
+## The Godot practice scene uses a centered terrain pointer for its ring controls.
+var centered_pointer := false
+var pointer_active := false
+var _pointer_motion := Vector2.ZERO
+var _pointer_angles := Vector2.ZERO
+var _pointer_input_pending := false
+var _pointer_initialized := false
+
+
+func reset_pointer() -> void:
+	aim_point = Vector3.INF
+	tank = null
+	_pointer_motion = Vector2.ZERO
+	_pointer_angles = Vector2.ZERO
+	_pointer_input_pending = false
+	_pointer_initialized = false
+	_mouse_delta = Vector2.ZERO
+	view = TankView.new()
+
+
+func is_free_look_pressed() -> bool:
+	return mode == THIRD and (Input.is_physical_key_pressed(KEY_C)
+		or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+
+
+func take_pointer_input() -> bool:
+	var pending := _pointer_input_pending
+	_pointer_input_pending = false
+	return pending
+
+
+func _update_pointer_angles(p: Tank) -> void:
+	if not _pointer_initialized:
+		_pointer_angles = Vector2(p.heading + p.turret_yaw, -0.28)
+		_pointer_initialized = true
+	var sensitivity := MOUSE_SENS * view.fov() / THIRD_FOV
+	_pointer_angles.x = wrapf(_pointer_angles.x - _pointer_motion.x * sensitivity, -PI, PI)
+	_pointer_angles.y = clampf(_pointer_angles.y - _pointer_motion.y * sensitivity,
+		deg_to_rad(-74.0), deg_to_rad(46.0))
+	_pointer_motion = Vector2.ZERO
+
+
+func _pointer_transform(p: Tank) -> Transform3D:
+	var direction := TankView.dir(_pointer_angles.x, _pointer_angles.y)
+	var origin: Vector3
+	if mode == GUNNER:
+		origin = view.eye_transform(p, map).origin
+	else:
+		var back := TankView.dir(_pointer_angles.x, 0.0)
+		origin = p.global_position - back * 14.0 + Vector3.UP * 7.0
+		if map:
+			origin.y = maxf(origin.y, map.height_at(origin.x, origin.z) + 1.0)
+	return Transform3D(Basis.looking_at(direction, Vector3.UP), origin)
+
+
+func update_pointer(p: Tank, practice_marker := Vector3.INF) -> void:
+	if not pointer_active or is_free_look_pressed() or mode == COMMANDER:
+		_pointer_motion = Vector2.ZERO
+		return
+	_update_pointer_angles(p)
+	var pose := _pointer_transform(p)
+	var origin := pose.origin
+	var direction := -pose.basis.z
+	var end := origin + direction * 180.0
+	var query := PhysicsRayQueryParameters3D.create(origin, end, Tank.LAYER_GROUND, [p.get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	aim_point = hit.position if not hit.is_empty() else end
+	if practice_marker != Vector3.INF:
+		var distance := (practice_marker - origin).dot(direction)
+		var on_ray := origin + direction * distance
+		if distance > 0.0 and distance <= origin.distance_to(aim_point) and on_ray.distance_to(practice_marker) < 1.1:
+			aim_point = on_ray
+
+
+func pointer_commands(p: Tank, delta: float) -> Vector2:
+	if not pointer_active or is_free_look_pressed() or mode == COMMANDER or aim_point == Vector3.INF:
+		return Vector2.ZERO
+	var offset := p.to_local(aim_point) - p.spec.turret_origin()
+	if offset.length_squared() < 0.001:
+		return Vector2.ZERO
+	return aim_commands(p, atan2(-offset.x, -offset.z), atan2(offset.y, Vector2(offset.x, offset.z).length()), delta)
 
 
 ## Human input only. The normal rate limits, damage and elevation limits still apply.
@@ -186,9 +267,23 @@ func status_text() -> String:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	handle_view_input(event)
+
+
+func handle_view_input(event: InputEvent) -> void:
 	if follow_only:
 		return
 	if event is InputEventMouseMotion:
+		if centered_pointer:
+			if not pointer_active:
+				return
+			if is_free_look_pressed() or mode == COMMANDER:
+				_mouse_delta += event.relative
+			else:
+				_pointer_motion += event.relative
+				if event.relative != Vector2.ZERO:
+					_pointer_input_pending = true
+			return
 		_mouse_delta += event.relative
 		if mode == GUNNER and mouse_aim_enabled and tank:
 			if not _scope_valid:
@@ -208,6 +303,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_B:
 				toggle_commander()
 			KEY_R:
+				if centered_pointer:
+					return
 				mouse_aim_enabled = not mouse_aim_enabled
 				aim_point = Vector3.INF
 				_scope_valid = false
@@ -223,11 +320,15 @@ func _unhandled_input(event: InputEvent) -> void:
 ## 매 프레임 메인이 호출. p = 지금 조종하는 전차
 func update_view(p: Tank, delta: float) -> void:
 	if p != tank:
-		_set_tag_visible(tank, true)
+		if is_instance_valid(tank):
+			_set_tag_visible(tank, true)
 		tank = p
 		_third_yaw = p.global_rotation.y + p.turret_yaw
 		_third_pitch = 0.0
 		_scope_valid = false
+	if centered_pointer:
+		_update_pointer_view(p, delta)
+		return
 	if follow_only:
 		_mouse_delta = Vector2.ZERO
 		release_mouse()
@@ -267,6 +368,32 @@ func update_view(p: Tank, delta: float) -> void:
 	_scale_tags()
 	if reticle:
 		reticle.queue_redraw()
+
+
+func _update_pointer_view(p: Tank, delta: float) -> void:
+	var was_free := free_look
+	free_look = pointer_active and is_free_look_pressed()
+	var looking := free_look or mode == COMMANDER
+	var want := Input.MOUSE_MODE_CAPTURED if pointer_active else Input.MOUSE_MODE_VISIBLE
+	if capture_mouse and Input.mouse_mode != want:
+		Input.mouse_mode = want
+	if free_look and not was_free and _pointer_initialized:
+		view.orbit_yaw = wrapf(_pointer_angles.x - p.global_rotation.y - p.turret_yaw, -PI, PI)
+		view.orbit_pitch = _pointer_angles.y
+	if looking and pointer_active:
+		var look := -_mouse_delta * MOUSE_SENS * view.fov() / THIRD_FOV
+		look.x += (_key(KEY_LEFT) - _key(KEY_RIGHT)) * KEY_LOOK_RATE * delta
+		look.y += (_key(KEY_UP) - _key(KEY_DOWN)) * KEY_LOOK_RATE * delta
+		view.look(look.x, look.y)
+	_mouse_delta = Vector2.ZERO
+	view.relax(delta)
+	fov = view.fov()
+	_set_tag_visible(p, mode == THIRD)
+	if looking:
+		global_transform = view.eye_transform(p, map)
+		return
+	_update_pointer_angles(p)
+	global_transform = _pointer_transform(p)
 
 
 ## 이름표(Label3D fixed_size)는 확대하면 같이 커지므로 시야각에 맞춰 줄여 화면 크기를 유지

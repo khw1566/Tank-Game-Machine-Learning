@@ -40,6 +40,7 @@ from tankrl import final_curriculum
 from tankrl.final_curriculum import FinalCurriculum
 from tankrl import v6_curriculum
 from tankrl.v6_curriculum import V6Curriculum
+from tankrl import v7_curriculum
 from tankrl.control import write_json_atomic
 from tankrl.godot_env import GodotVecEnv
 from tankrl.health import HealthConfig, HealthMonitor
@@ -581,6 +582,8 @@ def main():
     run_dir = (Path(args.runs_dir) / run).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest = run_dir / "run.json"
+    if manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("curriculum_version") == v7_curriculum.VERSION:
+        raise ValueError("Use train_v7.py to resume a V7 Godot run")
     if manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("curriculum_version") == battle_curriculum.VERSION:
         if args.curriculum == "final":
             raise ValueError(f"{run} 은 V5 전투 실행입니다. 최종 학습은 새 실행 이름(예: FINAL-1)에 --branch-from \"{run}\" 으로 시작하세요")

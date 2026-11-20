@@ -61,9 +61,13 @@ var _vision_timer := 0.0
 var _show_sight_lines := true
 var _sight_mesh: MeshInstance3D
 var _headless := DisplayServer.get_name() == "headless"
+var _v7_dialog: ConfirmationDialog
 
 
 func _ready() -> void:
+	if "--v7-native" in OS.get_cmdline_user_args() and not bool(get_tree().get_meta("v7_manual_game", false)):
+		get_tree().change_scene_to_file.call_deferred("res://training/v7_native.tscn")
+		return
 	if "--train" in OS.get_cmdline_user_args() or "--reproduce" in " ".join(OS.get_cmdline_user_args()):
 		# 학습/재현 모드: 학습 환경 씬으로 넘긴다(내보낸 exe 에서도 같은 인자로 동작)
 		get_tree().change_scene_to_file.call_deferred("res://training/training_env.tscn")
@@ -85,6 +89,10 @@ func _ready() -> void:
 		var offset := Vector3((i - (n - 1) * 0.5) * 25.0, 0, 0)
 		if not _spawn(allied_lineup[i], 1, map.spawn_points[1] + offset, i + 1):
 			return
+	var manual_tank := str(get_tree().get_meta("v7_manual_tank", ""))
+	var manual_index := allied_lineup.find(manual_tank)
+	if manual_index >= 0:
+		player_index = manual_index + 1
 	var team_idx := [0, 0]
 	var views := {}
 	for t in tanks:
@@ -280,6 +288,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			banner = AI_LABELS[ai_mode]
 		KEY_F8:
 			detailed_hud = not detailed_hud
+		KEY_F9:
+			_open_v7_lobby()
 		KEY_H:
 			if markers:
 				markers.show_hits = not markers.show_hits
@@ -297,6 +307,21 @@ func _finish_and(path: String) -> void:
 		get_tree().reload_current_scene()
 	else:
 		get_tree().change_scene_to_file(path)
+
+
+func _open_v7_lobby() -> void:
+	if recorder.ended:
+		_finish_and("res://training/v7_native.tscn")
+		return
+	if _v7_dialog == null:
+		_v7_dialog = ConfirmationDialog.new()
+		_v7_dialog.title = "V7 시범 수집"
+		_v7_dialog.dialog_text = "진행 중인 경기를 종료해 리플레이를 저장하고 시범 수집으로 이동할까요?"
+		_v7_dialog.ok_button_text = "저장 후 이동"
+		_v7_dialog.cancel_button_text = "경기 계속"
+		_v7_dialog.confirmed.connect(func(): _finish_and("res://training/v7_native.tscn"))
+		add_child(_v7_dialog)
+	_v7_dialog.popup_centered()
 
 
 func _physics_process(delta: float) -> void:
@@ -359,7 +384,7 @@ func _process(delta: float) -> void:
 		var lines := hud.text.split("\n")
 		hud.text = "\n".join([lines[0], lines[1], lines[4], lines[5], lines[9],
 			"마우스 조준 · 좌클릭/F 발사 · 우클릭/C 둘러보기 · Shift 조준경 · R 커서 조준 전환",
-			"W/S 전후진 · Q/A 좌궤도 · E/D 우궤도 · Space 제동 · Tab 전차 전환 · G 거리 표시 · F8 상세 HUD"])
+			"W/S 전후진 · Q/A 좌궤도 · E/D 우궤도 · Space 제동 · Tab 전차 전환 · G 거리 표시 · F8 상세 HUD · F9 V7 시범 수집"])
 		if banner != "":
 			hud.text += "\n" + banner
 	_update_overlay()

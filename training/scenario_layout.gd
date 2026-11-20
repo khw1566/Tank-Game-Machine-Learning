@@ -16,6 +16,41 @@ extends RefCounted
 const VERSION := 1
 
 
+static func build_map(parent: Node, mc: Dictionary, config: Dictionary) -> HillMap:
+	var terrain: HillMap
+	if mc.has("profile"):
+		var practice := PracticeMap.new()
+		practice.profile = str(mc.profile)
+		var layout: Dictionary = config.get("terrain_layout", {})
+		practice.course_angle = float(layout.get("angle", 0))
+		var center: Array = layout.get("center", [0, 0])
+		practice.course_center = Vector2(center[0], center[1])
+		terrain = practice
+	else:
+		terrain = HillMap.new()
+	terrain.map_seed = int(mc.get("seed", 1))
+	terrain.features_enabled = bool(mc.get("features", false))
+	terrain.height_amplitude = float(mc.get("amplitude", 15.0))
+	terrain.size_m = float(mc.get("size_m", 1200.0))
+	terrain.cell_m = float(mc.get("cell_m", 5.0))
+	terrain.ridge_count = int(mc.get("ridge_count", 3))
+	terrain.noise_frequency = float(mc.get("noise_frequency", 0.0025))
+	terrain.custom_ridges = mc.get("custom_ridges", [])
+	terrain.mounds = mc.get("mounds", [])
+	parent.add_child(terrain)
+	if mc.get("profile", "") == "battle_compact":
+		CompactBattle.populate(terrain)
+	if config.has("terrain_layout"):
+		TerrainCourse.populate(terrain, config.terrain_layout)
+	if config.has("scenario"):
+		populate(terrain, config.scenario)
+	return terrain
+
+
+static func resolve_spawn(terrain: HillMap, p: Vector2, rng: RandomNumberGenerator, reserved: Array) -> Vector2:
+	return p if terrain.is_spawn_safe(p, 4.0, 6.0) else terrain.find_safe_spawn(p, rng, reserved)
+
+
 static func berm_height(sc: Dictionary, o: Dictionary) -> float:
 	var spec := TankDatabase.get_spec(str(sc.get("learner_type", "tiger1")))
 	var roof := spec.hull_top_y() if spec else 1.9
