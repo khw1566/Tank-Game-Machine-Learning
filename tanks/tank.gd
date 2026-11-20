@@ -28,6 +28,10 @@ const GRAVITY := 9.8
 ## 포탄 궤적 적분 간격(초). 0.1s ≈ 60~80m 구간마다 지형/전차 교차 검사
 const SHELL_STEP_S := 0.1
 ## 엔진 브레이크(스로틀을 놓았을 때 감속, m/s²)
+## 선회 개선(2026-11-20): 조향 제동 + 선회 배율. 시범·학습 공통 물리
+const STEER_VERSION := 1
+const STEER_BRAKE := 0.6
+const STEER_GAIN := 2.0
 const COAST_DECEL := 1.0
 ## 궤도·보기륜 회전 관성까지 포함한 유효 질량 배율
 const MASS_FACTOR := 1.2
@@ -363,11 +367,18 @@ func _drive(c: TankControlInput, delta: float) -> void:
 	# 동력 없이 굴러갈 때 감속: 저항 + (클러치가 붙어 있으면) 엔진 브레이크
 	var a_coast := maxf(resist, 0.0) / m_eff + (0.0 if shifting else COAST_DECEL)
 	var a_brake := a_coast + spec.brake_mps2 * (1.0 if reversing else brake)
-	track_speed_left = _track_step(track_speed_left, tl, a_drive, a_brake, delta)
-	track_speed_right = _track_step(track_speed_right, tr, a_drive, a_brake, delta)
+	# 조향 제동: 한쪽 궤도만 동력을 받으면 다른 쪽(명령 0)은 조향 브레이크로 붙잡는다
+	var steer_l := a_brake
+	var steer_r := a_brake
+	if not reversing and absf(c.left_track) < 0.05 and absf(c.right_track) > 0.05:
+		steer_l += spec.brake_mps2 * STEER_BRAKE
+	elif not reversing and absf(c.right_track) < 0.05 and absf(c.left_track) > 0.05:
+		steer_r += spec.brake_mps2 * STEER_BRAKE
+	track_speed_left = _track_step(track_speed_left, tl, a_drive, steer_l, delta)
+	track_speed_right = _track_step(track_speed_right, tr, a_drive, steer_r, delta)
 	engine_rpm_frac = clampf(absf(forward_speed()) / maxf(v_top, 0.1), 0.0, 1.0)
 	var forward := forward_speed()
-	yaw_rate = (track_speed_right - track_speed_left) / spec.track_gauge_m * spec.steer_efficiency
+	yaw_rate = (track_speed_right - track_speed_left) / spec.track_gauge_m * spec.steer_efficiency * STEER_GAIN
 	heading = wrapf(heading + yaw_rate * delta, -PI, PI)
 	long_accel = lerpf(long_accel, (forward - _prev_forward) / maxf(delta, 1e-4), clampf(delta * 10.0, 0.0, 1.0))
 	_prev_forward = forward
