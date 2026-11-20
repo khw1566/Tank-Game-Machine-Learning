@@ -931,6 +931,29 @@ class Dashboard:
 
         return self.background(f"{run}: 학습 보고서", job)
 
+    def shot_groups(self, run: str) -> dict:
+        """탄착군 보고서만 갱신(학습 보고서보다 빠름). 이미 있으면 새 에피소드만 더 읽는다."""
+        d = self.run_dir(run)
+
+        def job():
+            r = subprocess.run([self.train_python(), "-m", "tankrl.shot_groups", str(d)], cwd=str(HERE),
+                               capture_output=True, text=True, encoding="utf-8", errors="replace")
+            if r.returncode != 0:
+                raise RuntimeError((r.stdout + r.stderr)[-500:])
+            return "analysis/shot_groups/report.html"
+
+        return self.background(f"{run}: 탄착군 보고서", job)
+
+    def shot_groups_state(self, run: str) -> dict:
+        d = self.run_dir(run)
+        page = d / "analysis" / "shot_groups" / "report.html"
+        running = any(j["title"] == f"{run}: 탄착군 보고서" and j["state"] == "running" for j in self.jobs)
+        out = {"exists": page.exists(), "running": running,
+               "url": "/files/" + urllib.parse.quote(f"{run}/analysis/shot_groups/report.html")}
+        if page.exists():
+            out["built"] = page.stat().st_mtime
+        return out
+
     def pdf(self, rel: str, fragment: str = "", name: str = "") -> dict:
         """runs 안의 HTML 보고서(학습·평가·경기 보고서) → 같은 폴더의 PDF. fragment = 보고서 필터(#stage=…&variant=…)."""
         from tankrl.pdf_export import file_to_pdf
@@ -1040,6 +1063,10 @@ def make_handler(dash: Dashboard):
                     return self.send_json(dash.reproduce(a["run"], a["episode_file"], bool(a.get("view", True))))
                 if u.path == "/api/report":
                     return self.send_json(dash.report(a["run"]))
+                if u.path == "/api/shot_groups":
+                    return self.send_json(dash.shot_groups(a["run"]))
+                if u.path == "/api/shot_groups_state":
+                    return self.send_json(dash.shot_groups_state(a["run"]))
                 if u.path == "/api/pdf":
                     return self.send_json(dash.pdf(a["path"], a.get("fragment", ""), a.get("name", "")))
                 if u.path == "/api/pdf_html":
