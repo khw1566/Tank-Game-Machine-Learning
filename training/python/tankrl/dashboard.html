@@ -269,7 +269,7 @@ table.heat tr.br th.rh, table.heat tr.br td { border-top: 3px solid #9333ea; }
 
   <div class="two">
     <section class="panel">
-      <h2>작업 <span class="spacer"></span><button id="btnReport">학습 보고서 만들기</button> <a id="reportLink" target="_blank" class="sub"></a></h2>
+      <h2>작업 <span class="spacer"></span><button id="btnReport">학습 보고서 만들기</button> <button id="btnShotGroups" title="표적 기준 탄착점 분포(부위·거리·방향·아군 오사·학습 진행). 없으면 만든 뒤 엽니다">탄착군 보고서</button> <button id="btnShotGroupsBuild" class="sub" title="새 에피소드를 더 읽어 탄착군 보고서를 갱신합니다">↻</button> <a id="reportLink" target="_blank" class="sub"></a></h2>
       <div id="jobs" class="hint">-</div>
       <h2 style="margin-top:12px">실행 정보</h2>
       <div id="runInfo" class="hint">-</div>
@@ -874,7 +874,7 @@ function renderRecords() {
   // 실행 필터가 "모든 실행"이면 지금 대시보드에서 보고 있는 실행의 보고서만 보여 준다(다른 실행 보고서가 섞여 보이지 않게)
   const reportRun = run || RUN;
   const runInfo = REC.runs.filter(r => (!reportRun || r.run === reportRun) && (!ver || (ver === "v4") === r.v4) && r.reports.length);
-  $("recRunReports").innerHTML = runInfo.length ? "실행 보고서: " + runInfo.map(r => r.reports.map(f => `<a target="_blank" href="/files/${encodeURIComponent(r.run)}/${f}" data-rec-run="${esc(r.run)}" data-rec-file="${f}">${esc(r.run)} · ${f.startsWith("training") ? "학습 보고서" : f.startsWith("analysis/") ? "명중·지근탄 통합 분석" : "평가 보고서"}</a>`).join(" · ")).join(" · ") : `${reportRun ? esc(reportRun) + " " : ""}실행 보고서 없음 — 위 작업 패널의 "학습 보고서 만들기"로 만듭니다.`;
+  $("recRunReports").innerHTML = runInfo.length ? "실행 보고서: " + runInfo.map(r => r.reports.map(f => `<a target="_blank" href="/files/${encodeURIComponent(r.run)}/${f}" data-rec-run="${esc(r.run)}" data-rec-file="${f}">${esc(r.run)} · ${f.startsWith("training") ? "학습 보고서" : f.startsWith("analysis/shot_groups") ? "탄착군 보고서" : f.startsWith("analysis/") ? "명중·지근탄 통합 분석" : "평가 보고서"}</a>`).join(" · ")).join(" · ") : `${reportRun ? esc(reportRun) + " " : ""}실행 보고서 없음 — 위 작업 패널의 "학습 보고서 만들기"로 만듭니다.`;
   recList = REC.records.filter(r => (!run || r.run === run) && (!ver || (ver === "v4") === r.v4) && (!stg || r.stage === stg) && (!tank || r.tank === tank) && (!res || String(+r.success) === res));
   $("recSub").textContent = `경기 보고서 ${recList.length}개 / 전체 ${REC.records.length}개 · 실행 ${REC.runs.length}개`;
   const reasonL = {objective_reached: "목표 도달", survived: "생존", enemies_destroyed: "적 전멸", target_hit: "명중", zone_held: "구역 점유", learner_knocked_out: "격파당함", time_limit: "시간 초과"};
@@ -1063,7 +1063,7 @@ function renderJobs() {
   const jobs = (S.jobs || []).slice().reverse();
   $("jobs").innerHTML = jobs.length ? jobs.map(j => `<div>${j.state === "running" ? "⏳" : j.state === "done" ? "✓" : "⚠"} ${esc(j.title)} <span class="muted">${esc(j.result)}</span></div>`).join("") : "없음";
   const done = jobs.find(j => j.title.endsWith("학습 보고서") && j.state === "done");
-  $("reportLink").innerHTML = done ? `<a href="/files/${encodeURIComponent(RUN)}/training_report.html" target="_blank">보고서 열기</a> · <a href="#" data-pdf="${esc(RUN)}/training_report.html">PDF로 저장</a>` : "";
+  $("reportLink").innerHTML = done ? `<a href="/files/${encodeURIComponent(RUN)}/training_report.html" target="_blank">보고서 열기</a> · <a href="/files/${encodeURIComponent(RUN)}/analysis/shot_groups/report.html" target="_blank">탄착군 보고서</a> · <a href="#" data-pdf="${esc(RUN)}/training_report.html">PDF로 저장</a>` : "";
 }
 
 // ------------------------------------------------------------------ 폴링
@@ -1163,6 +1163,29 @@ function wire() {
     finally { $("btnEvaluate").disabled = false; }
   };
   $("reportLink").onclick = e => { const a = e.target.closest("a[data-pdf]"); if (!a) return; e.preventDefault(); savePdf("/api/pdf", {path: a.dataset.pdf}, null); };
+  async function shotGroups(rebuild) {
+    // 팝업 차단을 피하려고 클릭 순간에 창을 먼저 연다
+    const w = window.open("", "_blank");
+    if (w) w.document.write("<meta charset=utf-8><p style='font-family:sans-serif'>탄착군 보고서를 준비하는 중…</p>");
+    const show = url => { if (w && !w.closed) w.location.href = url; else window.open(url, "_blank"); };
+    try {
+      const st = await api("/api/shot_groups_state", {run: RUN});
+      if (st.exists && !rebuild) { show(st.url); return; }
+      if (!st.running) await api("/api/shot_groups", {run: RUN});
+      toast("탄착군 보고서 만드는 중… 끝나면 새 창으로 엽니다(첫 생성은 기록이 많으면 1분 정도)", 5000);
+      const t0 = Date.now();
+      const poll = async () => {
+        const s2 = await api("/api/shot_groups_state", {run: RUN});
+        if (!s2.running && s2.exists && (!st.built || s2.built > st.built)) { toast("탄착군 보고서 완료"); show(s2.url); return; }
+        const job = (S.jobs || []).slice().reverse().find(j => j.title === RUN + ": 탄착군 보고서");
+        if (job && job.state === "error") { toast("실패: " + job.result, 6000); if (w) w.close(); return; }
+        if (Date.now() - t0 < 15 * 60 * 1000) setTimeout(poll, 2000);
+      };
+      setTimeout(poll, 2000);
+    } catch (e) { toast("실패: " + e.message, 5000); if (w) w.close(); }
+  }
+  $("btnShotGroups").onclick = () => shotGroups(false);
+  $("btnShotGroupsBuild").onclick = () => shotGroups(true);
   $("btnReport").onclick = async () => { try { await api("/api/report", {run: RUN}); toast("보고서 만드는 중…"); } catch (e) { toast("실패: " + e.message, 5000); } };
   $("btnNew").onclick = openStart;
   $("arcadePlay").hidden = !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
