@@ -440,6 +440,12 @@ class GodotVecEnv(VecEnv):
             self._curr_log.flush()
             print(f"[curriculum] {promo['tank']}: {promo['from']} → {promo['to']} "
                   f"(성공률 {promo['success_rate']:.2f}, {promo['episodes']} 에피소드, {promo['reason']})", flush=True)
+            hook = getattr(self, "on_stage_change", None)
+            if hook:
+                try:
+                    hook(promo)
+                except Exception as e:  # noqa: BLE001 - 보고서 훅이 학습을 멈추지 않게
+                    print(f"[curriculum] 단계 변경 훅 실패: {e}", flush=True)
 
     def close(self):
         for p in self.procs:

@@ -451,7 +451,7 @@ class Dashboard:
             progress = d / "progress.csv"
             v4 = read_json(d / "run.json").get("curriculum_version") in (curriculum_v4.VERSION, battle_curriculum.VERSION,
                                                                          final_curriculum.VERSION, v6_curriculum.VERSION)
-            files = [f for f in ("training_report.html", "evaluation_report.html", "analysis/shot_distribution/report.html") if (d / f).exists()]
+            files = [f for f in ("training_report.html", "evaluation_report.html", "analysis/shot_distribution/report.html", "analysis/shot_groups/report.html") if (d / f).exists()]
             if not progress.exists() and not files:
                 continue
             runs.append({"run": d.name, "v4": v4, "reports": files,

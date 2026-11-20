@@ -20,7 +20,7 @@ from pathlib import Path
 
 from tankrl.curriculum import STAGE_IDS
 from tankrl.objectives import ObjectiveIndex, objective_color
-from tankrl import report_v4
+from tankrl import report_v4, shot_groups
 
 COLORS = ["#2a6fdb", "#d9534f", "#3c9d4e", "#e08a1e", "#8e5bd0", "#1aa3a3", "#b5487a", "#6b7b2a", "#555"]
 TANK_LABEL = {"tiger1": "티거 I", "sherman75": "셔먼 76mm", "t34_76": "T-34-85"}
@@ -111,6 +111,16 @@ REPRO = ("<h2>재현</h2><p>모든 에피소드는 <code>episodes/env*/&lt;uid&g
          "끝 상태 해시가 같으면 원래 경기와 동일하다.</p>")
 
 
+def shot_group_part(run_dir: Path, directories) -> str:
+    """탄착군 보고서(analysis/shot_groups/)를 갱신하고 학습 보고서용 요약을 돌려준다. 실패해도 학습 보고서는 만든다."""
+    try:
+        shot_groups.build(run_dir, directories)
+        return shot_groups.training_report_section(run_dir)
+    except Exception as e:  # noqa: BLE001 - 보조 보고서 실패가 본 보고서를 막지 않게
+        print(f"[report] 탄착군 보고서 실패: {e}", file=sys.stderr)
+        return ""
+
+
 def write_doc(run_dir: Path, parts: list[str], meta: dict | None = None) -> Path:
     head = ("<!doctype html><html lang=ko><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">"
             f"<title>학습 보고서 {html.escape(run_dir.name)}</title><style>{CSS}{report_v4.CSS}</style></head><body>")
@@ -132,7 +142,7 @@ def build_v4(run_dir: Path, directories, manifest) -> Path | None:
         return None
     parts = [f"<h1>학습 보고서 — {html.escape(run_dir.name)} <small class=muted>커리큘럼 v4</small></h1>", session_line(manifest),
              f"<p class=muted>만든 시각 {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>", report_v4.TOOLBAR, body,
-             report_v4.recorded_table(run_dir, directories), REPRO]
+             report_v4.recorded_table(run_dir, directories), shot_group_part(run_dir, directories), REPRO]
     return write_doc(run_dir, parts, meta)
 
 
@@ -270,6 +280,7 @@ def build(run_dir: Path) -> Path:
                     parts.append(f'<tr><td>{html.escape(name)}</td><td>{html.escape(reason)}</td><td>{value:.4f}</td></tr>')
             parts.append('</table>')
 
+    parts.append(shot_group_part(run_dir, directories))
     parts.append(REPRO)
     return write_doc(run_dir, parts)
 

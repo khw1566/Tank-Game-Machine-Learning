@@ -41,6 +41,7 @@ from tankrl.final_curriculum import FinalCurriculum
 from tankrl import v6_curriculum
 from tankrl.v6_curriculum import V6Curriculum
 from tankrl.control import write_json_atomic
+from tankrl.auto_report import AutoReport
 from tankrl.godot_env import GodotVecEnv
 from tankrl.health import HealthConfig, HealthMonitor
 from tankrl.opponents import OpponentPool
@@ -90,6 +91,8 @@ def parse():
     ap.add_argument("--terrain-course", default="", choices=[""] + COURSE_IDS,
                     help="지형주행 단일 코스 고정 연습(생략하면 자동 승급)")
     ap.add_argument("--save-every", type=int, default=100_000)
+    ap.add_argument("--auto-report-min", type=float, default=10.0,
+                    help="체크포인트 저장 때 학습·탄착군 보고서를 백그라운드로 갱신하는 최소 간격(분, 0 = 끔). 단계 변경 때는 항상 갱신")
     ap.add_argument("--record-every", type=int, default=200, help="N 에피소드마다 전체 리플레이·보고서 기록(0 = 끔)")
     ap.add_argument("--review-prob", type=float, default=0.1, help="이전 단계 복습 확률")
     ap.add_argument("--seed", type=int, default=0)
@@ -354,6 +357,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
     env = GodotVecEnv(n_envs, args.godot, args.project, run_dir, tank, cur, opponents=pool,
                       seed=env_seed, record_every=ctl.record_every,
                       quiet=not args.verbose_godot, run_name=run_dir.name)
+    if getattr(ctl, "auto_report", None):
+        env.on_stage_change = lambda ev: ctl.auto_report.request(f"stage {ev.get('from')} -> {ev.get('to')}", force=True)
     ctl.env = env
     if v6:
         from tankrl.input_migration import migrate_pool
@@ -522,6 +527,8 @@ def train_one(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl: T
         ctl.last_save = {"t": round(__import__("time").time(), 1), "version": version(), "snapshot": snapshot,
                          "stage": cur.stage["id"]}
         print(f"[train] {tank}: 저장 {version()} (단계 {cur.stage['id']})", flush=True)
+        if snapshot and getattr(ctl, "auto_report", None):
+            ctl.auto_report.request(f"checkpoint {version()}")
 
     def on_checkpoint(_msg):
         save(snapshot=True)
@@ -605,6 +612,7 @@ def train_turn(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl) 
 def run_training(args, run_dir: Path, pool_dir: Path) -> None:
     ctl = TrainController(run_dir, record_every=args.record_every, review_prob=args.review_prob,
                           speed_cap=args.speed_cap)
+    ctl.auto_report = AutoReport(run_dir, 60.0 * getattr(args, "auto_report_min", 10.0))
     try:
         if args.rotate:
             tanks = [t.strip() for t in args.rotate.split(",") if t.strip()]
