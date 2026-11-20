@@ -161,7 +161,8 @@ func _ready() -> void:
 		"pace_version": 1, "perf_version": 1, "final_battle_version": FINAL_BATTLE_VERSION,
 		"attack_shaping_version": ATTACK_SHAPING_VERSION, "exchange_reward_version": 1, "v6_version": V6_VERSION,
 		"v6_tactics_version": V6_TACTICS_VERSION, "human_demo_version": HUMAN_DEMO_VERSION,
-		"fire_line_obs_version": FireLineObs.VERSION if targeting_inputs else 0, "contact_team_flag_version": 1})
+		"fire_line_obs_version": FireLineObs.VERSION if targeting_inputs else 0, "contact_team_flag_version": 1,
+		"steer_version": Tank.STEER_VERSION})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 
 
