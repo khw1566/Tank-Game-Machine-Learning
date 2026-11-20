@@ -212,6 +212,12 @@ func total(name: String) -> float:
 
 
 func on_launch(shooter: Tank, result: Dictionary) -> void:
+	var discipline: Dictionary = w.get("fire_discipline", {})
+	if not discipline.is_empty() and not aimed_at_visible_enemy(shooter, float(discipline.get("cone_deg", 3.0))):
+		# 맹목 사격: 지금 보이는 적 쪽으로 겨누지 않고 쏜 탄(허공·엄폐물 너머로 쏘기). V6-2 셔먼은
+		# 지형에 막히는 탄(−0.3)을 피하려고 포를 들어 하늘로 쏘는 습관(빗나감 −0.05)을 배웠다.
+		_add(shooter.name, -float(discipline.get("blind", 0.3)), "blind_fire")
+		result["blind_fire"] = true
 	if _attack_on():
 		_capture_shot_rewards = true
 		_shot_reward_events.clear()
@@ -242,6 +248,8 @@ func on_shot(shooter: Tank, r: Dictionary) -> void:
 		_add(shooter.name, -float(w.reposition.get("blocked_shot", 0.3)), "blocked_shot")
 	if bool(w.get("battle_shaping", false)) and not r.get("hit", false):
 		var near: Dictionary = r.get("near_miss", {})
+		if bool(w.get("near_miss_visible_pass_only", false)) and not near.get("visible_pass", false):
+			near = {}
 		if _combat_progress != null:
 			if not near.is_empty() and int(near.get("target_team", shooter.team)) != shooter.team:
 				_add(str(shooter.name), _combat_progress.near_miss(str(shooter.name), near), "near_miss")
@@ -1003,3 +1011,25 @@ static func pen_chance(shooter: Tank, target: Tank) -> float:
 	var p := float(res.pen_probability) if res.hit else 0.0
 	_pen_cache[key] = p
 	return p
+
+
+## 포가 지금 보이는(visible_now) 살아 있는 적의 차체 중심에서 cone_deg(+ 차체 반폭이 이루는 각) 안을 향하는가
+func aimed_at_visible_enemy(shooter: Tank, cone_deg: float) -> bool:
+	var idx: int = env.tanks.find(shooter)
+	if idx < 0 or idx >= env.agents.size():
+		return true
+	var contacts: Dictionary = env.agents[idx].perception.contacts
+	var origin := shooter.muzzle_position()
+	var gun := shooter.gun_direction()
+	for e in env.tanks:
+		if e.team == shooter.team or not e.damage.is_combat_effective():
+			continue
+		var c: Dictionary = contacts.get(e.name, {})
+		if c.is_empty() or not bool(c.get("visible_now", false)):
+			continue
+		var to: Vector3 = e.global_position + Vector3.UP * e.spec.total_height() * 0.5 - origin
+		var dist := maxf(to.length(), 1.0)
+		var limit := cone_deg + rad_to_deg(atan(2.5 / dist))
+		if rad_to_deg(gun.angle_to(to)) <= limit:
+			return true
+	return false

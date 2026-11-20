@@ -19,11 +19,18 @@ func _init(env) -> void:
 func launch(shooter: Tank, origin: Vector3, direction: Vector3, shell: GunSpec, result: Dictionary) -> void:
 	var random := RandomNumberGenerator.new()
 	random.seed = shooter.rng.randi()
+	var env = owner_env.get_ref()
+	var visible_targets: Variant = null
+	if bool(env.config.get("reward", {}).get("near_miss_visible_pass_only", false)):
+		visible_targets = {}
+		var observer: TankAgent = env.agents[env.tanks.find(shooter)]
+		for contact in observer.perception.contacts.values():
+			if contact.enemy and contact.visible_now and not contact.knocked_out:
+				visible_targets[contact.target_name] = true
 	active.append({"id": launched, "shooter": weakref(shooter), "pos": origin, "previous": origin,
 		"velocity": direction * shell.muzzle_velocity_ms, "shell": shell, "result": result.duplicate(true),
-		"distance": 0.0, "age": 0.0, "rng": random, "near": {}})
+		"distance": 0.0, "age": 0.0, "rng": random, "near": {}, "visible_targets": visible_targets})
 	launched += 1
-	var env = owner_env.get_ref()
 	env.sounds.add(SoundField.GUNFIRE, origin, str(shooter.name))
 
 
@@ -72,6 +79,12 @@ func step(dt: float) -> void:
 			if target.team == shooter.team or not target.damage.is_combat_effective():
 				continue
 			var center: Vector3 = target.global_position + Vector3.UP * target.spec.hull_top_y() * 0.6
+			var visible_targets = projectile.visible_targets
+			if visible_targets != null:
+				var along := (center - p).dot(direction)
+				# Reject a shell that stops short even if its impact is close to the target.
+				if not visible_targets.has(str(target.name)) or along < 0.0 or along > best_distance:
+					continue
 			var closest := Geometry3D.get_closest_point_to_segment(center, p, visible_end)
 			var miss := closest.distance_to(center)
 			if miss > 12 or miss >= float(projectile.near.get("miss_distance_m", INF)):
@@ -85,6 +98,8 @@ func step(dt: float) -> void:
 				"local_point": TankSpec._v(target.global_transform.affine_inverse() * closest), "sample_time_s": time,
 				"range_m": float(projectile.distance) + p.distance_to(closest),
 				"penetration_ratio": _near_penetration_ratio(target, p, center, projectile)}
+			if visible_targets != null:
+				projectile.near["visible_pass"] = true
 			near_passes[str(target.name)] = {"time": time, "position": closest}
 		projectile.previous = p
 		projectile.pos = end

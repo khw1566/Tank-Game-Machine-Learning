@@ -139,13 +139,21 @@ class GodotVecEnv(VecEnv):
         self.episode_count = episode_counter(self.run_dir, self.run_name, learner)
         self.stage_ids = getattr(curriculum, "stage_ids", STAGE_IDS)
         obs_mode = getattr(curriculum, "obs", "")
-        extra = [f"--obs={obs_mode}"] if obs_mode in ("situation", "situation_v3", "battle") else []
-        self.procs = [GodotProcess(godot, project, i, str(self.run_dir), quiet=quiet, extra=extra) for i in range(n_envs)]
-        p0 = self.procs[0]
-        if extra and int(p0.hello.get("situation_obs_version", 0)) < 1:
+        extra = [f"--obs={obs_mode}"] if obs_mode in ("situation", "situation_v3", "battle", "battle_v6_cover") else []
+        self.procs = []
+        try:
+            for i in range(n_envs):
+                proc = GodotProcess(godot, project, i, str(self.run_dir), quiet=quiet, extra=extra)
+                self.procs.append(proc)
+                if obs_mode == "battle_v6_cover" and proc.hello.get("target_occlusion_version", 0) < 1:
+                    raise RuntimeError("V6 차체·포탑 가림 관측이 없습니다. 최신 소스로 build/TankGame_v6.exe를 다시 빌드하세요.")
+                if extra and int(proc.hello.get("situation_obs_version", 0)) < 1:
+                    raise RuntimeError("커리큘럼 v4 는 상황 관측을 지원하는 최신 게임 실행 파일이 필요합니다. 게임을 다시 빌드하세요.")
+        except BaseException:
             for p in self.procs:
                 p.close()
-            raise RuntimeError("커리큘럼 v4 는 상황 관측을 지원하는 최신 게임 실행 파일이 필요합니다. 게임을 다시 빌드하세요.")
+            raise
+        p0 = self.procs[0]
         self.obs_labels = p0.hello.get("obs_labels", [])
         self.action_labels = p0.hello.get("action_labels", [])
         obs_space = gym.spaces.Box(-np.inf, np.inf, shape=(p0.obs_size,), dtype=np.float32)

@@ -53,10 +53,16 @@ class HealthMonitor:
     good: list = field(default_factory=list)
     best_models: dict = field(default_factory=dict)   # 단계 -> {step, path, success}
     last: dict = field(default_factory=dict)
+    namespace: str = ""
+
+    @property
+    def _state_path(self) -> Path:
+        suffix = f".{self.namespace}" if self.namespace else ""
+        return self.tdir / f"good_checkpoints{suffix}.json"
 
     def __post_init__(self):
         self.tdir = Path(self.tdir)
-        state = self._read(self.tdir / "good_checkpoints.json")
+        state = self._read(self._state_path)
         self.good = state.get("good", [])
         self.best_models = state.get("best", {})
         self.rollbacks = state.get("rollbacks", {})
@@ -157,7 +163,10 @@ class HealthMonitor:
         self.good = self.good[-self.config.keep_good:]
         best = self.best_models.get(stage)
         if success is not None and (best is None or success > best.get("success", -1)):
-            target = self.tdir / "good" / f"best_{stage}.zip"
+            folder = self.tdir / "good"
+            if self.namespace:
+                folder /= self.namespace
+            target = folder / f"best_{stage}.zip"
             target.parent.mkdir(parents=True, exist_ok=True)
             atomic_copy(snapshot, target)
             self.best_models[stage] = dict(entry, path=str(target), source=str(snapshot))
@@ -165,9 +174,9 @@ class HealthMonitor:
 
     def _save(self) -> None:
         data = {"good": self.good, "best": self.best_models, "rollbacks": self.rollbacks, "config": asdict(self.config)}
-        tmp = self.tdir / "good_checkpoints.json.tmp"
+        tmp = self._state_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        tmp.replace(self.tdir / "good_checkpoints.json")
+        tmp.replace(self._state_path)
 
     def rollback_target(self, stage: str) -> dict | None:
         top = self.best.get(stage, 0.0)

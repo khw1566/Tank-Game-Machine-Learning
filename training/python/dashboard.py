@@ -278,7 +278,8 @@ class RunWatch:
         marker = '/objective:v4/'
         records = [(r, r['objective'].split(marker, 1)[1]) for r in rows
                    if r.get('stage') in curriculum_v4.STAGE_IDS and marker in r.get('objective', '')]
-        bucket, grid, recent = self.map_history(records, window=40)
+        log = read_jsonl(self.run_dir / "curriculum_log.jsonl")
+        bucket, grid, recent, rgrid, starts = self.map_history(records, window=40, log=log)
         stages = [{"id": s["id"], "part": s["part"], "scope": s["scope"], "label": s["label"], "variants": s["variants"],
                    "learn": s.get("learn", ""), "goal": s.get("goal", ""), "lesson": s.get("lesson", ""),
                    "variant_notes": s.get("variants_desc", {}),
@@ -293,7 +294,7 @@ class RunWatch:
                              "common_complete": c.get("common_complete", False), "branched_from": c.get("branched_from", ""),
                              "episodes_in_stage": c.get("episodes_in_stage", 0), "shaping_scale": c.get("shaping_scale")}
         branch = {m: read_json(self.run_dir / m / 'branch.json') for m in TANKS if (self.run_dir / m / 'branch.json').exists()}
-        return {"bucket": bucket, "grid": grid, "recent": recent,
+        return {"bucket": bucket, "grid": grid, "recent": recent, "rgrid": rgrid, "starts": starts,
                 "stages": stages, "models": models, "branch": branch, "tanks": curriculum_v4.SHARED_TANKS}
 
     def v6_summary(self, rows: list[dict], status: dict, tanks: dict) -> dict:
@@ -332,12 +333,13 @@ class RunWatch:
                 if f"/objective:v{assessment}/" not in row.get("objective", ""):
                     continue
             records.append((row, f"{sid}:{variant}"))
-        bucket, grid, _ = self.map_history(records)
+        log = read_jsonl(self.run_dir / "curriculum_log.jsonl")
+        bucket, grid, _, rgrid, starts = self.map_history(records, log=log)
         stages = [{"id": s["id"], "part": "V6", "scope": "tank", "label": s["label"], "variants": s["variants"],
                    "promote": s["promote"], "threshold": (s["promote"] or {}).get("win"),
                    "variant_notes": s["variants_desc"], "color": objective_color(s["id"]),
                    "variant_colors": {v: objective_color(v) for v in s["variants"]}} for s in v6_curriculum.STAGES]
-        return {"bucket": bucket, "grid": grid, "recent": recent, "stages": stages,
+        return {"bucket": bucket, "grid": grid, "recent": recent, "rgrid": rgrid, "starts": starts, "stages": stages,
                 "models": {t: {"stage": m["stage"]} for t, m in models.items()}, "tanks": v6_curriculum.TANKS}
 
     @staticmethod
@@ -372,25 +374,58 @@ class RunWatch:
                 "reward_episodes": count, "reward_means": {k: v / count for k, v in ledger.items()}}
 
     @staticmethod
-    def map_history(records, window=0):
+    def map_history(records, window=0, log=None):
+        """grid = 전체 누적 스텝 구간별, rgrid = 단계 진입 시점(starts)부터 센 상대 스텝 구간별.
+        rgrid 칸 = [판수, 성공, 보상 합, 그중 복습 판수]. 복습 판 = 그 모델이 다음 단계에 들어간 뒤 이 단계를 다시 푼 판."""
         top = max((float(row.get("global_step") or 0) for row, _ in records), default=0)
         bucket = max(50_000, int(round(top / 30 / 50_000)) * 50_000)
-        grid, recent = {}, {}
+
+        def model_of(r):
+            parts = r.get("learner_policy", "").split("/")
+            return parts[1] if len(parts) > 2 else r.get("tank", "")
+
+        # 단계 진입 스텝: 커리큘럼 기록의 첫 진입과 그 단계 첫 판 중 이른 쪽
+        starts = {}
+        for p in log or []:
+            to, m = p.get("to"), p.get("tank")
+            if to and m and p.get("from") != to and (m, to) not in starts:
+                starts[(m, to)] = float(p.get("global_step") or 0)
+        for r, ident in records:
+            k = (model_of(r), ident.split(":", 1)[0])
+            step = float(r.get("global_step") or 0)
+            starts[k] = min(starts.get(k, step), step)
+        later = {}
+        for (m, _), s in starts.items():
+            later.setdefault(m, []).append(s)
+        grid, rgrid, recent = {}, {}, {}
         for r, ident in records:
             tank = r.get("tank", "")
-            parts = r.get("learner_policy", "").split("/")
-            model = parts[1] if len(parts) > 2 else tank
-            b = int(float(r.get("global_step") or 0) // bucket)
+            model = model_of(r)
+            sid = ident.split(":", 1)[0]
+            step = float(r.get("global_step") or 0)
+            b = int(step // bucket)
             ok = int(str(r.get("success")) in ("1", "1.0", "True"))
+            ret = float(r.get("return") or 0)
             key = f"{ident}@{tank}"
             cell = grid.setdefault(model, {}).setdefault(str(b), {}).setdefault(key, [0, 0, 0.0])
             cell[0] += 1
             cell[1] += ok
-            cell[2] += float(r.get("return") or 0)
+            cell[2] += ret
+            s0 = starts[(model, sid)]
+            rb = max(0, int((step - s0) // bucket))
+            review = any(s0 < s <= step for s in later.get(model, ()))
+            rc = rgrid.setdefault(model, {}).setdefault(str(rb), {}).setdefault(key, [0, 0, 0.0, 0])
+            rc[0] += 1
+            rc[1] += ok
+            rc[2] += ret
+            rc[3] += int(review)
             if window:
                 q = recent.setdefault(key, collections.deque(maxlen=window))
                 q.append(ok)
-        return bucket, grid, {k: [sum(v), len(v)] for k, v in recent.items()}
+        start_map = {}
+        for (m, sid), s in starts.items():
+            start_map.setdefault(m, {})[sid] = s
+        return bucket, grid, {k: [sum(v), len(v)] for k, v in recent.items()}, rgrid, start_map
 
     def tank_info(self) -> dict:
         res = {}
@@ -499,6 +534,7 @@ class Dashboard:
         self.settings_path = self.runs_dir / "dashboard_settings.json"
         self.play_lock = threading.Lock()
         self.play_proc = None
+        self.demo_proc = None
         self.settings = {"godot": default_godot(), "project": "", "python": "", "device": "auto"} | read_json(self.settings_path)
         if self.settings.get('godot') and not abs_path(self.settings['godot']).is_file():
             self.settings.update(godot=default_godot(), project='')
@@ -837,6 +873,63 @@ class Dashboard:
                                              headers={"Content-Type": "application/json"})
             with urllib.request.urlopen(request, timeout=10) as response:
                 return json.load(response)
+
+    # ------------------------------------------------------------ 실제 전투 시범(행동 복제용)
+
+    @staticmethod
+    def combat_demo_godot() -> str:
+        build = HERE.parents[1] / "build"
+        demo = build / "combat-demo" / "TankGame_v6.exe"
+        return str(demo) if demo.is_file() else default_v6_godot()
+
+    def combat_demo_info(self) -> dict:
+        from tankrl.combat_demo import ALLIES, demos_root, list_demos
+        running = self.demo_proc is not None and self.demo_proc.poll() is None
+        v6_runs = sorted((d.name for d in self.runs_dir.iterdir() if d.is_dir() and (d / "opponents").is_dir()
+                          and read_json(d / "run.json").get("curriculum_version") == v6_curriculum.VERSION),
+                         key=lambda n: -(self.runs_dir / n).stat().st_mtime) if self.runs_dir.exists() else []
+        return {"running": running, "folder": str(demos_root()),
+                "counts": {t: len(list_demos(t)) for t in (*ALLIES, "tiger1")},
+                "stages": [{"id": st["id"], "label": st["label"]} for st in v6_curriculum.STAGES],
+                "maps": [{"id": k, "label": v.split(" — ")[0]} for k, v in final_curriculum.MAPS.items()],
+                "v6_runs": v6_runs, "godot": self.combat_demo_godot()}
+
+    def open_combat_demo(self, a: dict) -> dict:
+        from tankrl.combat_demo import ALLIES
+        tank, stage = a.get("tank", "sherman75"), a.get("stage", "v6_1v2")
+        if tank not in (*ALLIES, "tiger1") or stage not in v6_curriculum.STAGE_IDS:
+            raise ValueError("차종과 경기 인원을 선택하세요.")
+        with self.play_lock:
+            if self.demo_proc is not None and self.demo_proc.poll() is None:
+                return dict(self.combat_demo_info(), already=True)
+            godot = self.combat_demo_godot()
+            if not Path(godot).is_file():
+                raise FileNotFoundError(f"게임 실행 파일이 없습니다: {godot}")
+            cmd = [self.train_python(), "-u", str(HERE / "play_combat_demo.py"), "--godot", godot,
+                   "--tank", tank, "--stage", stage, "--runs-dir", str(self.runs_dir)]
+            if a.get("run"):
+                if not (self.runs_dir / a["run"]).is_dir():
+                    raise ValueError(f"실행이 없습니다: {a['run']}")
+                cmd += ["--run", a["run"]]
+            if a.get("map"):
+                if a["map"] not in final_curriculum.MAPS:
+                    raise ValueError("맵 이름이 올바르지 않습니다.")
+                cmd += ["--map", a["map"]]
+            if a.get("time_limit"):
+                cmd += ["--time-limit", str(float(a["time_limit"]))]
+            log = self.runs_dir / "combat_demo.log"
+            log.parent.mkdir(parents=True, exist_ok=True)
+            with log.open("a", encoding="utf-8") as output:
+                output.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] {' '.join(cmd)}\n")
+                output.flush()
+                self.demo_proc = subprocess.Popen(cmd, cwd=HERE, stdin=subprocess.DEVNULL, stdout=output,
+                                                  stderr=subprocess.STDOUT,
+                                                  env=dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1"),
+                                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            time.sleep(1.5)
+            if self.demo_proc.poll() is not None:
+                raise RuntimeError(f"시범 수집을 시작하지 못했습니다 · {tail_text(log, 600)}")
+            return self.combat_demo_info()
 
     def start(self, a: dict) -> dict:
         run = a.get("run") or time.strftime("%Y%m%d_%H%M%S")
@@ -1235,6 +1328,16 @@ def make_handler(dash: Dashboard):
                             or self.headers.get_content_type() != "application/json"):
                         return self.send_json({"error": "로컬 대시보드에서 시범 수집기를 여세요."}, 403)
                     return self.send_json(dash.open_collector())
+                if u.path in ("/api/combat_demo", "/api/combat_demo_info"):
+                    host = self.headers.get("Host", "")
+                    if (self.client_address[0] not in ("127.0.0.1", "::1")
+                            or urllib.parse.urlsplit("//" + host).hostname not in ("127.0.0.1", "::1", "localhost")
+                            or self.headers.get("Origin", "http://" + host) != "http://" + host
+                            or self.headers.get_content_type() != "application/json"):
+                        return self.send_json({"error": "로컬 대시보드에서 시범 수집을 여세요."}, 403)
+                    if u.path == "/api/combat_demo_info":
+                        return self.send_json(dash.combat_demo_info())
+                    return self.send_json(dash.open_combat_demo(a))
                 if u.path == "/api/start":
                     return self.send_json(dash.start(a))
                 if u.path == "/api/control":

@@ -74,6 +74,8 @@ var _scope_target := Vector2.ZERO
 var _scope_valid := false
 ## The Godot practice scene uses a centered terrain pointer for its ring controls.
 var centered_pointer := false
+## 중앙 조준점 광선 길이(m). V7 링 연습 = 180, 실제 전투 시범 = 2500
+var pointer_range := 180.0
 var pointer_active := false
 var _pointer_motion := Vector2.ZERO
 var _pointer_angles := Vector2.ZERO
@@ -135,7 +137,7 @@ func update_pointer(p: Tank, practice_marker := Vector3.INF) -> void:
 	var pose := _pointer_transform(p)
 	var origin := pose.origin
 	var direction := -pose.basis.z
-	var end := origin + direction * 180.0
+	var end := origin + direction * pointer_range
 	var query := PhysicsRayQueryParameters3D.create(origin, end, Tank.LAYER_GROUND, [p.get_rid()])
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	aim_point = hit.position if not hit.is_empty() else end
