@@ -1,1 +1,0 @@
-{"version": 1, "fields": ["global_step", "uid", "stage", "variant", "learner_tank", "t", "shooter", "shooter_type", "shooter_role", "shooter_team", "target", "target_type", "target_role", "target_team", "friendly", "outcome", "zone", "x", "y", "z", "range_m", "range_source", "aspect_deg", "miss_m", "shell"], "files": {}}

@@ -31,7 +31,7 @@ and map labels used by the graphs. Open the generated HTML reports directly.
 To inspect the interactive dashboard from the repository root, run:
 
 ```powershell
-python training/python/dashboard.py --runs-dir training/snapshots/20261123_v6_checkpoints/runs --port 8793
+python training/python/dashboard.py --runs-dir (Resolve-Path 'training/snapshots/20261123_v6_checkpoints/runs').Path --port 8793
 ```
 
 The snapshot contains graph history and saved models. Episode recordings and
