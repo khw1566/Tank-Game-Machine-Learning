@@ -74,6 +74,8 @@ def parse():
     ap.add_argument("--branch-tanks", default="tiger1,sherman75,t34_76", help="자동 분기할 전차 목록")
     ap.add_argument("--rotate", default="", help="여러 종류를 번갈아 학습: tiger1,sherman75,t34_76")
     ap.add_argument("--rotate-steps", type=int, default=300_000, help="교대마다 한 종류의 학습 스텝")
+    ap.add_argument("--tank-step-scale", default="",
+                    help="전차별 교대 스텝 배율, 예: tiger1=2 (티거만 --rotate-steps 의 2배). 비우면 모두 1배")
     ap.add_argument("--cycles", type=int, default=1, help="--rotate 반복 횟수")
     ap.add_argument("--continue-rotation", action="store_true",
                     help="저장 후 중지한 교대 학습에서 해당 전차의 남은 스텝과 이후 순서를 이어간다")
@@ -672,6 +674,15 @@ def train_turn(args, run_dir: Path, pool_dir: Path, tank: str, steps: int, ctl) 
     return result
 
 
+def tank_scale(args, tank: str) -> float:
+    """--tank-step-scale "tiger1=2,sherman75=1" → 그 전차의 교대 스텝 배율."""
+    for item in (getattr(args, "tank_step_scale", "") or "").split(","):
+        name, _, value = item.partition("=")
+        if name.strip() == tank and value.strip():
+            return max(0.1, float(value))
+    return 1.0
+
+
 def run_training(args, run_dir: Path, pool_dir: Path) -> None:
     ctl = TrainController(run_dir, record_every=args.record_every, review_prob=args.review_prob,
                           speed_cap=args.speed_cap)
@@ -697,7 +708,9 @@ def run_training(args, run_dir: Path, pool_dir: Path) -> None:
                         break
                     if c == first_cycle and i < first_tank:
                         continue
-                    steps = first_steps if (c, i) == (first_cycle, first_tank) else args.rotate_steps
+                    steps = int(args.rotate_steps * tank_scale(args, t))
+                    if (c, i) == (first_cycle, first_tank) and args.continue_rotation:
+                        steps = first_steps
                     if steps <= 0:
                         continue
                     print(f"[train] 교대 {c + 1}/{args.cycles}: {t} {steps} 스텝")

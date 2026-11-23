@@ -213,11 +213,21 @@ func total(name: String) -> float:
 
 func on_launch(shooter: Tank, result: Dictionary) -> void:
 	var discipline: Dictionary = w.get("fire_discipline", {})
-	if not discipline.is_empty() and not aimed_at_visible_enemy(shooter, float(discipline.get("cone_deg", 3.0))):
-		# 맹목 사격: 지금 보이는 적 쪽으로 겨누지 않고 쏜 탄(허공·엄폐물 너머로 쏘기). V6-2 셔먼은
-		# 지형에 막히는 탄(−0.3)을 피하려고 포를 들어 하늘로 쏘는 습관(빗나감 −0.05)을 배웠다.
-		_add(shooter.name, -float(discipline.get("blind", 0.3)), "blind_fire")
-		result["blind_fire"] = true
+	if not discipline.is_empty():
+		var aim_dist := aimed_distance(shooter, float(discipline.get("cone_deg", 3.0)), float(discipline.get("cone_v_deg", discipline.get("cone_deg", 3.0))))
+		if aim_dist < 0.0:
+			# 맹목 사격: 지금 보이는 적 쪽으로 겨누지 않고 쏜 탄(허공·엄폐물 너머·표적 앞 땅). 수직은 더 엄격하게(v2).
+			_add(shooter.name, -float(discipline.get("blind", 0.3)), "blind_fire")
+			result["blind_fire"] = true
+		else:
+			result["aim_dist"] = snappedf(aim_dist, 0.1)
+		if float(discipline.get("ally_block", 0.0)) > 0.0:
+			var idx: int = env.tanks.find(shooter)
+			if idx >= 0 and idx < env.agents.size():
+				var line := FireLineObs.compute(shooter, env.agents[idx].perception, env.tanks)
+				if line[5] > 0.5:
+					# 사선 위 아군이 적보다 앞에 있는데 쐈다(팀킬 원인 단계 비용)
+					_add(shooter.name, -float(discipline.ally_block), "ally_in_line")
 	if _attack_on():
 		_capture_shot_rewards = true
 		_shot_reward_events.clear()
@@ -244,6 +254,12 @@ func on_shot(shooter: Tank, r: Dictionary) -> void:
 				_add(str(shooter.name), float(bonus.value), str(bonus.reason))
 	for e in model.shot_rewards(shooter.name, shooter.team, target, tteam, r):
 		_add(e.tank, float(e.value) * float(w.event_scale), str(e.reason))
+	var fd: Dictionary = w.get("fire_discipline", {})
+	if float(fd.get("short", 0.0)) > 0.0 and not r.get("hit", false) and str(r.get("blocked_by", "none")) != "none" 			and r.has("aim_dist") and r.has("hit_pos") and r.has("from"):
+		var travelled := SoundField._v(r.get("hit_pos", [])).distance_to(SoundField._v(r.get("from", [])))
+		if travelled < float(fd.get("short_ratio", 0.8)) * float(r.aim_dist):
+			# 근탄: 겨눈 적까지 거리의 80% 도 못 가서 땅·장애물에 박힌 탄(고저를 낮게 잡은 사격)
+			_add(shooter.name, -float(fd.short), "short_shot")
 	if _firing_progress != null and not r.get("hit", false) and str(r.get("blocked_by", "none")) != "none":
 		_add(shooter.name, -float(w.reposition.get("blocked_shot", 0.3)), "blocked_shot")
 	if bool(w.get("battle_shaping", false)) and not r.get("hit", false):
@@ -1013,14 +1029,20 @@ static func pen_chance(shooter: Tank, target: Tank) -> float:
 	return p
 
 
-## 포가 지금 보이는(visible_now) 살아 있는 적의 차체 중심에서 cone_deg(+ 차체 반폭이 이루는 각) 안을 향하는가
-func aimed_at_visible_enemy(shooter: Tank, cone_deg: float) -> bool:
+## 포가 지금 보이는(visible_now) 살아 있는 적의 차체 중심을 향하는가.
+## 수평 cone_deg, 수직 cone_v_deg(+ 차체 반폭·반높이가 이루는 각) 안이면 그 적까지 거리, 아니면 -1.
+func aimed_distance(shooter: Tank, cone_deg: float, cone_v_deg: float = -1.0) -> float:
+	if cone_v_deg < 0.0:
+		cone_v_deg = cone_deg
 	var idx: int = env.tanks.find(shooter)
 	if idx < 0 or idx >= env.agents.size():
-		return true
+		return 0.0
 	var contacts: Dictionary = env.agents[idx].perception.contacts
 	var origin := shooter.muzzle_position()
 	var gun := shooter.gun_direction()
+	var gun_yaw := atan2(gun.x, gun.z)
+	var gun_pitch := asin(clampf(gun.y, -1.0, 1.0))
+	var best := -1.0
 	for e in env.tanks:
 		if e.team == shooter.team or not e.damage.is_combat_effective():
 			continue
@@ -1029,7 +1051,13 @@ func aimed_at_visible_enemy(shooter: Tank, cone_deg: float) -> bool:
 			continue
 		var to: Vector3 = e.global_position + Vector3.UP * e.spec.total_height() * 0.5 - origin
 		var dist := maxf(to.length(), 1.0)
-		var limit := cone_deg + rad_to_deg(atan(2.5 / dist))
-		if rad_to_deg(gun.angle_to(to)) <= limit:
-			return true
-	return false
+		var yaw_err := rad_to_deg(absf(wrapf(atan2(to.x, to.z) - gun_yaw, -PI, PI)))
+		var pitch_err := rad_to_deg(absf(asin(clampf(to.y / dist, -1.0, 1.0)) - gun_pitch))
+		if yaw_err <= cone_deg + rad_to_deg(atan(2.5 / dist)) 				and pitch_err <= cone_v_deg + rad_to_deg(atan(e.spec.total_height() * 0.5 / dist)):
+			if best < 0.0 or dist < best:
+				best = dist
+	return best
+
+
+func aimed_at_visible_enemy(shooter: Tank, cone_deg: float, cone_v_deg: float = -1.0) -> bool:
+	return aimed_distance(shooter, cone_deg, cone_v_deg) >= 0.0

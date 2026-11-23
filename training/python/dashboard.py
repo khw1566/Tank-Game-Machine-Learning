@@ -384,12 +384,9 @@ class RunWatch:
             parts = r.get("learner_policy", "").split("/")
             return parts[1] if len(parts) > 2 else r.get("tank", "")
 
-        # 단계 진입 스텝: 커리큘럼 기록의 첫 진입과 그 단계 첫 판 중 이른 쪽
+        # 단계 진입 스텝 = 표에 들어가는 그 단계의 첫 판(필터 후). 그래서 새 단계 열은 언제나 첫 행부터 채워진다.
+        # (log 는 호환용 인자; 진입 기록과 실제 첫 판 사이 공백 행이 생기지 않도록 쓰지 않는다)
         starts = {}
-        for p in log or []:
-            to, m = p.get("to"), p.get("tank")
-            if to and m and p.get("from") != to and (m, to) not in starts:
-                starts[(m, to)] = float(p.get("global_step") or 0)
         for r, ident in records:
             k = (model_of(r), ident.split(":", 1)[0])
             step = float(r.get("global_step") or 0)
@@ -831,6 +828,8 @@ class Dashboard:
             if a.get(key) not in (None, ""):
                 cmd += [flag, str(a[key])]
         cmd += ["--device", a.get("device") or self.settings.get("device", "auto")]
+        if a.get("tank_step_scale"):
+            cmd += ["--tank-step-scale", str(a["tank_step_scale"])]
         if a.get("extra"):
             cmd += shlex.split(a["extra"], posix=sys.platform != "win32")
         return cmd
@@ -1056,7 +1055,7 @@ class Dashboard:
              "save_every": args.get("save_every"), "review_prob": args.get("review_prob"),
              "speed_cap": args.get("speed_cap", 0), "seed": args.get("seed"),
              "torch_threads": args.get("torch_threads", 0), "resume": True,
-             "device": args.get("device", "auto"), "auto_envs": bool(args.get("auto_envs", False))}
+             "device": args.get("device", "auto"), "auto_envs": bool(args.get("auto_envs", False)), "tank_step_scale": args.get("tank_step_scale", "")}
         version = rj.get("curriculum_version", 1)
         a["curriculum"] = {1: "v1", curriculum_v4.VERSION: "v4", battle_curriculum.VERSION: "battle",
                            final_curriculum.VERSION: "final", v6_curriculum.VERSION: "v6"}.get(version, args.get("curriculum", "v1"))
@@ -1408,7 +1407,20 @@ def main():
     ap.add_argument("--no-browser", action="store_true")
     a = ap.parse_args()
     dash = Dashboard(Path(a.runs_dir) if Path(a.runs_dir).is_absolute() else HERE / a.runs_dir)
-    srv = ThreadingHTTPServer((a.host, a.port), make_handler(dash))
+    class Server(ThreadingHTTPServer):
+        # Windows 의 SO_REUSEADDR 는 이미 쓰는 포트에도 두 번째 서버를 붙여, 요청이 옛 대시보드로 가기도 한다.
+        allow_reuse_address = sys.platform != "win32"
+
+    srv = None
+    for port in range(a.port, a.port + 20):
+        try:
+            srv = Server((a.host, port), make_handler(dash))
+            break
+        except OSError:
+            print(f"[dashboard] 포트 {port} 는 이미 사용 중(다른 대시보드가 켜져 있음) → 다음 포트", flush=True)
+    if srv is None:
+        raise SystemExit(f"[dashboard] 포트 {a.port}–{a.port + 19} 가 모두 사용 중입니다")
+    a.port = srv.server_address[1]
     url = f"http://127.0.0.1:{a.port}/"
     print(f"[dashboard] {url}  (runs: {dash.runs_dir}) — 닫으려면 Ctrl+C. 학습은 계속 돈다.", flush=True)
     if not a.no_browser:

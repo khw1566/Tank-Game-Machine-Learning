@@ -60,8 +60,13 @@ def auto_envs(stage: dict, cores: int | None = None) -> int:
     return max(2, min(64, round(cores * float(stage.get("envs_per_core", 1.0)))))
 
 # 규칙 AI 성향(ScriptedAI 파라미터, training_env.gd SCENARIO_AI_KEYS)
-RULE_FLANK = {"advance": True, "engage_range": 200.0, "max_fire_range": 350.0, "fire_delay_s": 0.6, "aim_noise_mrad": 1.0}
-RULE_PIN = {"advance": True, "flank_offset": 0.0, "engage_range": 320.0, "max_fire_range": 600.0, "fire_delay_s": 0.8,
+# v2(2026-11-20): v1 우회조는 200m 에서 정면을 1mrad·0.6초로 저격해 티거 1대2 격파의 60%를 차지했다(측면 기동 불필요).
+# 우회조는 크게 돌아 150m 안에서만 쏘고, 견제조는 정면이 뚫리지 않는 380m 이상에서 견제한다. 조준·반응도 사람 수준으로.
+RULE_VERSION = 2
+TIGER_REVIEW_PROB = 0.25
+TIGER_1V2_MODEL_ONLY = 0.5
+RULE_FLANK = {"advance": True, "engage_range": 150.0, "max_fire_range": 200.0, "fire_delay_s": 1.5, "aim_noise_mrad": 3.0}
+RULE_PIN = {"advance": True, "flank_offset": 0.0, "engage_range": 380.0, "max_fire_range": 600.0, "fire_delay_s": 1.5,
             "aim_noise_mrad": 1.2}
 
 
@@ -98,7 +103,7 @@ def spawn(rng: random.Random, n: int, distance_range: tuple[float, float]):
     return tiger, allies, theta, distance
 
 
-def arena(stage: dict, map_id: str, tank: str, seed: int, *, legacy_open_start: bool = False):
+def arena(stage: dict, map_id: str, tank: str, seed: int, *, legacy_open_start: bool = False, no_rule: bool = False):
     """학습 전차가 항상 첫 번째. 반환 (lineup, scenario, map config, rule AI 수)."""
     rng = random.Random(seed)
     concealed_start = stage["id"] == "v6_1v1" and not legacy_open_start
@@ -117,7 +122,7 @@ def arena(stage: dict, map_id: str, tank: str, seed: int, *, legacy_open_start: 
         k = next(i for i, (t, _) in enumerate(order) if t == tank)
         order.insert(0, order.pop(k))
     lo, hi = stage["rule"]
-    n_rule = rng.randint(lo, hi)
+    n_rule = 0 if no_rule else rng.randint(lo, hi)
     # In a duel the other tank can always be scripted, including a Tiger facing an Allied learner.
     candidates = [1] if concealed_start else [i for i, (typ, _) in enumerate(order) if i > 0 and typ != "tiger1"]
     rng.shuffle(candidates)
@@ -147,7 +152,7 @@ def arena(stage: dict, map_id: str, tank: str, seed: int, *, legacy_open_start: 
                         flank = 1000.0
                     place["ai"] = dict(RULE_FLANK, engage_range=75.0, flank_offset=flank_side * flank)
                 else:
-                    place["ai"] = dict(RULE_FLANK, flank_offset=flank_side * rng.uniform(180.0, 260.0))
+                    place["ai"] = dict(RULE_FLANK, flank_offset=flank_side * rng.uniform(260.0, 320.0))
             else:
                 place["ai"] = dict(RULE_PIN)
         places.append(place)
@@ -190,9 +195,11 @@ def reward_config(stage: dict) -> dict:
                                 "stall_per_s": 0.1 * q, "blocked_shot": 0.3}
     # 맹목 사격 비용(모든 단계 동일): 보이는 적을 겨누지 않은 발사 −0.3. 막힌 탄(−0.3)과 허공 탄(−0.05)의
     # 차이 때문에 포를 들어 하늘로 쏘는 습관이 생겼다(V6-2 셔먼 명중 0, 허공 탄 82%).
-    reward["fire_discipline"] = {"version": 1, "blind": 0.3, "cone_deg": 3.0}
+    # v2: 수직 1.5°, 근탄(겨눈 거리의 80% 전 착탄) −0.5, 사선을 아군이 막은 채 발사 −1
+    reward["fire_discipline"] = {"version": 2, "blind": 0.3, "cone_deg": 3.0, "cone_v_deg": 1.5,
+                                 "short": 0.5, "short_ratio": 0.8, "ally_block": 1.0}
     reward.update(attack)
-    reward["combat"].update(friendly_fire=-3.0, friendly_knockout=-60.0)
+    reward["combat"].update(friendly_fire=-10.0, friendly_knockout=-100.0)
     return reward
 
 
@@ -247,13 +254,18 @@ class V6Curriculum(FinalCurriculum):
 
     def build_episode(self, learner, rng, seed):
         st = self.stage
-        if self.stage_idx > 0 and self.review_prob > 0 and rng.random() < self.review_prob:
+        # 티거는 상대가 여럿이라 이기는 경험을 다시 쌓도록 복습을 더 자주(25%)
+        review = max(self.review_prob, TIGER_REVIEW_PROB) if self.tank == "tiger1" else self.review_prob
+        if self.stage_idx > 0 and review > 0 and rng.random() < review:
             st = STAGES[rng.randrange(self.stage_idx)]     # 이전 단계 복습
         counts = self.metrics[st["id"]]
         minimum = min(len(v) for v in counts.values())
         key = rng.choice([k for k, v in counts.items() if len(v) == minimum])
         variant, actual = key.split("@")
-        lu, sc, mc, n_rule = arena(st, variant, actual, seed)
+        # 티거 1대2 적응: 절반은 규칙 AI 없이 모델 2대만 상대
+        no_rule = actual == "tiger1" and st["id"] == "v6_1v2" and rng.random() < TIGER_1V2_MODEL_ONLY
+        lu, sc, mc, n_rule = arena(st, variant, actual, seed, no_rule=no_rule)
+        sc["v6"]["rule_version"] = RULE_VERSION
         if st["id"] == "v6_1v1":
             sc["v6"].update(opponent_mix_version=2, opponent_kind="scripted" if n_rule else "frozen")
         sc["target_occlusion_version"] = TARGET_OCCLUSION_VERSION
@@ -262,7 +274,7 @@ class V6Curriculum(FinalCurriculum):
                         "reward": reward_config(st), "kind": "combat", "time_limit_s": st["time_limit_s"],
                         "curriculum_version": VERSION, "stageset": "v6-ladder", "map_seed": mc["seed"],
                         "balance_version": BALANCE_VERSION, "final_battle_version": 1, "v6_version": 1,
-                        "v6_tactics_version": 2,
+                        "v6_tactics_version": 3,
                         "learning_objective": {"id": st["id"], "label": st["label"],
                                                "version": ASSESSMENT_VERSION if st["id"] == "v6_1v1" else REWARD_VERSION}}
 

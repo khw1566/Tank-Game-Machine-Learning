@@ -17,7 +17,7 @@ const PROTOCOL_VERSION := 1
 const FINAL_BATTLE_VERSION := 1   # 최종 1대6: 지정 지형(custom_ridges·mounds), 생울타리·돌담·건물 배치, 엄폐 보상
 const ATTACK_SHAPING_VERSION := 1
 const V6_VERSION := 1   # V6: 비례 보상(exchange), 규칙 AI 연합군(ctrl "rule"), 적 슬롯 6
-const V6_TACTICS_VERSION := 2  # 1: LOS-aware position, bounded reposition progress and blocked-shot cost; 2: blind-fire cost
+const V6_TACTICS_VERSION := 3  # 1: LOS position/reposition/blocked-shot; 2: blind-fire cost; 3: vertical aim check, short-shot and ally-in-line costs
 const EPISODE_FORMAT := "tankgame-train-episode"
 const HUMAN_DEMO_VERSION := 1  # ctrl "human": 창 모드 실제 전투 시범(관측·정책 공간 행동을 Python 으로 보낸다)
 ## 결정(행동 선택) 간격 = 관측 갱신 간격(3틱 = 0.1초, 10Hz)
@@ -161,7 +161,8 @@ func _ready() -> void:
 		"pace_version": 1, "perf_version": 1, "final_battle_version": FINAL_BATTLE_VERSION,
 		"attack_shaping_version": ATTACK_SHAPING_VERSION, "exchange_reward_version": 1, "v6_version": V6_VERSION,
 		"v6_tactics_version": V6_TACTICS_VERSION, "human_demo_version": HUMAN_DEMO_VERSION,
-		"fire_line_obs_version": FireLineObs.VERSION if targeting_inputs else 0, "contact_team_flag_version": 1})
+		"fire_line_obs_version": FireLineObs.VERSION if targeting_inputs else 0, "contact_team_flag_version": 1,
+		"steer_version": Tank.STEER_VERSION})
 	_serve()   # 첫 reset 을 받을 때까지 대기
 
 
