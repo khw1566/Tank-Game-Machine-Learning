@@ -19,3 +19,20 @@ From the repository root, download and verify the snapshot with Git LFS and Pyth
 git lfs pull --include='training/snapshots/20261123_v6_checkpoints/**'
 python training/snapshots/verify_snapshot.py training/snapshots/20261123_v6_checkpoints
 ```
+
+## Training history
+
+Each run includes episode, scenario and PPO metrics, along with the objective
+and map labels used by the graphs. Open the generated HTML reports directly.
+
+- [V6-1 training report](runs/V6-1/training_report.html)
+- [V6-2 training report](runs/V6-2/training_report.html)
+
+To inspect the interactive dashboard from the repository root, run:
+
+```powershell
+python training/python/dashboard.py --runs-dir training/snapshots/20261123_v6_checkpoints/runs --port 8793
+```
+
+The snapshot contains graph history and saved models. Episode recordings and
+replays remain in the original runs.

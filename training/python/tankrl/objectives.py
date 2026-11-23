@@ -1,5 +1,6 @@
 """Read-only objective labels shared by the dashboard and exported reports."""
 import colorsys
+import csv
 import hashlib
 import json
 import re
@@ -74,30 +75,46 @@ def objective_color(key):
 class ObjectiveIndex:
     def __init__(self):
         self.cache = {}
+        self.indexes = {}
         self.catalog = {}
+
+    def saved_objectives(self, directory):
+        if directory not in self.indexes:
+            try:
+                with (directory / 'episode_objectives.csv').open(encoding='utf-8-sig', newline='') as stream:
+                    self.indexes[directory] = {(row['uid'], row['final_hash']): row for row in csv.DictReader(stream)}
+            except FileNotFoundError:
+                self.indexes[directory] = {}
+        return self.indexes[directory]
 
     def annotate(self, row, directory, terrain=None):
         directory = Path(directory)
-        token = (str(directory), row.get('uid'), row.get('final_hash'))
-        if token not in self.cache:
-            cfg = {}
-            local = directory / 'episodes' / ('env' + str(row.get('env', 0))) / (str(row.get('uid', '')) + '.json')
-            paths = [local]
-            if row.get('episode_file'):
-                paths.append(Path(row['episode_file']))
-            for path in paths:
-                try:
-                    cfg = episode_config(path)
-                    break
-                except (OSError, ValueError):
-                    pass
-            self.cache[token] = cfg
-        cfg = self.cache[token]
+        key = (row.get('uid'), row.get('final_hash'))
+        saved = self.saved_objectives(directory).get(key)
+        if saved is not None:
+            row = row | {field: saved[field] for field in ('objective_id', 'objective_label', 'objective_version', 'variant')
+                         if saved.get(field)}
+            explicit, course, variant = {}, {}, ''
+        else:
+            token = (directory, key)
+            if token not in self.cache:
+                config = {}
+                local = directory / 'episodes' / ('env' + str(row.get('env', 0))) / (str(row.get('uid', '')) + '.json')
+                paths = [local]
+                if row.get('episode_file'):
+                    paths.append(Path(row['episode_file']))
+                for path in paths:
+                    try:
+                        config = episode_config(path)
+                        break
+                    except (OSError, ValueError):
+                        pass
+                explicit = config.get('learning_objective') or config.get('meta', {}).get('learning_objective') or {}
+                if isinstance(explicit, str):
+                    explicit = {'id': explicit}
+                self.cache[token] = (explicit, config.get('terrain_course', {}), config.get('scenario', {}).get('variant'))
+            explicit, course, variant = self.cache[token]
         stage = row.get('stage', 'unknown')
-        explicit = cfg.get('learning_objective') or cfg.get('meta', {}).get('learning_objective') or {}
-        if isinstance(explicit, str):
-            explicit = {'id': explicit}
-        course = cfg.get('terrain_course', {})
         course_id = course.get('id') or (terrain or {}).get('course')
         if explicit.get('id') or row.get('objective_id'):
             ident = str(explicit.get('id') or row['objective_id'])
@@ -112,4 +129,4 @@ class ObjectiveIndex:
             key, label = f'{stage}/unspecified', '세부 목표 미기록'
         info = dict(id=key, stage=stage, label=label, color=objective_color(key))
         self.catalog[key] = info
-        return row | {'objective': key, 'variant': cfg.get('scenario', {}).get('variant') or row.get('variant') or course_id or ''}
+        return row | {'objective': key, 'variant': variant or row.get('variant') or course_id or ''}

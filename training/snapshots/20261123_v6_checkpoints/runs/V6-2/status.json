@@ -1,0 +1,79 @@
+{
+  "phase": "stopped",
+  "num_timesteps": 19485799,
+  "episodes": 0,
+  "tank": "tiger1",
+  "curriculum": {
+    "stage_idx": 24,
+    "stage": "v6_1v2",
+    "variant_success": {
+      "rolling_woods@tiger1": 0.016666666666666666,
+      "ridgeline@tiger1": 0.0,
+      "village@tiger1": 0.03333333333333333,
+      "valley@tiger1": 0.03333333333333333,
+      "boulder_field@tiger1": 0.016666666666666666
+    },
+    "episodes_in_stage": 10465,
+    "success_rate": 0.02,
+    "window": 60,
+    "threshold": null,
+    "min_episodes": 60,
+    "max_episodes": null,
+    "battle": {
+      "min_steps": 0,
+      "steps_in_stage": 12806125,
+      "metrics": {
+        "rolling_woods@tiger1": {
+          "episodes": 60,
+          "win": 0.016666666666666666,
+          "resolved": 0.5333333333333333,
+          "survived": 0.48333333333333334,
+          "path_m": 75.15283333333333,
+          "enemy_lost": 0.14125,
+          "own_lost": 0.5658333333333334,
+          "hit": 0.3333333333333333
+        },
+        "ridgeline@tiger1": {
+          "episodes": 60,
+          "win": 0.0,
+          "resolved": 0.31666666666666665,
+          "survived": 0.6833333333333333,
+          "path_m": 61.41916666666667,
+          "enemy_lost": 0.13916666666666666,
+          "own_lost": 0.33083333333333337,
+          "hit": 0.26666666666666666
+        },
+        "village@tiger1": {
+          "episodes": 60,
+          "win": 0.03333333333333333,
+          "resolved": 0.5,
+          "survived": 0.5333333333333333,
+          "path_m": 77.42699999999999,
+          "enemy_lost": 0.17041666666666666,
+          "own_lost": 0.48000000000000004,
+          "hit": 0.4166666666666667
+        },
+        "valley@tiger1": {
+          "episodes": 60,
+          "win": 0.03333333333333333,
+          "resolved": 0.6166666666666667,
+          "survived": 0.4166666666666667,
+          "path_m": 96.99816666666668,
+          "enemy_lost": 0.2029166666666667,
+          "own_lost": 0.6024999999999999,
+          "hit": 0.4166666666666667
+        },
+        "boulder_field@tiger1": {
+          "episodes": 60,
+          "win": 0.016666666666666666,
+          "resolved": 0.6166666666666667,
+          "survived": 0.4,
+          "path_m": 85.35316666666667,
+          "enemy_lost": 0.13583333333333333,
+          "own_lost": 0.65,
+          "hit": 0.25
+        }
+      }
+    }
+  }
+}

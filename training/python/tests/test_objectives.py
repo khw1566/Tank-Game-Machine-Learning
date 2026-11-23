@@ -70,6 +70,20 @@ class ObjectiveTests(unittest.TestCase):
             self.assertEqual(row['variant'], 'urban')
             self.assertEqual(RunWatch(root).ep_compact(row)[EP_COLS.index('variant')], 'urban')
 
+    def test_saved_v6_objectives_preserve_graph_groups_without_episode_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'episode_objectives.csv').write_text(
+                'uid,final_hash,objective_id,objective_label,objective_version,variant\n'
+                'duel,abc,v6_1v1,Duel,4,village\n', encoding='utf-8')
+            index = ObjectiveIndex()
+            episode = dict(uid='duel', final_hash='abc', stage='v6_1v1')
+            result = index.annotate(episode, root)
+            self.assertEqual(result['objective'], 'v6_1v1/objective:v4/v6_1v1')
+            self.assertEqual(result['variant'], 'village')
+            self.assertEqual(index.catalog[result['objective']]['label'], 'Duel [v4]')
+            self.assertEqual(index.annotate(episode | {'final_hash': 'new'}, root)['variant'], '')
+
     def test_single_episode_is_visible(self):
         page = svg_chart([('One', '#2563eb', [(10, 1)])], 'Title', 'Value')
         self.assertIn('<circle', page)

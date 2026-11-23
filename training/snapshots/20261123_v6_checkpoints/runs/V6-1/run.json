@@ -1,0 +1,187 @@
+{
+  "curriculum_version": 7,
+  "stages": [
+    {
+      "id": "v6_1v1",
+      "label": "V6-1 · 1대1 엄폐 출발",
+      "allies": 1,
+      "rule": [
+        0,
+        1
+      ],
+      "distance": [
+        120,
+        160
+      ],
+      "time_limit_s": 150,
+      "shaping": 1.0,
+      "position": 1.0,
+      "envs_per_core": 2.5,
+      "promote": {
+        "window": 60,
+        "resolved": 0.6,
+        "win": 0.4,
+        "path_m": 30.0,
+        "min_episodes": 60
+      },
+      "part": "V6",
+      "scope": "tank",
+      "variants": [
+        "rolling_woods",
+        "ridgeline",
+        "village",
+        "valley",
+        "boulder_field"
+      ],
+      "variants_desc": {
+        "rolling_woods": "구릉과 숲 — 완만한 언덕 여러 개, 숲 덩어리와 외딴 나무",
+        "ridgeline": "중앙 능선 — 통로가 둘 있는 능선, 능선 위 바위(헐다운 자리), 뒷사면 숲",
+        "village": "마을 — 집과 돌담·생울타리, 과수원, 거의 평지",
+        "valley": "계곡 — 양쪽 높은 능선과 능선 위 숲, 계곡 바닥의 바위·생울타리",
+        "boulder_field": "바위 지대 — 울퉁불퉁한 지면, 큰 바위 수십 개와 나무 무리"
+      },
+      "min_steps": 0,
+      "kind": "combat",
+      "view_lock": -1,
+      "lineup": "v6_ladder",
+      "lesson": "티거 1 vs 연합군 1 (규칙 AI 0~1대)",
+      "learn": "엄폐 맵에서 움직여 사선을 잡고, 전력을 덜 잃으며 더 많이 줄이기",
+      "goal": "적 팀 전멸. 시간 초과는 패배와 같다."
+    },
+    {
+      "id": "v6_1v2",
+      "label": "V6-2 · 1대2",
+      "allies": 2,
+      "rule": [
+        1,
+        1
+      ],
+      "distance": [
+        180,
+        300
+      ],
+      "time_limit_s": 180,
+      "shaping": 0.6,
+      "position": 0.8,
+      "envs_per_core": 1.6,
+      "promote": {
+        "window": 60,
+        "resolved": 0.6,
+        "win": 0.35,
+        "path_m": 0.0,
+        "min_episodes": 60
+      },
+      "part": "V6",
+      "scope": "tank",
+      "variants": [
+        "rolling_woods",
+        "ridgeline",
+        "village",
+        "valley",
+        "boulder_field"
+      ],
+      "variants_desc": {
+        "rolling_woods": "구릉과 숲 — 완만한 언덕 여러 개, 숲 덩어리와 외딴 나무",
+        "ridgeline": "중앙 능선 — 통로가 둘 있는 능선, 능선 위 바위(헐다운 자리), 뒷사면 숲",
+        "village": "마을 — 집과 돌담·생울타리, 과수원, 거의 평지",
+        "valley": "계곡 — 양쪽 높은 능선과 능선 위 숲, 계곡 바닥의 바위·생울타리",
+        "boulder_field": "바위 지대 — 울퉁불퉁한 지면, 큰 바위 수십 개와 나무 무리"
+      },
+      "min_steps": 0,
+      "kind": "combat",
+      "view_lock": -1,
+      "lineup": "v6_ladder",
+      "lesson": "티거 1 vs 연합군 2 (규칙 AI 1~1대)",
+      "learn": "엄폐 맵에서 움직여 사선을 잡고, 전력을 덜 잃으며 더 많이 줄이기",
+      "goal": "적 팀 전멸. 시간 초과는 패배와 같다."
+    },
+    {
+      "id": "v6_1v3",
+      "label": "V6-3 · 1대3",
+      "allies": 3,
+      "rule": [
+        1,
+        1
+      ],
+      "distance": [
+        220,
+        360
+      ],
+      "time_limit_s": 210,
+      "shaping": 0.3,
+      "position": 0.5,
+      "envs_per_core": 1.2,
+      "promote": {
+        "window": 60,
+        "resolved": 0.55,
+        "win": 0.35,
+        "path_m": 0.0,
+        "min_episodes": 60
+      },
+      "part": "V6",
+      "scope": "tank",
+      "variants": [
+        "rolling_woods",
+        "ridgeline",
+        "village",
+        "valley",
+        "boulder_field"
+      ],
+      "variants_desc": {
+        "rolling_woods": "구릉과 숲 — 완만한 언덕 여러 개, 숲 덩어리와 외딴 나무",
+        "ridgeline": "중앙 능선 — 통로가 둘 있는 능선, 능선 위 바위(헐다운 자리), 뒷사면 숲",
+        "village": "마을 — 집과 돌담·생울타리, 과수원, 거의 평지",
+        "valley": "계곡 — 양쪽 높은 능선과 능선 위 숲, 계곡 바닥의 바위·생울타리",
+        "boulder_field": "바위 지대 — 울퉁불퉁한 지면, 큰 바위 수십 개와 나무 무리"
+      },
+      "min_steps": 0,
+      "kind": "combat",
+      "view_lock": -1,
+      "lineup": "v6_ladder",
+      "lesson": "티거 1 vs 연합군 3 (규칙 AI 1~1대)",
+      "learn": "엄폐 맵에서 움직여 사선을 잡고, 전력을 덜 잃으며 더 많이 줄이기",
+      "goal": "적 팀 전멸. 시간 초과는 패배와 같다."
+    },
+    {
+      "id": "v6_1v6",
+      "label": "V6-4 · 1대6",
+      "allies": 6,
+      "rule": [
+        2,
+        2
+      ],
+      "distance": [
+        260,
+        420
+      ],
+      "time_limit_s": 240,
+      "shaping": 0.0,
+      "position": 0.3,
+      "envs_per_core": 0.85,
+      "promote": null,
+      "part": "V6",
+      "scope": "tank",
+      "variants": [
+        "rolling_woods",
+        "ridgeline",
+        "village",
+        "valley",
+        "boulder_field"
+      ],
+      "variants_desc": {
+        "rolling_woods": "구릉과 숲 — 완만한 언덕 여러 개, 숲 덩어리와 외딴 나무",
+        "ridgeline": "중앙 능선 — 통로가 둘 있는 능선, 능선 위 바위(헐다운 자리), 뒷사면 숲",
+        "village": "마을 — 집과 돌담·생울타리, 과수원, 거의 평지",
+        "valley": "계곡 — 양쪽 높은 능선과 능선 위 숲, 계곡 바닥의 바위·생울타리",
+        "boulder_field": "바위 지대 — 울퉁불퉁한 지면, 큰 바위 수십 개와 나무 무리"
+      },
+      "min_steps": 0,
+      "kind": "combat",
+      "view_lock": -1,
+      "lineup": "v6_ladder",
+      "lesson": "티거 1 vs 연합군 6 (규칙 AI 2~2대)",
+      "learn": "엄폐 맵에서 움직여 사선을 잡고, 전력을 덜 잃으며 더 많이 줄이기",
+      "goal": "적 팀 전멸. 시간 초과는 패배와 같다."
+    }
+  ]
+}

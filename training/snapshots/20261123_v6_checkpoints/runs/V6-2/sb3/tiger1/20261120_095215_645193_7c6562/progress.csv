@@ -1,0 +1,2 @@
+curriculum/success_rate,time/fps,curriculum/shaping_scale,time/total_timesteps,time/iterations,rollout/ep_len_mean,train/ent_coef_scheduled,train/drive_std,curriculum/stage_idx,success/v6_1v1,train/drive_std_floor,time/time_elapsed,rollout/ep_rew_mean
+0.19,1828,1.0,3753384,1,1234.72,0.001,0.5999999642372131,0,0.0,0.6,16,-18.817480417539155

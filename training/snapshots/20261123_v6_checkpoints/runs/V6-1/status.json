@@ -1,0 +1,79 @@
+{
+  "phase": "stopped",
+  "num_timesteps": 13977994,
+  "episodes": 0,
+  "tank": "tiger1",
+  "curriculum": {
+    "stage_idx": 23,
+    "stage": "v6_1v1",
+    "variant_success": {
+      "rolling_woods@tiger1": 0.0,
+      "ridgeline@tiger1": 0.0,
+      "village@tiger1": 0.0,
+      "valley@tiger1": 0.0,
+      "boulder_field@tiger1": 0.0
+    },
+    "episodes_in_stage": 0,
+    "success_rate": 0.0,
+    "window": 60,
+    "threshold": null,
+    "min_episodes": 60,
+    "max_episodes": null,
+    "battle": {
+      "min_steps": 0,
+      "steps_in_stage": 0,
+      "metrics": {
+        "rolling_woods@tiger1": {
+          "episodes": 0,
+          "win": 0.0,
+          "resolved": 0.0,
+          "survived": 0.0,
+          "path_m": 0.0,
+          "enemy_lost": 0.0,
+          "own_lost": 0.0,
+          "hit": 0.0
+        },
+        "ridgeline@tiger1": {
+          "episodes": 0,
+          "win": 0.0,
+          "resolved": 0.0,
+          "survived": 0.0,
+          "path_m": 0.0,
+          "enemy_lost": 0.0,
+          "own_lost": 0.0,
+          "hit": 0.0
+        },
+        "village@tiger1": {
+          "episodes": 0,
+          "win": 0.0,
+          "resolved": 0.0,
+          "survived": 0.0,
+          "path_m": 0.0,
+          "enemy_lost": 0.0,
+          "own_lost": 0.0,
+          "hit": 0.0
+        },
+        "valley@tiger1": {
+          "episodes": 0,
+          "win": 0.0,
+          "resolved": 0.0,
+          "survived": 0.0,
+          "path_m": 0.0,
+          "enemy_lost": 0.0,
+          "own_lost": 0.0,
+          "hit": 0.0
+        },
+        "boulder_field@tiger1": {
+          "episodes": 0,
+          "win": 0.0,
+          "resolved": 0.0,
+          "survived": 0.0,
+          "path_m": 0.0,
+          "enemy_lost": 0.0,
+          "own_lost": 0.0,
+          "hit": 0.0
+        }
+      }
+    }
+  }
+}
