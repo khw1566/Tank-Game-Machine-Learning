@@ -1,0 +1,201 @@
+{
+  "file_count": 28,
+  "total_bytes": 59162467,
+  "training_state": {
+    "num_timesteps": 19485799,
+    "run": "V6-2",
+    "tank": "tiger1"
+  },
+  "latest_checkpoint_sha256": "a3637c86e15651226480ad21af63ff2119b2df5d0e19cff3e594316460389bd9",
+  "checkpoints": [
+    {
+      "run": "V6-1",
+      "tank": "tiger1",
+      "num_timesteps": 13977994,
+      "sha256": "fbf7027a10e6c5be19203d9655d1648c390ddb1420cd81fa15e805b3e3fbd2a7",
+      "path": "runs/V6-1/tiger1/checkpoints/step_013977994_20261121_093308_350055_d2f665/model.zip"
+    },
+    {
+      "run": "V6-1",
+      "tank": "sherman75",
+      "num_timesteps": 10246474,
+      "sha256": "1354a3a1427f421aefbdf89a5661dc0c0ce7f228db243f40e5d6fbf6bbc01ad4",
+      "path": "runs/V6-1/sherman75/checkpoints/step_010246474_20261120_091844_827794_f2ad51/model.zip"
+    },
+    {
+      "run": "V6-1",
+      "tank": "t34_76",
+      "num_timesteps": 7826364,
+      "sha256": "2d020224eeb42f1c2212d873f1132a6f51aa3cc858ce53ff89c80665e8aa87b9",
+      "path": "runs/V6-1/t34_76/checkpoints/step_007826364_20261120_080320_090405_63e4aa/model.zip"
+    },
+    {
+      "run": "V6-2",
+      "tank": "tiger1",
+      "num_timesteps": 19485799,
+      "sha256": "a3637c86e15651226480ad21af63ff2119b2df5d0e19cff3e594316460389bd9",
+      "path": "runs/V6-2/tiger1/checkpoints/step_019485799_20261121_093930_192450_cd437a/model.zip"
+    },
+    {
+      "run": "V6-2",
+      "tank": "sherman75",
+      "num_timesteps": 19265064,
+      "sha256": "d47873526b4342c3738e95d489e3ac68f244941b9af683ae9d7a1cd6021b06e1",
+      "path": "runs/V6-2/sherman75/checkpoints/step_019265064_20261120_233939_572167_7b6df8/model.zip"
+    },
+    {
+      "run": "V6-2",
+      "tank": "t34_76",
+      "num_timesteps": 16509378,
+      "sha256": "d1873f83e8acbd98780d701370fbfcec24bfb4e7706f495b994f5d30bc1258f8",
+      "path": "runs/V6-2/t34_76/checkpoints/step_016509378_20261121_000850_164223_e2c588/model.zip"
+    }
+  ],
+  "best_models": [
+    "runs/V6-1/tiger1/good/best_v6_1v1.zip",
+    "runs/V6-1/sherman75/good/best_v6_1v1.zip",
+    "runs/V6-1/t34_76/good/best_v6_1v1.zip"
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 776,
+      "sha256": "d9644d9b8f4aa9d5bc4932a419635367f7bc26a791371bfbc36694884a711be1"
+    },
+    {
+      "path": "runs/V6-1/sherman75/checkpoint.json",
+      "bytes": 226,
+      "sha256": "5cf60be6fad6847fcc760fa9664be5ab03efa7940f222a03e28bae76fe87f06d"
+    },
+    {
+      "path": "runs/V6-1/sherman75/checkpoints/step_010246474_20261120_091844_827794_f2ad51/curriculum.json",
+      "bytes": 227865,
+      "sha256": "8d1fe3a2e99262370ae50e07b4f738faedd539040f78f802be23a68593ca55d3"
+    },
+    {
+      "path": "runs/V6-1/sherman75/checkpoints/step_010246474_20261120_091844_827794_f2ad51/metadata.json",
+      "bytes": 226,
+      "sha256": "5cf60be6fad6847fcc760fa9664be5ab03efa7940f222a03e28bae76fe87f06d"
+    },
+    {
+      "path": "runs/V6-1/sherman75/checkpoints/step_010246474_20261120_091844_827794_f2ad51/model.zip",
+      "bytes": 6486578,
+      "sha256": "1354a3a1427f421aefbdf89a5661dc0c0ce7f228db243f40e5d6fbf6bbc01ad4"
+    },
+    {
+      "path": "runs/V6-1/sherman75/good/best_v6_1v1.zip",
+      "bytes": 6410608,
+      "sha256": "314a1e97d2cdc8bda203c7bde18760ecfb7a57a875bb7790356f8ea36aac47b7"
+    },
+    {
+      "path": "runs/V6-1/t34_76/checkpoint.json",
+      "bytes": 225,
+      "sha256": "7e68124d9583ba481942daadf5f06417832fc7a3f03509dfe505bc117f5b56c7"
+    },
+    {
+      "path": "runs/V6-1/t34_76/checkpoints/step_007826364_20261120_080320_090405_63e4aa/curriculum.json",
+      "bytes": 108785,
+      "sha256": "0abb8e5a96f48cf0e8098be8dfa3cddcfed945524f41d6cc92adcd518ab0731c"
+    },
+    {
+      "path": "runs/V6-1/t34_76/checkpoints/step_007826364_20261120_080320_090405_63e4aa/metadata.json",
+      "bytes": 225,
+      "sha256": "7e68124d9583ba481942daadf5f06417832fc7a3f03509dfe505bc117f5b56c7"
+    },
+    {
+      "path": "runs/V6-1/t34_76/checkpoints/step_007826364_20261120_080320_090405_63e4aa/model.zip",
+      "bytes": 6410631,
+      "sha256": "2d020224eeb42f1c2212d873f1132a6f51aa3cc858ce53ff89c80665e8aa87b9"
+    },
+    {
+      "path": "runs/V6-1/t34_76/good/best_v6_1v1.zip",
+      "bytes": 6410623,
+      "sha256": "10369c3476d62d84306e393632016df94c078b776593239824224c5d399c69ac"
+    },
+    {
+      "path": "runs/V6-1/tiger1/checkpoint.json",
+      "bytes": 226,
+      "sha256": "a6c76a243256c27735345239e138f330c427f395d4968a4ee75743fc319d1eb6"
+    },
+    {
+      "path": "runs/V6-1/tiger1/checkpoints/step_013977994_20261121_093308_350055_d2f665/curriculum.json",
+      "bytes": 219714,
+      "sha256": "725e1af605edcdb61f3d9359367d66452dfeec247e20d4af4c9769c671e509ad"
+    },
+    {
+      "path": "runs/V6-1/tiger1/checkpoints/step_013977994_20261121_093308_350055_d2f665/metadata.json",
+      "bytes": 226,
+      "sha256": "a6c76a243256c27735345239e138f330c427f395d4968a4ee75743fc319d1eb6"
+    },
+    {
+      "path": "runs/V6-1/tiger1/checkpoints/step_013977994_20261121_093308_350055_d2f665/model.zip",
+      "bytes": 6361187,
+      "sha256": "fbf7027a10e6c5be19203d9655d1648c390ddb1420cd81fa15e805b3e3fbd2a7"
+    },
+    {
+      "path": "runs/V6-1/tiger1/good/best_v6_1v1.zip",
+      "bytes": 6410602,
+      "sha256": "a81e88fdd86e220d9fd6016540650015880ee9d1af5ff2eeeac087a45ff8419c"
+    },
+    {
+      "path": "runs/V6-2/sherman75/checkpoint.json",
+      "bytes": 226,
+      "sha256": "16af9d87fd422b679a759071b4a5868ef8f925ccdb5833ad7e124a890a5304a7"
+    },
+    {
+      "path": "runs/V6-2/sherman75/checkpoints/step_019265064_20261120_233939_572167_7b6df8/curriculum.json",
+      "bytes": 218962,
+      "sha256": "031e92479cda2c3d8a51ea1a72b2802103dda4c66dcf24a646e1dc384d1b622c"
+    },
+    {
+      "path": "runs/V6-2/sherman75/checkpoints/step_019265064_20261120_233939_572167_7b6df8/metadata.json",
+      "bytes": 226,
+      "sha256": "16af9d87fd422b679a759071b4a5868ef8f925ccdb5833ad7e124a890a5304a7"
+    },
+    {
+      "path": "runs/V6-2/sherman75/checkpoints/step_019265064_20261120_233939_572167_7b6df8/model.zip",
+      "bytes": 6438649,
+      "sha256": "d47873526b4342c3738e95d489e3ac68f244941b9af683ae9d7a1cd6021b06e1"
+    },
+    {
+      "path": "runs/V6-2/t34_76/checkpoint.json",
+      "bytes": 226,
+      "sha256": "7555e419a61fe2aa0b07b79822763849381cd1134bd18d0ac78090b79116ba15"
+    },
+    {
+      "path": "runs/V6-2/t34_76/checkpoints/step_016509378_20261121_000850_164223_e2c588/curriculum.json",
+      "bytes": 364358,
+      "sha256": "33af75bbfd0e6cb9ca116102a31d9b824dc21504d4604c403203e6f08601c72f"
+    },
+    {
+      "path": "runs/V6-2/t34_76/checkpoints/step_016509378_20261121_000850_164223_e2c588/metadata.json",
+      "bytes": 226,
+      "sha256": "7555e419a61fe2aa0b07b79822763849381cd1134bd18d0ac78090b79116ba15"
+    },
+    {
+      "path": "runs/V6-2/t34_76/checkpoints/step_016509378_20261121_000850_164223_e2c588/model.zip",
+      "bytes": 6402053,
+      "sha256": "d1873f83e8acbd98780d701370fbfcec24bfb4e7706f495b994f5d30bc1258f8"
+    },
+    {
+      "path": "runs/V6-2/tiger1/checkpoint.json",
+      "bytes": 226,
+      "sha256": "4fda17983718b3bbc92c3935439e63d73be3377585b1718d4689406440f84c84"
+    },
+    {
+      "path": "runs/V6-2/tiger1/checkpoints/step_019485799_20261121_093930_192450_cd437a/curriculum.json",
+      "bytes": 327180,
+      "sha256": "b98d911e2bc948374cebcbf580a5ce8a25c052405aac94c72a75bfed4e1f174e"
+    },
+    {
+      "path": "runs/V6-2/tiger1/checkpoints/step_019485799_20261121_093930_192450_cd437a/metadata.json",
+      "bytes": 226,
+      "sha256": "4fda17983718b3bbc92c3935439e63d73be3377585b1718d4689406440f84c84"
+    },
+    {
+      "path": "runs/V6-2/tiger1/checkpoints/step_019485799_20261121_093930_192450_cd437a/model.zip",
+      "bytes": 6361186,
+      "sha256": "a3637c86e15651226480ad21af63ff2119b2df5d0e19cff3e594316460389bd9"
+    }
+  ]
+}
